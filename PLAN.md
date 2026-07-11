@@ -1,10 +1,12 @@
 # ZenFinance — AI Personal Finance Coach
 
-**A calm, plain-English money coach. Not another dashboard.**
+**A calm, plain-English money coach. Not another dashboard. iOS only.**
 
 ZenFinance links a user's bank and card accounts, enriches every transaction with AI, and delivers short, actionable coaching — *"Cut dining out by $45 this week to hit your savings goal — here's a simple swap"* — instead of charts the user has to interpret themselves. The product's entire personality is the opposite of Mint/YNAB: fewer screens, fewer numbers, one clear next action.
 
-This document is the full product + technical plan: premium feature set, architecture on the RushingTech stack, the AI coaching engine, security/compliance, monetization with unit economics, the tooling workflow (including the [`mrnickrushing/agents`](https://github.com/mrnickrushing/agents) toolkit), and a phased roadmap from empty repo to public launch.
+**The product ships exclusively as an iOS app.** There is no web app. The web presence at `zenfinance.rushingtechnologies.com` is non-product: a marketing page with waitlist, a support page, legal pages, and an owner-only admin console — all served by the same Express API that will later power the iOS app (see `apps/site` and `apps/api` in this repo).
+
+This document is the full product + technical plan: premium feature set, architecture on the RushingTech stack, the AI coaching engine, security/compliance, monetization with unit economics, the tooling workflow (including the [`mrnickrushing/agents`](https://github.com/mrnickrushing/agents) toolkit), and a phased roadmap from empty repo to App Store launch.
 
 ---
 
@@ -14,7 +16,7 @@ This document is the full product + technical plan: premium feature set, archite
 
 **Who it's for (launch niche → expansion):**
 
-1. **Launch niche — US millennials/Gen-Z with income but no system** (25–40, $50k–$150k household income, 1–3 financial goals, allergic to spreadsheets). They abandoned Mint/YNAB because those tools demand work; ZenFinance demands nothing after linking.
+1. **Launch niche — US millennials/Gen-Z iPhone users with income but no system** (25–40, $50k–$150k household income, 1–3 financial goals, allergic to spreadsheets). They abandoned Mint/YNAB because those tools demand work; ZenFinance demands nothing after linking.
 2. **Expansion niche 1 — Freelancers/solo operators:** irregular income, quarterly taxes, cash-flow anxiety. "Can I afford a slow month?" is a killer coaching question no dashboard answers.
 3. **Expansion niche 2 — Couples/families:** shared goals, gentle accountability, "money date" weekly summaries for two.
 
@@ -36,9 +38,9 @@ This document is the full product + technical plan: premium feature set, archite
 - One active savings goal
 - Anomaly alerts (unusual charge, duplicate charge, fee detection) — free because it builds trust and proves ROI
 
-### Premium — "ZenFinance Coach" ($7.99/mo or $59.99/yr)
+### Premium — "ZenFinance Coach" ($7.99/mo or $59.99/yr, App Store subscription)
 - **Unlimited accounts** and full transaction history
-- **On-demand chat coach:** conversational Q&A over the user's own data ("How much did I spend on my trip?", "Can I afford a $2,400 e-bike in 3 months?")
+- **On-demand chat coach:** conversational Q&A over the user's own data ("How much did I spend on my trip?", "Can I afford a $2,400 e-bike in 3 months?") — backed by a scoped transaction-query tool (§4), not just aggregates, so merchant/date/trip-specific questions actually work
 - **What-if simulator:** model a raise, a move, a subscription purge, a debt-payoff plan; see the goal timeline shift live
 - **Cash-flow forecast:** 30/60/90-day projection with recurring-bill detection and low-balance warnings ("Your checking dips below $200 on the 27th")
 - **Subscription auditor:** finds recurring charges, flags zombies and price creep, drafts the cancellation script/email
@@ -54,9 +56,11 @@ This document is the full product + technical plan: premium feature set, archite
 - **Annual "Money Physical":** one-time purchasable deep report ($14.99) — also works as a paid trial funnel for non-subscribers
 
 ### Deliberately excluded (scope discipline)
+- **No web app.** The product is the iOS app; the web presence is marketing/support/admin only.
 - No payments/transfers (keeps us read-only → drastically lower compliance surface)
 - No investment advice/brokerage data at launch (regulatory line we don't cross; net-worth *display* only, later)
 - No manual-entry budgeting workflows — that's the Mint/YNAB trap we're positioned against
+- No Android at launch — revisit only after iOS retention proves out
 
 ---
 
@@ -67,8 +71,11 @@ Chosen to match the stack the RushingTech agents toolkit already reviews and sca
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Clients                                                     │
-│  • Mobile: Expo / React Native, Zustand, RevenueCat SDK      │
-│  • Web: React + TypeScript SPA (marketing + web app)         │
+│  • iOS app (THE product): Expo / React Native, Zustand,      │
+│    RevenueCat SDK — the only product client                  │
+│  • Non-product pages (apps/site): marketing + waitlist,      │
+│    support, privacy/terms, owner admin console — static      │
+│    build served by the API at zenfinance.rushingtech...com   │
 └──────────────────────────┬──────────────────────────────────┘
                            │ HTTPS (JWT, refresh rotation)
 ┌──────────────────────────▼──────────────────────────────────┐
@@ -76,7 +83,7 @@ Chosen to match the stack the RushingTech agents toolkit already reviews and sca
 │  • Zod validation on every route, Helmet, rate limiting      │
 │  • Drizzle ORM → Postgres (Railway)                          │
 │  • BullMQ + Redis: ingestion & insight job queues            │
-│  • Stripe (web billing) + RevenueCat webhooks (mobile IAP)   │
+│  • RevenueCat webhooks (App Store IAP entitlements)          │
 │  • Plaid webhooks (transactions updates, item status)        │
 └───────┬──────────────────────────────┬──────────────────────┘
         │                              │
@@ -90,21 +97,21 @@ Chosen to match the stack the RushingTech agents toolkit already reviews and sca
 │  side only, KMS-  │        │  • Prompt caching + batching  │
 │  encrypted        │        │  • Zod-validated JSON outputs │
 └───────────────────┘        └──────────────────────────────┘
-        Observability: Sentry (API + mobile) · Railway metrics · PostHog product analytics
-        CI/CD: GitHub Actions → Railway (API) · EAS (mobile builds/updates)
+        Observability: Sentry (API + iOS) · Railway metrics · PostHog product analytics
+        CI/CD: GitHub Actions → Railway (API) · EAS (iOS builds/updates)
 ```
 
 **Key decisions and why:**
 
-- **Node/Express + Drizzle + Zod over FastAPI** — both are supported by the toolkit, but the mobile app is the product's center of gravity and a single TS codebase (shared types between API and clients via a `packages/shared` workspace) is worth more to a solo operator than Python's data ergonomics. Monorepo: `apps/api`, `apps/mobile`, `apps/web`, `packages/shared`.
-- **Plaid as primary aggregator** — broadest US coverage (~12k institutions) and best docs; start on the free Trial/limited-production tier (~10 live items) for the entire beta. **Teller** stays a live evaluation track: its free 100-connection developer tier could carry the whole beta at $0, but coverage gaps decide it. Build a thin `providers/` interface so the aggregator is swappable — this also future-proofs against CFPB §1033 open-banking standardization.
+- **Node/Express + Drizzle + Zod over FastAPI** — both are supported by the toolkit, but the iOS app is the product's center of gravity and a single TS codebase (shared types between API and clients via a `packages/shared` workspace) is worth more to a solo operator than Python's data ergonomics. Monorepo: `apps/api`, `apps/site`, `apps/ios`, `packages/shared`.
+- **Plaid as primary aggregator** — broadest US coverage (~12k institutions) and best docs; start on the free Trial/limited-production tier (~10 live items) for the entire beta. **Teller** stays a live evaluation track: its free 100-connection developer tier could carry the whole beta at $0, but coverage gaps decide it. Build a thin `providers/` interface so the aggregator is swappable — this also future-proofs against CFPB §1033 open-banking standardization. **Plaid Link runs natively in the iOS app** (Plaid Link iOS SDK); the API only ever handles link tokens and access-token exchange.
 - **Postgres schema highlights:** `users`, `items` (provider connections), `accounts`, `transactions` (raw + enriched columns), `recurring_streams`, `goals`, `insights` (generated coaching artifacts with feedback state), `money_wins`, `subscriptions_billing`. Transaction table is append-only with enrichment versioning so re-categorization never destroys history.
 - **Job-queue-first ingestion:** Plaid webhooks enqueue sync jobs; enrichment and insight generation are separate queue stages. Nothing AI-related happens in a request cycle except chat.
 - **Claude model tiering** (cost control is a product feature here):
   - *Haiku* for high-volume, low-stakes work: categorization, merchant name cleanup, recurring-charge detection assist, anomaly triage. Batch 50–100 transactions per call.
   - *Sonnet* for the weekly brief, chat coach, and what-if scenarios where reasoning quality is the product.
-  - Prompt caching on the static system/coaching-policy prompt; per-user context assembled as compact structured summaries (see §4), never raw transaction dumps.
-- **RevenueCat as the single entitlement source of truth** across Stripe (web) and App Store/Play (mobile) — its Stripe integration means one entitlements check in the API regardless of purchase platform.
+  - Prompt caching on the static system/coaching-policy prompt; per-user context assembled as compact structured summaries (see §4). Chat additionally gets a deterministic, user-scoped transaction-query tool (parameterized SQL behind a tool interface, redacted fields only) — the model never receives bulk raw-transaction dumps.
+- **RevenueCat as the entitlement source of truth** for App Store subscriptions — one entitlements check in the API. Stripe enters the picture only if a web checkout is ever wanted; nothing in the design depends on it.
 
 ---
 
@@ -116,14 +123,14 @@ The engine is a pipeline, not a chatbot bolted onto a database.
 
 **Stage 2 — Enrich (Haiku, batched).** Category (custom taxonomy ~40 categories tuned for coaching, not accounting), cleaned merchant name, `is_recurring`, `is_discretionary`, confidence score. Low-confidence items fall back to Plaid's own enrichment; user corrections are stored and injected as few-shot examples into that user's future enrichment calls — the coach visibly *learns*.
 
-**Stage 3 — Feature store (plain SQL, no ML infra).** Nightly per-user rollups: spend by category by week, discretionary ratio, recurring load, income cadence, goal pacing, volatility. These compact aggregates — not raw transactions — are what feed the LLM. Keeps prompts small, cheap, and privacy-tighter.
+**Stage 3 — Feature store (plain SQL, no ML infra).** Nightly per-user rollups: spend by category by week, discretionary ratio, recurring load, income cadence, goal pacing, volatility. Each aggregate carries a stable `aggregate_id`. These compact aggregates — not raw transactions — are what feed the LLM for briefs and insights (chat adds the scoped query tool from §3). Keeps prompts small, cheap, and privacy-tighter.
 
-**Stage 4 — Insight generation (Sonnet).** Weekly job assembles: user profile + goals, 8-week aggregate trends, notable events (anomalies, new recurring charges, goal pacing drift), and the coaching policy prompt. Output is Zod-validated JSON: `{ headline, body, action: { description, estimated_impact_usd, timeframe }, tone_check }`. Invalid JSON or a failed rules-pass (see guardrails) → retry once → fall back to a template insight. **Every insight must name a dollar amount and an action.**
+**Stage 4 — Insight generation (Sonnet).** Weekly job assembles: user profile + goals, 8-week aggregate trends, notable events (anomalies, new recurring charges, goal pacing drift), and the coaching policy prompt. Derived figures the coach may cite (goal pacing, projected savings, category deltas) are computed deterministically in code and passed in as inputs — the model never does arithmetic. Output is Zod-validated JSON: `{ headline, body, action: { description, estimated_impact_usd, timeframe }, claims: [{ amount_usd, source_aggregate_id }], tone_check }`. Every verified dollar figure must cite a `source_aggregate_id` present in the inputs — semantic provenance, not just numeric matching, since a model can reuse a valid $45 against the wrong merchant. `estimated_impact_usd` is a model estimate and is labeled as such in the UI, never presented as a verified figure. Invalid JSON, a missing/unknown source id, or a failed rules-pass (see guardrails) → retry once → fall back to a template insight. **Every insight must name a dollar amount and an action.**
 
-**Stage 5 — Delivery & feedback.** Push notification → brief card in app → thumbs up/down + "did you do it?" follow-through check the next week. Feedback loops into per-user tone/topic preferences and into the Money Wins ledger when an action verifiably happened (e.g., the flagged subscription's charge stops appearing).
+**Stage 5 — Delivery & feedback.** Push notification → brief card in app → thumbs up/down + "did you do it?" follow-through check the next week. Feedback loops into per-user tone/topic preferences and into the Money Wins ledger. A win is marked **verified** only when the connection is actively syncing, transaction data is complete for the period, and either the user confirms the cancellation or the expected charge is absent for 2+ consecutive billing cycles — a charge merely disappearing once proves nothing (provider outages, disconnects, and merchant renames all mimic it). Anything short of that displays as *estimated*.
 
 **Guardrails (non-negotiable):**
-- Coaching policy prompt forbids: investment/tax/legal advice, shame language, fabricated numbers (every dollar figure must come from the provided aggregates — enforced by a post-generation check that extracts numbers and matches them against inputs).
+- Coaching policy prompt forbids: investment/tax/legal advice, shame language, fabricated numbers. Every verified dollar figure must cite a `source_aggregate_id` that exists in the provided inputs — enforced by a post-generation provenance check; model estimates are labeled as estimates.
 - Standing "not financial advice; educational only" disclosure in-app and in onboarding.
 - A `tone_check` self-rating in the output schema, plus a lightweight rules pass (banned-phrase list) before anything reaches a user.
 - **Eval harness from day one:** ~50 synthetic user personas (fixture transaction sets) with golden expectations; every prompt change runs the persona suite in CI and diffs insight quality/cost. This is the moat-maintenance tool — prompt regressions are product regressions here.
@@ -132,20 +139,20 @@ The engine is a pipeline, not a chatbot bolted onto a database.
 
 ## 5. Security, Privacy & Compliance
 
-Read-only data access keeps ZenFinance out of money-movement regulation, but bank data demands bank-grade hygiene:
+Read-only data access shrinks the regulatory surface — no money movement — but it is **not** an exemption: regulatory posture gets jurisdiction-specific review by a fintech-literate attorney before beta, and no compliance claim ships publicly without that review. Bank data demands bank-grade hygiene regardless:
 
 - **Never store bank credentials** — OAuth via Plaid Link only. Plaid `access_token`s live server-side, encrypted at rest (app-layer encryption with KMS-managed key, on top of Postgres disk encryption). Tokens never touch the client.
-- **Auth:** JWT access + refresh-token rotation with revocation (exactly the pattern `AuthSecurityAgent` audits), Apple/Google Sign-In on mobile, optional biometric app-lock.
+- **Auth:** JWT access + refresh-token rotation with revocation (exactly the pattern `AuthSecurityAgent` audits), Apple Sign-In on iOS, optional biometric app-lock (Face ID).
 - **API hardening:** Helmet, strict CORS, per-user and per-IP rate limits, Zod on every input, no PII in logs (Sentry PII scrubbing configured — `InfraMonitorAgent` checks this).
-- **Data minimization & user rights:** one-tap disconnect (revokes Plaid item + deletes transactions), full account deletion with 30-day purge, data export (CCPA/GDPR-ready even though launch is US-only). Delete flows are built in Phase 1, not retrofitted.
-- **AI privacy posture:** only aggregates and minimal transaction context go to the model API; no third-party analytics on transaction content; document the flow in the privacy policy in plain English (this is marketing as much as compliance).
-- **Roadmap items:** privacy policy + ToS from a fintech-literate template pre-beta; security review gate before every phase exit (see §7); SOC 2 Type I only when a partnership/enterprise reason exists (~post-revenue, ~$20–40k — not before).
+- **Data minimization & user rights:** one-tap disconnect (revokes the Plaid item + deletes its transactions), full account deletion with a 30-day purge that propagates everywhere user data lives — Postgres, Redis/BullMQ job payloads, database backups (documented backup-expiry window), Sentry/PostHog events, and deletion requests upstream to Plaid and the model API provider — plus data export. Designed toward CCPA/GDPR expectations; "compliant" is claimed only after legal review. Delete flows are built in Phase 1, not retrofitted.
+- **AI privacy posture:** only aggregates and minimal, redacted transaction context go to the model API; no third-party analytics on transaction content; document the flow in the privacy policy in plain English (this is marketing as much as compliance).
+- **Roadmap items:** privacy policy + ToS from a fintech-literate template pre-beta (attorney-reviewed); security review gate before every phase exit (see §7); SOC 2 Type I only when a partnership/enterprise reason exists (~post-revenue, ~$20–40k — not before).
 
 ---
 
 ## 6. Monetization & Unit Economics
 
-**Pricing:** Free tier → **$7.99/mo** or **$59.99/yr** (37% annual discount pushes the higher-retention plan). 14-day full-featured trial, card required only on web (mobile follows store norms). Sits deliberately under YNAB (~$15/mo) and above impulse-purchase pricing — coaching should feel premium.
+**Pricing:** Free tier → **$7.99/mo** or **$59.99/yr** (37% annual discount pushes the higher-retention plan), sold as App Store auto-renewing subscriptions with a 14-day free trial (intro offer). Sits deliberately under YNAB (~$15/mo) and above impulse-purchase pricing — coaching should feel premium.
 
 **Per-premium-user monthly cost model (at modest scale):**
 
@@ -155,11 +162,13 @@ Read-only data access keeps ZenFinance out of money-movement regulation, but ban
 | LLM — enrichment (Haiku, batched) | ~$0.03–$0.08 | ~300 txns/mo enriched in batches |
 | LLM — weekly briefs + chat (Sonnet, cached) | ~$0.15–$0.50 | 4 briefs + moderate chat; prompt caching cuts this hard |
 | Infra amortized (Railway, Redis, Sentry) | ~$0.10–$0.30 | Flat costs spread across users |
-| **Total** | **~$0.90–$2.90** | **~64–89% gross margin at $7.99** |
+| **Total** | **~$0.90–$2.90** | **~64–89% gross margin at $7.99, before Apple's 15–30% cut** |
 
-**Targets:** free→paid conversion 5–8% (finance apps convert well when ROI is visible — that's the Money Wins ledger's job), monthly churn <5% (annual plans + renewal-time savings recap), LTV $85–150. Break-even on fixed costs (~$100–200/mo infra + Plaid Growth minimum) at roughly **30–50 subscribers**.
+Apple's commission (15% under the Small Business Program while revenue < $1M/yr) comes off the top; even at 15%, blended margin stays healthy (~55–80%).
 
-**Monetization mechanics:** Stripe Checkout + customer portal on web; RevenueCat on mobile; RevenueCat as cross-platform entitlement truth. Dunning, receipt validation, and webhook handling reviewed by `StripeBillingAgent` before launch (§7).
+**Targets:** free→paid conversion 5–8% (finance apps convert well when ROI is visible — that's the Money Wins ledger's job), monthly churn <5% (annual plans + renewal-time savings recap), LTV $85–150. Break-even on fixed costs (~$100–200/mo infra + Plaid Growth minimum) at roughly **35–60 subscribers** (after Apple's cut).
+
+**Monetization mechanics:** App Store IAP via RevenueCat — entitlements, receipt validation, billing-retry/dunning, and webhooks into the API, with RevenueCat as the entitlement source of truth. Reviewed by `StripeBillingAgent` (which covers RevenueCat sync/receipt validation) before launch (§7). Stripe web checkout is out of scope unless a web purchase path is ever wanted.
 
 ---
 
@@ -174,89 +183,90 @@ Solo-built doesn't mean unreviewed. Every phase below has an explicit quality ga
 | Bootstrap monorepo, API, Expo app | `ScaffolderAgent` | Generate Express API, Expo app, SaaS platform scaffolding + CI configs |
 | Every schema/migration | `DatabaseArchitectAgent` | FK index coverage, migration safety, N+1 detection, unique constraints |
 | Every route/component PR | `CodeReviewAgent` + `APIArchitectAgent` | Express routes, Zod validation, React/Expo components, Zustand stores; pagination/status-code/error-shape consistency |
-| Auth implementation | `AuthSecurityAgent` | JWT refresh rotation, Apple Sign-In nonce/JWKS/audience, Google OAuth CSRF, biometric auth |
+| Auth implementation | `AuthSecurityAgent` | JWT refresh rotation, Apple Sign-In nonce/JWKS/audience, shared-secret admin gate, biometric auth |
 | Phase-exit security gates | `SecurityAuditAgent` (`cli.py scan --triage`) | Helmet, OWASP Top 10, JWT, injection/XSS/CSRF, dependency scan, CORS — with LLM triage to kill false positives |
-| Billing build-out | `StripeBillingAgent` | Webhook handler review, RevenueCat sync, receipt validation, dunning, billing security audit |
+| Billing build-out | `StripeBillingAgent` | RevenueCat sync, receipt validation, webhook handler review, dunning, billing security audit |
 | Deploy & observability | `RailwayDeployAgent` + `InfraMonitorAgent` | GitHub Actions → Railway, Sentry DSN/sampling/PII config, health-check depth, alert rules, backups |
-| Store submission | `MobileDeployAgent` | EAS profile review (hardcoded-secret detection), App Store/Play checklists, RevenueCat SDK setup |
+| App Store submission | `MobileDeployAgent` | EAS profile review (hardcoded-secret detection), App Store submission checklist, RevenueCat SDK setup |
 | Design system & screens | `UIGenerationAgent` | Zen design system (color/type/motion/elevation) + component generation with accessibility validation |
 
 Wire `python -m agents.cli scan` into GitHub Actions as a required check on `zenfinance` — free heuristic pass on every PR, `--triage` pass (API key in CI secrets) on release branches.
 
 **Claude Code session agents** mirror the same coverage interactively: `project-scaffolder`, `fullstack-code-reviewer`, `security-auditor`, `stripe-billing-reviewer`, `railway-deploy-advisor`, `ui-designer` — used during development, while the CLI toolkit enforces the same standards in CI.
 
-**External resources:** Plaid sandbox + Link SDKs, Teller sandbox (parallel evaluation), RevenueCat sandbox, Stripe test mode, PostHog free tier (product analytics), Expo EAS free tier, Railway hobby → pro. Total pre-revenue tooling spend: **≈$20–40/mo**.
+**External resources:** Plaid sandbox + Link iOS SDK, Teller sandbox (parallel evaluation), RevenueCat sandbox, PostHog free tier (product analytics), Expo EAS free tier, TestFlight, Railway hobby → pro. Total pre-revenue tooling spend: **≈$20–40/mo** (plus the $99/yr Apple Developer Program).
 
 ---
 
 ## 8. Phased Roadmap — Start to Finish
 
-Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 weeks to public launch.** Each phase has an exit gate; don't start the next phase until the gate passes.
+Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 weeks to App Store launch.** Each phase has an exit gate; don't start the next phase until the gate passes.
 
 ### Phase 0 — Foundation & Validation *(Week 1–2)*
-- Landing page (React, on the `zenfinance` domain) with the one-liner, 3 example coach briefs, and a waitlist — validate message before writing app code
+- Web presence live at `zenfinance.rushingtechnologies.com` (built in this repo: `apps/site` + `apps/api`): marketing page with the one-liner, 3 example coach briefs, waitlist signup, support page wired to support@rushingtechnologies.com, privacy/terms pages, and the owner admin console (waitlist, support inbox, metrics) — deployed on Railway
 - Post concept to r/personalfinance-adjacent communities + Product Hunt "upcoming"; goal: 100 waitlist emails
-- Plaid dashboard signup (Trial), Teller dev account, Stripe + RevenueCat accounts
-- Monorepo scaffold (`ScaffolderAgent`): `apps/api`, `apps/mobile`, `apps/web`, `packages/shared`; CI skeleton with lint/typecheck/test + `agents.cli scan`
+- Plaid dashboard signup (Trial), Teller dev account, RevenueCat account, Apple Developer Program enrollment
+- Monorepo scaffold (`ScaffolderAgent`): `apps/api`, `apps/site`, `apps/ios` (placeholder), `packages/shared`; CI skeleton with lint/typecheck/test + `agents.cli scan`
 - Draft the coaching policy prompt + the 50-persona eval fixture plan
-- **Exit gate:** waitlist live and collecting; repo scaffolded; CI green; Plaid sandbox keys working.
+- **Exit gate:** site + admin console deployed and collecting waitlist signups; repo scaffolded; CI green; Plaid sandbox keys working.
 
 ### Phase 1 — Data Spine: Linking & Ingestion *(Week 3–5)*
-- Auth: email + Apple/Google Sign-In, JWT with refresh rotation (`AuthSecurityAgent` review)
-- Plaid Link flow (web first — faster iteration), token exchange, encrypted token storage
+- Auth: email + Apple Sign-In, JWT with refresh rotation (`AuthSecurityAgent` review)
+- Plaid link-token + token-exchange endpoints on the API, plus a minimal iOS test harness (bare Expo screen wrapping the Plaid Link iOS SDK) — the full app UI comes in Phase 4
 - Webhook-driven transaction sync via BullMQ: initial 90-day backfill + incremental updates; dedupe, pending reconciliation, transfer-pair detection
 - Drizzle schema for the core tables + delete/disconnect flows (built now, per §5)
 - Provider abstraction layer; Teller spike behind it
-- **Exit gate:** link a real bank account, watch 90 days of clean transactions land in Postgres, disconnect wipes them. `SecurityAuditAgent` scan passes. `DatabaseArchitectAgent` review of schema passes.
+- **Exit gate:** link a real bank account from the iOS test harness, watch 90 days of clean transactions land in Postgres, disconnect wipes them. `SecurityAuditAgent` scan passes. `DatabaseArchitectAgent` review of schema passes.
 
 ### Phase 2 — AI Enrichment *(Week 6–7)*
 - Haiku batch enrichment pipeline: categories, merchant cleanup, discretionary/recurring flags, confidence scores; Plaid-enrichment fallback
 - Recurring-stream detection (rules + LLM assist) → `recurring_streams`
-- Nightly feature-store rollups (SQL aggregates)
+- Nightly feature-store rollups (SQL aggregates with stable `aggregate_id`s)
 - User-correction loop stored as per-user few-shots
-- Eval fixtures: categorization accuracy vs. a hand-labeled 500-transaction set; target ≥90% on discretionary/essential split (matters more than exact category)
-- **Exit gate:** own real data enriched with ≥90% accuracy on the split that drives coaching; cost per user per month of enrichment measured and under $0.10.
+- Eval fixtures: a hand-labeled 500-transaction set, split into a few-shot/dev portion and a **held-out portion**; the metric that matters is discretionary/essential split accuracy (more than exact category)
+- **Exit gate:** ≥90% discretionary/essential split accuracy on the held-out portion of the hand-labeled set (few-shot/dev transactions excluded); enrichment cost per user per month measured and under $0.10.
 
 ### Phase 3 — Coaching Engine MVP *(Week 8–10)*
-- Insight generation job (Sonnet): weekly brief with validated JSON schema, number-grounding check, tone rules pass, template fallback
+- Insight generation job (Sonnet): weekly brief with validated JSON schema, provenance check (`source_aggregate_id`s), deterministic derived-figure computation, tone rules pass, template fallback
 - Goals CRUD + pacing math; anomaly detection (unusual/duplicate charge, new recurring, fee) with push alerts
 - Subscription auditor v1 (from `recurring_streams`)
-- Money Wins ledger plumbing (insights → user confirmation → tally)
+- Money Wins ledger plumbing (insights → verification criteria from §4 Stage 5 → verified/estimated tally)
 - 50-persona eval suite wired into CI; iterate the coaching prompt against it
 - **Deliver value in week 1 of any user's life:** immediate "first-look brief" generated from the 90-day backfill at link time
 - **Exit gate:** the weekly brief on your own real data is something you'd screenshot and send to a friend. Persona suite passes. Per-user AI cost measured.
 
-### Phase 4 — Mobile App & Premium UX *(Week 11–14)*
+### Phase 4 — The iOS App *(Week 11–14)* — the product phase
 - Zen design system (`UIGenerationAgent` / `ui-designer`): calm palette, generous whitespace, one-number-per-screen discipline, dark mode
-- Expo app: onboarding → Plaid Link (native SDK) → first-look brief → weekly brief cards → chat coach → goals → subscription auditor → Money Wins
-- Chat coach (Sonnet, streaming) over the feature store with strict scope guardrails; what-if simulator (deterministic math core + LLM narration — the LLM never does the arithmetic)
-- Push notifications (Expo push): weekly brief, anomalies, goal pacing — with per-type opt-outs
-- Sentry on API + mobile (`InfraMonitorAgent` config review); PostHog funnels on onboarding
-- **Exit gate:** TestFlight/internal-track build; 5 friendly users linked, receiving briefs, and at least 3 report acting on one. `CodeReviewAgent` + accessibility pass on all screens.
+- Expo iOS app: onboarding → Plaid Link (native SDK) → first-look brief → weekly brief cards → chat coach → goals → subscription auditor → Money Wins
+- Chat coach (Sonnet, streaming) over the feature store **plus the deterministic, user-scoped transaction-query tool** (parameterized SQL behind a tool interface, redacted fields only) so merchant/date/trip questions are answerable; strict scope guardrails
+- What-if simulator (deterministic math core + LLM narration — the LLM never does the arithmetic)
+- Push notifications (Expo push → APNs): weekly brief, anomalies, goal pacing — with per-type opt-outs
+- Sentry on API + iOS (`InfraMonitorAgent` config review); PostHog funnels on onboarding
+- **Exit gate:** TestFlight build; 5 friendly users linked, receiving briefs, and at least 3 report acting on one. `CodeReviewAgent` + accessibility pass on all screens.
 
 ### Phase 5 — Monetization *(Week 15–16)*
-- RevenueCat entitlements (`zen_coach` premium); App Store/Play IAP products; Stripe Checkout + portal on web
-- Free-tier gating (2 accounts, 1 goal, weekly brief only), 14-day trial, paywall screens framed around Money Wins ("the coach paid for itself")
-- Dunning + billing webhooks (`StripeBillingAgent` + `stripe-billing-reviewer` full audit — this gate is blocking)
-- Annual plan + launch pricing experiment scaffolding (PostHog A/B)
-- **Exit gate:** end-to-end purchase, upgrade, cancel, refund, and restore-purchases tested in sandbox on both platforms; billing audit clean.
+- RevenueCat entitlements (`zen_coach` premium); App Store auto-renewing subscription products (monthly + annual, 14-day intro trial)
+- Free-tier gating (2 accounts, 1 goal, weekly brief only), paywall screens framed around Money Wins ("the coach paid for itself")
+- RevenueCat webhooks into the API, receipt validation, billing-retry/dunning handling (`StripeBillingAgent` + `stripe-billing-reviewer` full audit — this gate is blocking)
+- Pricing experiment scaffolding (PostHog A/B on paywall framing, not price)
+- **Exit gate:** end-to-end purchase, upgrade, cancel, refund, and restore-purchases tested in App Store sandbox; billing audit clean.
 
 ### Phase 6 — Hardening, Compliance & Beta *(Week 17–18)*
 - Full `SecurityAuditAgent --triage` scan + `security-auditor` deep pass; fix all high/critical
-- Privacy policy + ToS (fintech template, reviewed), disclosure copy audit, App Store privacy labels / Play data-safety forms
+- Privacy policy + ToS (fintech template, attorney-reviewed), disclosure copy audit, App Store privacy nutrition labels
 - Plaid production-access application (they review the app; lead time ~1–2 weeks — **start this at Phase 4 exit**, it runs in parallel)
 - Load/failure drills: Plaid webhook outage, item re-auth flows, LLM API failure → template fallback verified
-- Closed beta: 50–100 waitlist users; instrument activation (link rate, first-brief reaction) and week-4 retention
-- **Exit gate:** Plaid production approved; store review passed; beta week-4 retention >30%; zero critical Sentry issues for 7 days.
+- Closed beta via TestFlight: 50–100 waitlist users; instrument activation (link rate, first-brief reaction) and week-4 retention
+- **Exit gate:** Plaid production approved; App Store review passed; beta week-4 retention >30%; zero critical Sentry issues for 7 days.
 
 ### Phase 7 — Launch & Growth Loop *(Week 19+, ongoing)*
-- Public launch: Product Hunt + the waitlist + finance-adjacent newsletters/podcasts; launch offer for waitlist (extended trial, not a discount — protect the price point)
+- App Store launch: Product Hunt + the waitlist + finance-adjacent newsletters/podcasts; launch offer for waitlist (extended trial, not a discount — protect the price point)
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
 - Referral mechanic: "give a month, get a month" (finance advice spreads by word of mouth)
-- Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links
+- Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links; published on the marketing site
 - Post-launch feature train (strictly demand-ordered): freelancer mode → household sharing → voice briefs → Money Physical one-time report → net-worth view
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
-- **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, Money Wins average >$25/user/month.
+- **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
 ---
 
@@ -268,9 +278,10 @@ Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 wee
 | Insight quality is generic → churn | Persona eval suite in CI; every insight requires a dollar figure + action; user feedback loop; Money Wins as the quality scoreboard |
 | LLM cost creep | Model tiering (Haiku for volume), prompt caching, aggregates-not-raw-data prompting, per-user cost metering with alerts |
 | Trust/security incident | Read-only scope, no credentials stored, KMS-encrypted tokens, agent-audited gates every phase, minimal PII in prompts |
-| "Not financial advice" line | Guardrailed prompt + rules pass, no investment/tax advice, standing disclosures, deterministic math for simulations |
+| "Not financial advice" line | Guardrailed prompt + provenance/rules pass, no investment/tax advice, standing disclosures, deterministic math for simulations |
 | Solo-builder burnout / scope creep | Phase exit gates; the §2 "deliberately excluded" list; one growth experiment per week, not five |
 | App Store rejection (finance category) | `MobileDeployAgent` checklists, privacy labels done early, read-only posture documented for review notes |
+| Single-platform dependence (iOS only) | Accepted trade-off for focus; API and shared packages are platform-agnostic, so an Android/Expo build is a later option, not a rewrite |
 
 ---
 
@@ -278,11 +289,11 @@ Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 wee
 
 - **Activation:** signup → account linked (target >60%), link → first brief viewed (>90%, it's automatic)
 - **Engagement:** weekly brief open rate (>50%), action follow-through rate (>15%)
-- **Value proof:** Money Wins $/user/month (>$25 — must exceed 3× the subscription price)
+- **Value proof:** verified Money Wins $/user/month (>$25 — must exceed 3× the subscription price)
 - **Revenue:** trial→paid (>40%), free→paid (5–8%), MRR, churn (<5%/mo)
 - **Cost:** blended cost/user/month (<$3), AI cost per brief, Plaid cost per item
 - **Quality:** persona-suite pass rate (100%), insight thumbs-up ratio (>80%), Sentry crash-free sessions (>99.5%)
 
 ---
 
-*Next step: Phase 0 — landing page + monorepo scaffold. The provider abstraction and the coaching-policy prompt are the two artifacts worth the most care; everything else is replaceable.*
+*Current status: the Phase 0 web presence (marketing + waitlist + support + admin + API) is built in this repo — see `apps/site`, `apps/api`, and `DEPLOY.md`. Next: deploy to Railway, then Phase 1 (data spine). The provider abstraction and the coaching-policy prompt remain the two artifacts worth the most care; everything else is replaceable.*
