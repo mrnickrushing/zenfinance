@@ -1,0 +1,23 @@
+{
+  "name": "zenfinance",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ZenFinance — AI personal finance coach (iOS app). This monorepo holds the API, the marketing/support/admin site, and shared packages.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run build -w @zenfinance/shared && npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "build": "npm run build -w @zenfinance/shared && npm run build -w @zenfinance/site && npm run build -w @zenfinance/api",
+    "dev:api": "npm run dev -w @zenfinance/api",
+    "dev:site": "npm run dev -w @zenfinance/site",
+    "db:generate": "npm run db:generate -w @zenfinance/api",
+    "db:migrate": "npm run db:migrate -w @zenfinance/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
