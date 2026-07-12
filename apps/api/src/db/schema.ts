@@ -533,3 +533,97 @@ export const appEvents = pgTable(
   },
   (t) => [index('app_events_user_created_idx').on(t.userId, t.createdAt), index('app_events_name_idx').on(t.name)],
 );
+
+// ---------- Phase 5: RevenueCat billing and entitlement gates ----------
+
+export const billingStatusEnum = pgEnum('billing_status', [
+  'free',
+  'trialing',
+  'active',
+  'grace_period',
+  'billing_issue',
+  'expired',
+  'refunded',
+]);
+export const billingPlanEnum = pgEnum('billing_plan', ['free', 'monthly', 'annual', 'lifetime', 'unknown']);
+export const entitlementSourceEnum = pgEnum('entitlement_source', [
+  'revenuecat_webhook',
+  'revenuecat_rest',
+  'client_restore',
+  'manual_test',
+]);
+
+export const billingCustomers = pgTable(
+  'billing_customers',
+  {
+    userId: integer('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    revenueCatAppUserId: text('revenuecat_app_user_id').notNull().unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('billing_customers_rc_user_idx').on(t.revenueCatAppUserId)],
+);
+
+export const billingEntitlements = pgTable(
+  'billing_entitlements',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    entitlementId: text('entitlement_id').notNull(),
+    status: billingStatusEnum('status').notNull().default('free'),
+    plan: billingPlanEnum('plan').notNull().default('free'),
+    productId: text('product_id'),
+    store: text('store'),
+    environment: text('environment').notNull().default('UNKNOWN'),
+    willRenew: boolean('will_renew'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    latestPurchaseAt: timestamp('latest_purchase_at', { withTimezone: true }),
+    billingIssueAt: timestamp('billing_issue_at', { withTimezone: true }),
+    cancellationAt: timestamp('cancellation_at', { withTimezone: true }),
+    managementUrl: text('management_url'),
+    source: entitlementSourceEnum('source'),
+    sourceEventId: text('source_event_id'),
+    rawPayload: jsonb('raw_payload').notNull().default('{}'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('billing_entitlements_user_entitlement_idx').on(t.userId, t.entitlementId),
+    index('billing_entitlements_user_status_idx').on(t.userId, t.status),
+  ],
+);
+
+export const billingEvents = pgTable(
+  'billing_events',
+  {
+    id: serial('id').primaryKey(),
+    revenueCatEventId: text('revenuecat_event_id').notNull().unique(),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    appUserId: text('app_user_id').notNull(),
+    type: text('type').notNull(),
+    productId: text('product_id'),
+    entitlementIds: jsonb('entitlement_ids').notNull().default('[]'),
+    environment: text('environment').notNull().default('UNKNOWN'),
+    eventTimestamp: timestamp('event_timestamp', { withTimezone: true }),
+    processedAt: timestamp('processed_at', { withTimezone: true }).notNull().defaultNow(),
+    rawPayload: jsonb('raw_payload').notNull(),
+  },
+  (t) => [index('billing_events_user_idx').on(t.userId), index('billing_events_app_user_idx').on(t.appUserId)],
+);
+
+export const pricingExperiments = pgTable(
+  'pricing_experiments',
+  {
+    userId: integer('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    experimentId: text('experiment_id').notNull(),
+    variant: text('variant').notNull(),
+    assignedAt: timestamp('assigned_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('pricing_experiments_experiment_idx').on(t.experimentId, t.variant)],
+);

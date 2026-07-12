@@ -4,14 +4,15 @@ import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
 import {
-  ArrowDownRight,
   Bell,
   Bot,
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   CreditCard,
+  Crown,
   Landmark,
+  LockKeyhole,
   LogOut,
   MessageCircle,
   Moon,
@@ -32,6 +33,7 @@ import {
   Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   SafeAreaView,
@@ -44,10 +46,12 @@ import {
   View,
 } from 'react-native';
 import { create, open } from 'react-native-plaid-link-sdk';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { create as createStore } from 'zustand';
 import type {
   AnomalyView,
   AuthTokens,
+  BillingStatusView,
   ChatAnswerView,
   GoalView,
   InsightView,
@@ -55,12 +59,14 @@ import type {
   MobileHomeSummaryView,
   MoneyWinsSummaryView,
   NotificationPreferencesView,
+  PaywallPackageView,
   SubscriptionAuditView,
   WhatIfResultView,
 } from '@zenfinance/shared';
 
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
+const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -79,6 +85,24 @@ Notifications.setNotificationHandler({
 });
 
 type TabKey = 'brief' | 'coach' | 'goals' | 'subs' | 'wins' | 'settings';
+const PREMIUM_TABS = new Set<TabKey>(['coach', 'subs', 'wins']);
+
+type RevenueCatCustomerInfo = Awaited<ReturnType<typeof Purchases.restorePurchases>>;
+type RevenueCatPackage = NonNullable<Awaited<ReturnType<typeof Purchases.getOfferings>>['current']>['availablePackages'][number];
+type RestorePayload = {
+  appUserId: string;
+  entitlementId: string;
+  productId?: string;
+  active: boolean;
+  expirationDate?: string | null;
+  latestPurchaseDate?: string | null;
+  willRenew?: boolean | null;
+  managementUrl?: string | null;
+  store?: string;
+  environment: 'SANDBOX' | 'PRODUCTION' | 'UNKNOWN';
+};
+
+let configuredRevenueCatUserId: string | null = null;
 
 interface AppState {
   accessToken: string | null;
@@ -190,10 +214,63 @@ async function requestApi<T>(path: string, init: RequestInit = {}, retry = true)
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
+    throw new ApiRequestError(
+      body?.error?.message ?? `Request failed (${res.status})`,
+      res.status,
+      body?.error?.code,
+      body?.error?.details,
+    );
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly details?: unknown,
+  ) {
+    super(message);
+  }
+}
+
+async function trackBillingEvent(name: string, properties: Record<string, unknown> = {}): Promise<void> {
+  await requestApi('/api/billing/events', {
+    method: 'POST',
+    body: JSON.stringify({ name, properties }),
+  }).catch(() => {});
+}
+
+async function configureRevenueCat(billing: BillingStatusView): Promise<boolean> {
+  if (!REVENUECAT_IOS_API_KEY || Platform.OS !== 'ios') return false;
+  const alreadyConfigured = await Purchases.isConfigured().catch(() => false);
+  if (alreadyConfigured && configuredRevenueCatUserId === billing.appUserId) return true;
+  await Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN).catch(() => {});
+  Purchases.configure({
+    apiKey: REVENUECAT_IOS_API_KEY,
+    appUserID: billing.appUserId,
+  } as Parameters<typeof Purchases.configure>[0]);
+  configuredRevenueCatUserId = billing.appUserId;
+  return true;
+}
+
+function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo: RevenueCatCustomerInfo): RestorePayload {
+  const activeEntitlement = customerInfo.entitlements.active[billing.entitlementId];
+  const entitlement = activeEntitlement ?? customerInfo.entitlements.all[billing.entitlementId];
+  return {
+    appUserId: billing.appUserId,
+    entitlementId: billing.entitlementId,
+    productId: entitlement?.productIdentifier ?? customerInfo.activeSubscriptions[0],
+    active: Boolean(activeEntitlement?.isActive),
+    expirationDate: entitlement?.expirationDate ?? customerInfo.latestExpirationDate,
+    latestPurchaseDate: entitlement?.latestPurchaseDate ?? null,
+    willRenew: entitlement?.willRenew ?? null,
+    managementUrl: customerInfo.managementURL,
+    store: entitlement?.store ? String(entitlement.store) : undefined,
+    environment: entitlement ? (entitlement.isSandbox ? 'SANDBOX' : 'PRODUCTION') : 'UNKNOWN',
+  };
 }
 
 function useTheme() {
@@ -333,11 +410,14 @@ function ProductShell() {
       return <LinkingScreen onLinked={refresh} />;
     }
     if (tab === 'brief') return <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} />;
+    if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
+      return <PaywallScreen billing={home.billing} source={tab} onChanged={refresh} />;
+    }
     if (tab === 'coach') return <CoachScreen />;
-    if (tab === 'goals') return <GoalsScreen goals={home.goals} onChanged={refresh} />;
+    if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} anomalies={home.openAnomalies} onChanged={refresh} />;
-    return <SettingsScreen items={home.items} onChanged={refresh} />;
+    return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
   return (
@@ -456,11 +536,22 @@ function BriefScreen({
 }
 
 function MetricStrip({ home }: { home: MobileHomeSummaryView }) {
+  const audit = home.subscriptionAudit;
   return (
     <View style={styles.metricStrip}>
       <Metric label="Wins" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
       <Metric label="Goals" value={String(home.goals.length)} icon={Target} />
-      <Metric label="Subs" value={usd(home.subscriptionAudit.totalMonthlyCents, true)} icon={CreditCard} />
+      <Metric label="Subs" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
+    </View>
+  );
+}
+
+function SubscriptionMetricStrip({ audit }: { audit: SubscriptionAuditView }) {
+  return (
+    <View style={styles.metricStrip}>
+      <Metric label="Monthly" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
+      <Metric label="Candidates" value={String(audit.cancelCandidateCount)} icon={Target} />
+      <Metric label="Potential" value={usd(audit.cancelCandidateMonthlyCents, true)} icon={CircleDollarSign} />
     </View>
   );
 }
@@ -591,12 +682,163 @@ function Suggestion({ value, onPress }: { value: string; onPress: (value: string
   );
 }
 
-function GoalsScreen({ goals, onChanged }: { goals: GoalView[]; onChanged: () => void }) {
+function PaywallScreen({
+  billing,
+  source,
+  onChanged,
+}: {
+  billing: BillingStatusView;
+  source: string;
+  onChanged: () => void;
+}) {
+  const theme = useTheme();
+  const [storePackages, setStorePackages] = useState<RevenueCatPackage[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState(billing.packages[1]?.productId ?? billing.packages[0]?.productId);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [storeMessage, setStoreMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    void trackBillingEvent('paywall_viewed', { source, variant: billing.pricingExperiment.variant });
+    void (async () => {
+      const configured = await configureRevenueCat(billing);
+      if (!configured) {
+        setStoreMessage('Store purchases require a RevenueCat iOS API key in the app config.');
+        return;
+      }
+      try {
+        const offerings = await Purchases.getOfferings();
+        const available = offerings.current?.availablePackages ?? [];
+        setStorePackages(available);
+        if (available[0]) setSelectedProductId(available[0].product.identifier);
+        if (available.length === 0) setStoreMessage('No RevenueCat offering is available for this app user.');
+      } catch (err) {
+        Sentry.captureException(err);
+        setStoreMessage(err instanceof Error ? err.message : 'RevenueCat offerings could not be loaded.');
+      }
+    })();
+  }, [billing, source]);
+
+  const selectedStorePackage = storePackages.find((pkg) => pkg.product.identifier === selectedProductId);
+
+  async function syncCustomerInfo(customerInfo: RevenueCatCustomerInfo): Promise<void> {
+    await requestApi('/api/billing/restore', {
+      method: 'POST',
+      body: JSON.stringify(restorePayloadFromCustomerInfo(billing, customerInfo)),
+    });
+    onChanged();
+  }
+
+  async function purchase() {
+    if (!selectedStorePackage) return;
+    setBusy('purchase');
+    try {
+      await trackBillingEvent('purchase_started', { source, productId: selectedStorePackage.product.identifier });
+      const result = await Purchases.purchasePackage(selectedStorePackage);
+      await syncCustomerInfo(result.customerInfo);
+      await trackBillingEvent('purchase_completed', { source, productId: selectedStorePackage.product.identifier });
+    } catch (err) {
+      await trackBillingEvent('purchase_failed', {
+        source,
+        productId: selectedStorePackage.product.identifier,
+        message: err instanceof Error ? err.message : 'unknown',
+      });
+      Alert.alert('Purchase failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function restore() {
+    setBusy('restore');
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      await syncCustomerInfo(customerInfo);
+      await trackBillingEvent('restore_completed', { source });
+    } catch (err) {
+      await trackBillingEvent('restore_failed', { source, message: err instanceof Error ? err.message : 'unknown' });
+      Alert.alert('Restore failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function livePrice(pkg: PaywallPackageView): string {
+    const live = storePackages.find((storePkg) => storePkg.product.identifier === pkg.productId);
+    return live?.product.priceString ?? pkg.priceLabel;
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+          <Crown color={theme.accent} size={36} />
+        </View>
+        <Text style={[styles.panelTitle, { color: theme.ink }]}>{billing.pricingExperiment.paywallHeadline}</Text>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>{billing.pricingExperiment.paywallBody}</Text>
+        <View style={styles.featureList}>
+          <FeatureLine text="Unlimited linked accounts and multiple active goals" />
+          <FeatureLine text="Coach chat with scoped answers from your transactions" />
+          <FeatureLine text="What-if planning, subscription audits, and Money Wins tracking" />
+        </View>
+      </View>
+
+      {billing.packages.map((pkg) => {
+        const selected = selectedProductId === pkg.productId;
+        return (
+          <Pressable
+            key={pkg.productId}
+            style={[
+              styles.packageOption,
+              { borderColor: selected ? theme.accent : theme.border, backgroundColor: theme.surface },
+            ]}
+            onPress={() => setSelectedProductId(pkg.productId)}
+          >
+            <View style={styles.flexShrink}>
+              <Text style={[styles.rowTitle, { color: theme.ink }]}>{pkg.identifier === 'annual' ? 'Annual' : 'Monthly'}</Text>
+              <Text style={[styles.rowDetail, { color: theme.muted }]}>
+                {pkg.introTrialDays}-day trial · {pkg.savingsLabel ?? 'Cancel anytime'}
+              </Text>
+            </View>
+            <Text style={[styles.amount, { color: theme.ink }]}>{livePrice(pkg)}</Text>
+          </Pressable>
+        );
+      })}
+
+      {storeMessage ? <Text style={[styles.actionMeta, { color: theme.gold }]}>{storeMessage}</Text> : null}
+      <PrimaryButton
+        label={busy === 'purchase' ? 'Purchasing...' : 'Start free trial'}
+        icon={LockKeyhole}
+        disabled={busy !== null || !selectedStorePackage}
+        onPress={purchase}
+      />
+      <SecondaryButton
+        label={busy === 'restore' ? 'Restoring...' : 'Restore purchases'}
+        icon={RefreshCcw}
+        disabled={busy !== null}
+        onPress={restore}
+      />
+    </ScrollView>
+  );
+}
+
+function FeatureLine({ text }: { text: string }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.featureLine}>
+      <CheckCircle2 color={theme.success} size={17} />
+      <Text style={[styles.featureText, { color: theme.ink }]}>{text}</Text>
+    </View>
+  );
+}
+
+function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing: BillingStatusView; onChanged: () => void }) {
   const theme = useTheme();
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [saving, setSaving] = useState(false);
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
+  const [showPaywall, setShowPaywall] = useState(false);
+  const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
 
   async function addGoal() {
     const dollars = Number(target);
@@ -618,6 +860,7 @@ function GoalsScreen({ goals, onChanged }: { goals: GoalView[]; onChanged: () =>
   }
 
   async function runScenario(goalId?: number) {
+    if (!billing.isPremium) return;
     try {
       setScenario(
         await requestApi<WhatIfResultView>('/api/what-if', {
@@ -643,7 +886,11 @@ function GoalsScreen({ goals, onChanged }: { goals: GoalView[]; onChanged: () =>
           <Text style={[styles.factLine, { color: theme.muted }]}>
             Projected completion: {dateLabel(goal.pacing.projectedCompletionDate)}
           </Text>
-          <SecondaryButton label="Run $150/mo what-if" icon={SlidersHorizontal} onPress={() => runScenario(goal.id)} />
+          <SecondaryButton
+            label={billing.isPremium ? 'Run $150/mo what-if' : 'Unlock what-if'}
+            icon={SlidersHorizontal}
+            onPress={() => (billing.isPremium ? runScenario(goal.id) : setShowPaywall(true))}
+          />
         </View>
       ))}
       {scenario ? (
@@ -653,22 +900,28 @@ function GoalsScreen({ goals, onChanged }: { goals: GoalView[]; onChanged: () =>
         </View>
       ) : null}
       <SectionHeader title="New Goal" />
-      <TextInput
-        style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
-        placeholder="Goal name"
-        placeholderTextColor={theme.muted}
-        value={name}
-        onChangeText={setName}
-      />
-      <TextInput
-        style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
-        placeholder="Target amount"
-        placeholderTextColor={theme.muted}
-        keyboardType="decimal-pad"
-        value={target}
-        onChangeText={setTarget}
-      />
-      <PrimaryButton label={saving ? 'Saving...' : 'Add goal'} icon={Plus} disabled={saving} onPress={addGoal} />
+      {atFreeGoalLimit || showPaywall ? (
+        <PaywallScreen billing={billing} source="goals_limit" onChanged={onChanged} />
+      ) : (
+        <>
+          <TextInput
+            style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            placeholder="Goal name"
+            placeholderTextColor={theme.muted}
+            value={name}
+            onChangeText={setName}
+          />
+          <TextInput
+            style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            placeholder="Target amount"
+            placeholderTextColor={theme.muted}
+            keyboardType="decimal-pad"
+            value={target}
+            onChangeText={setTarget}
+          />
+          <PrimaryButton label={saving ? 'Saving...' : 'Add goal'} icon={Plus} disabled={saving} onPress={addGoal} />
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -698,19 +951,7 @@ function SubscriptionsScreen({ audit, onChanged }: { audit: SubscriptionAuditVie
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <MetricStrip
-        home={{
-          moneyWins: { verifiedTotalCents: 0, estimatedTotalCents: audit.cancelCandidateMonthlyCents, wins: [] },
-          goals: [],
-          subscriptionAudit: audit,
-          openAnomalies: [],
-          items: [],
-          transactionCount: 0,
-          firstLook: null,
-          weeklyBrief: null,
-          recentTransactions: [],
-        }}
-      />
+      <SubscriptionMetricStrip audit={audit} />
       {audit.items.map((item) => (
         <View key={item.recurringStreamId} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.panelHeader}>
@@ -786,11 +1027,12 @@ function WinsScreen({
   );
 }
 
-function SettingsScreen({ items, onChanged }: { items: LinkedItem[]; onChanged: () => void }) {
+function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; billing: BillingStatusView; onChanged: () => void }) {
   const theme = useTheme();
   const prefs = useAppStore((s) => s.notificationPrefs);
   const setPrefs = useAppStore((s) => s.setNotificationPrefs);
   const setTokens = useAppStore((s) => s.setTokens);
+  const [billingBusy, setBillingBusy] = useState(false);
 
   async function registerPush() {
     const permission = await Notifications.requestPermissionsAsync();
@@ -821,6 +1063,38 @@ function SettingsScreen({ items, onChanged }: { items: LinkedItem[]; onChanged: 
     onChanged();
   }
 
+  async function restorePurchases() {
+    setBillingBusy(true);
+    try {
+      const configured = await configureRevenueCat(billing);
+      if (!configured) {
+        Alert.alert('RevenueCat not configured', 'Add the iOS RevenueCat public API key in app.json to restore store purchases.');
+        return;
+      }
+      const customerInfo = await Purchases.restorePurchases();
+      await requestApi('/api/billing/restore', {
+        method: 'POST',
+        body: JSON.stringify(restorePayloadFromCustomerInfo(billing, customerInfo)),
+      });
+      await trackBillingEvent('restore_completed', { source: 'settings' });
+      onChanged();
+    } catch (err) {
+      await trackBillingEvent('restore_failed', { source: 'settings', message: err instanceof Error ? err.message : 'unknown' });
+      Alert.alert('Restore failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBillingBusy(false);
+    }
+  }
+
+  function manageSubscription() {
+    const url = billing.entitlement?.managementUrl;
+    if (!url) {
+      Alert.alert('Subscription management', 'Manage your subscription from the App Store account used for purchase.');
+      return;
+    }
+    void Linking.openURL(url);
+  }
+
   async function signOut() {
     const refreshToken = useAppStore.getState().refreshToken;
     if (refreshToken) {
@@ -847,6 +1121,22 @@ function SettingsScreen({ items, onChanged }: { items: LinkedItem[]; onChanged: 
 
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SectionHeader title="Billing" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <Crown color={billing.isPremium ? theme.gold : theme.muted} size={20} />
+          <Text style={[styles.panelKicker, { color: billing.isPremium ? theme.gold : theme.muted }]}>
+            {billing.isPremium ? 'Coach active' : 'Free plan'}
+          </Text>
+        </View>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>
+          {billing.isPremium
+            ? `${billing.plan} access · ${billing.entitlement?.expiresAt ? `renews or expires ${dateLabel(billing.entitlement.expiresAt)}` : 'lifetime or managed by store'}`
+            : `Free includes ${billing.limits.maxLinkedItems} linked banks, ${billing.limits.maxActiveGoals} active goal, weekly briefs, and charge alerts.`}
+        </Text>
+        <SecondaryButton label={billingBusy ? 'Restoring...' : 'Restore purchases'} icon={RefreshCcw} disabled={billingBusy} onPress={restorePurchases} />
+        {billing.isPremium ? <SecondaryButton label="Manage subscription" icon={CreditCard} onPress={manageSubscription} /> : null}
+      </View>
       <SectionHeader title="Notifications" />
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <PrimaryButton label={prefs?.pushEnabled ? 'Push enabled' : 'Enable push notifications'} icon={Bell} onPress={registerPush} />
@@ -1053,6 +1343,10 @@ const styles = StyleSheet.create({
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
+  featureList: { gap: 9 },
+  featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
+  packageOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
   row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowTitle: { fontSize: 15, fontWeight: '800' },

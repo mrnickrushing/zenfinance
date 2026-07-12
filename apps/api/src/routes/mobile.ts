@@ -25,6 +25,7 @@ import type { InferSelectModel } from 'drizzle-orm';
 import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import { Router } from 'express';
+import { assertPremium, getBillingStatus } from '../billing/service.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { getMoneyWinsSummary } from '../coaching/moneyWins.js';
@@ -612,8 +613,9 @@ export function createMobileRouter(): ReturnType<typeof Router> {
 
   router.get('/api/mobile/home', requireUser, async (_req, res) => {
     const userId = res.locals.userId as number;
-    const [linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, anomaliesList, txns] =
+    const [billing, linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, anomaliesList, txns] =
       await Promise.all([
+        getBillingStatus(db, userId),
         linkedItems(userId),
         transactionCount(userId),
         latestInsight(userId, 'first_look'),
@@ -626,12 +628,15 @@ export function createMobileRouter(): ReturnType<typeof Router> {
       ]);
 
     const body: MobileHomeSummaryView = {
+      billing,
       items: linked,
       transactionCount: txCount,
       firstLook,
       weeklyBrief,
       goals: goalViews,
-      subscriptionAudit,
+      subscriptionAudit: billing.isPremium
+        ? subscriptionAudit
+        : { items: [], totalMonthlyCents: 0, cancelCandidateMonthlyCents: 0, cancelCandidateCount: 0 },
       moneyWins,
       openAnomalies: anomaliesList,
       recentTransactions: txns,
@@ -641,18 +646,33 @@ export function createMobileRouter(): ReturnType<typeof Router> {
 
   router.post('/api/chat', requireUser, validateBody(chatQuestionSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
+    const premium = await assertPremium(db, userId, 'chat_coach');
+    if (!premium.ok) {
+      res.status(402).json(premium.payload);
+      return;
+    }
     const input = res.locals.body as { question: string };
     res.status(201).json(await buildChatAnswer(userId, input.question));
   });
 
   router.post('/api/chat/stream', requireUser, validateBody(chatQuestionSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
+    const premium = await assertPremium(db, userId, 'chat_coach');
+    if (!premium.ok) {
+      res.status(402).json(premium.payload);
+      return;
+    }
     const input = res.locals.body as { question: string };
     streamAnswer(res, await buildChatAnswer(userId, input.question));
   });
 
   router.post('/api/what-if', requireUser, validateBody(whatIfSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
+    const premium = await assertPremium(db, userId, 'what_if');
+    if (!premium.ok) {
+      res.status(402).json(premium.payload);
+      return;
+    }
     res.json(await runWhatIf(userId, res.locals.body as WhatIfInput));
   });
 

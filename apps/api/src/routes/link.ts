@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { db } from '../db/client.js';
 import { accounts, items, users } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
+import { enforceItemLimit } from '../middleware/billing.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 import { getProvider } from '../providers/index.js';
@@ -29,6 +30,13 @@ export function createLinkRouter(): ReturnType<typeof Router> {
       const userId = res.locals.userId as number;
       const input = res.locals.body as LinkExchangeInput;
       const provider = getProvider();
+      const gate = await enforceItemLimit(userId);
+      if (!gate.ok) {
+        res.status(402).json({
+          error: { code: 'premium_required', message: gate.message, details: { feature: 'unlimited_accounts' } },
+        });
+        return;
+      }
 
       const exchanged = await provider.exchangePublicToken(input.publicToken);
       const [item] = await db

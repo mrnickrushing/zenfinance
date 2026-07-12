@@ -21,6 +21,7 @@ import {
 } from '../coaching/moneyWins.js';
 import { db } from '../db/client.js';
 import { anomalies, insights } from '../db/schema.js';
+import { requirePremium } from '../middleware/billing.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
@@ -157,7 +158,7 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
   });
 
   // --- subscription auditor ---
-  router.get('/api/subscriptions', requireUser, async (_req, res) => {
+  router.get('/api/subscriptions', requireUser, requirePremium('subscription_audit'), async (_req, res) => {
     const userId = res.locals.userId as number;
     res.json(await auditSubscriptions(db, userId));
   });
@@ -165,6 +166,7 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
   router.post(
     '/api/subscriptions/cancel',
     requireUser,
+    requirePremium('subscription_audit'),
     validateBody(cancelSubscriptionSchema),
     async (_req, res) => {
       const userId = res.locals.userId as number;
@@ -179,12 +181,12 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
   );
 
   // --- money wins ledger ---
-  router.get('/api/money-wins', requireUser, async (_req, res) => {
+  router.get('/api/money-wins', requireUser, requirePremium('money_wins'), async (_req, res) => {
     const userId = res.locals.userId as number;
     res.json(await getMoneyWinsSummary(db, userId));
   });
 
-  router.post('/api/money-wins/:id/confirm', requireUser, async (req, res) => {
+  router.post('/api/money-wins/:id/confirm', requireUser, requirePremium('money_wins'), async (req, res) => {
     const userId = res.locals.userId as number;
     const id = Number(req.params.id);
     const result = await confirmMoneyWin(db, userId, id);

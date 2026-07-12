@@ -7,7 +7,7 @@ import { verifyMoneyWins } from '../coaching/moneyWins.js';
 import { runWeeklyBriefForUser } from '../coaching/pipeline.js';
 import { createApp } from '../app.js';
 import { db } from '../db/client.js';
-import { accounts, items, moneyWins, recurringStreams, users } from '../db/schema.js';
+import { accounts, billingEntitlements, items, moneyWins, recurringStreams, users } from '../db/schema.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
 
 let app: Express;
@@ -44,6 +44,19 @@ async function linkBank(access: string): Promise<void> {
 async function userIdByEmail(email: string): Promise<number> {
   const [row] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   return row!.id;
+}
+
+async function grantPremium(email: string): Promise<void> {
+  const userId = await userIdByEmail(email);
+  await db.insert(billingEntitlements).values({
+    userId,
+    entitlementId: 'zen_coach',
+    status: 'active',
+    plan: 'monthly',
+    productId: 'com.rushingtechnologies.zenfinance.coach.monthly',
+    environment: 'SANDBOX',
+    source: 'manual_test',
+  });
 }
 
 describe('first-look brief (generated at link time)', () => {
@@ -170,6 +183,7 @@ describe('subscription auditor + money wins', () => {
   it('audits subscriptions, cancels one, and records an estimated win', async () => {
     const { access } = await registerAndAuth('subs@example.com');
     await linkBank(access);
+    await grantPremium('subs@example.com');
 
     const audit = await request(app).get('/api/subscriptions').set('Authorization', `Bearer ${access}`);
     expect(audit.status).toBe(200);
@@ -204,6 +218,7 @@ describe('subscription auditor + money wins', () => {
   it('records a verified win when the user recovers money on an anomaly', async () => {
     const { access } = await registerAndAuth('recover@example.com');
     await linkBank(access);
+    await grantPremium('recover@example.com');
     const anomalies = await request(app).get('/api/anomalies').set('Authorization', `Bearer ${access}`);
     const anomaly = anomalies.body.items[0];
 
@@ -309,12 +324,14 @@ describe('money-win verification by charge absence (§4 Stage 5)', () => {
 
 describe('cross-user isolation', () => {
   it('cannot cancel or view another user\'s subscription/insights', async () => {
-    const a = await registerAndAuth('ownerA@example.com');
+    const a = await registerAndAuth('ownera@example.com');
     await linkBank(a.access);
+    await grantPremium('ownera@example.com');
     const auditA = await request(app).get('/api/subscriptions').set('Authorization', `Bearer ${a.access}`);
     const streamId = auditA.body.items[0].recurringStreamId as number;
 
-    const b = await registerAndAuth('intruderB@example.com');
+    const b = await registerAndAuth('intruderb@example.com');
+    await grantPremium('intruderb@example.com');
     const cancel = await request(app)
       .post('/api/subscriptions/cancel')
       .set('Authorization', `Bearer ${b.access}`)

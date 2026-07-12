@@ -35,11 +35,23 @@ One Railway service runs the Express API, which also serves the built site
 | `ENRICHMENT_MODEL` | `claude-haiku-4-5` |
 | `INSIGHT_PROVIDER` | `anthropic` |
 | `INSIGHT_MODEL` | `claude-sonnet-5` — the coaching brief runs on Sonnet for reasoning quality |
+| `REVENUECAT_IOS_API_KEY` | RevenueCat public iOS SDK key; also set this in `apps/ios/app.json` for builds |
+| `REVENUECAT_SECRET_API_KEY` | RevenueCat secret REST key for server-side subscriber refresh and restore validation |
+| `REVENUECAT_WEBHOOK_AUTH` | Shared Authorization value configured on the RevenueCat webhook |
+| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | RevenueCat webhook HMAC signing secret |
+| `REVENUECAT_ENTITLEMENT_ID` | `zen_coach` |
+| `REVENUECAT_MONTHLY_PRODUCT_ID` | `com.rushingtechnologies.zenfinance.coach.monthly` |
+| `REVENUECAT_ANNUAL_PRODUCT_ID` | `com.rushingtechnologies.zenfinance.coach.annual` |
 
 `PORT` and `DATABASE_URL` are provided by Railway automatically.
 
 **Plaid webhook:** in the Plaid dashboard, set the transactions webhook URL to
 `https://zenfinance.rushingtechnologies.com/api/webhooks/plaid`.
+
+**RevenueCat webhook:** in RevenueCat, set the webhook URL to
+`https://zenfinance.rushingtechnologies.com/api/webhooks/revenuecat`, set the
+Authorization header to `REVENUECAT_WEBHOOK_AUTH`, and enable webhook signing
+with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 
 ## 3. Custom domain (GoDaddy DNS)
 
@@ -62,6 +74,7 @@ One Railway service runs the Express API, which also serves the built site
 - [ ] `/admin` login works with `ADMIN_SECRET`; metrics, waitlist, CSV export, and inbox render
 - [ ] CORS: requests from other origins are rejected (`FRONTEND_URL` is the only allowed origin)
 - [ ] Sentry receives a test event (if configured)
+- [ ] RevenueCat sandbox purchase, cancellation, refund, and restore update `/api/billing/status`
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development
@@ -73,5 +86,6 @@ npm install
 npm run db:migrate -w @zenfinance/api
 npm run dev:api               # API on :3000
 npm run dev:site              # Vite on :5173, proxies /api + /health to :3000
-npm test                      # needs a zenfinance_test database
+docker start zenfinance-test-postgres || docker run --name zenfinance-test-postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=zenfinance_test -p 5434:5432 -d postgres:15
+DATABASE_URL=postgres://dev:dev@localhost:5434/zenfinance_test npm run test -w @zenfinance/api
 ```

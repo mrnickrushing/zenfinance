@@ -7,6 +7,7 @@ import helmet from 'helmet';
 import { env } from './env.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createAuthRouter } from './routes/auth.js';
+import { createBillingRouter } from './routes/billing.js';
 import { createCoachingRouter } from './routes/coaching.js';
 import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
@@ -30,7 +31,14 @@ export function createApp(): express.Express {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: '64kb' }));
+  app.use(
+    express.json({
+      limit: '128kb',
+      verify: (req, _res, buf) => {
+        (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      },
+    }),
+  );
   app.use(cookieParser());
 
   app.use(createHealthRouter());
@@ -38,6 +46,7 @@ export function createApp(): express.Express {
   app.use(createSupportRouter());
   app.use(createAdminRouter());
   app.use(createAuthRouter());
+  app.use(createBillingRouter());
   app.use(createLinkRouter());
   app.use(createTransactionsRouter());
   app.use(createGoalsRouter());

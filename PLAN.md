@@ -251,6 +251,16 @@ Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 wee
 - Pricing experiment scaffolding (PostHog A/B on paywall framing, not price)
 - **Exit gate:** end-to-end purchase, upgrade, cancel, refund, and restore-purchases tested in App Store sandbox; billing audit clean.
 
+**Implementation status in this repo:** Phase 5 is now implemented behind the
+RevenueCat `zen_coach` entitlement. The API has billing customer,
+entitlement, webhook event, and pricing experiment tables; `/api/billing/*`
+status/refresh/restore/event routes; signed RevenueCat webhook processing;
+free-tier gates for linked accounts, active goals, chat, what-if,
+subscription audit, and Money Wins; and mobile home summaries include billing
+limits. The Expo iOS app has a custom RevenueCat paywall, purchase and restore
+flows, billing status in settings, and premium-tab routing. Phase 5 backend
+coverage lives in `apps/api/src/test/phase5.test.ts`.
+
 ### Phase 6 — Hardening, Compliance & Beta *(Week 17–18)*
 - Full `SecurityAuditAgent --triage` scan + `security-auditor` deep pass; fix all high/critical
 - Privacy policy + ToS (fintech template, attorney-reviewed), disclosure copy audit, App Store privacy nutrition labels

@@ -36,6 +36,13 @@
       "when": 1783825971340,
       "tag": "0004_silent_drax",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783828028736,
+      "tag": "0005_large_sentinel",
+      "breakpoints": true
     }
   ]
 }
