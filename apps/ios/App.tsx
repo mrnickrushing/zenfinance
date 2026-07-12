@@ -506,7 +506,7 @@ function ProductShell() {
     }
     if (tab === 'brief') return <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} />;
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
-      return <PaywallScreen billing={home.billing} source={tab} onChanged={refresh} />;
+      return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
@@ -953,10 +953,12 @@ function Suggestion({ value, onPress }: { value: string; onPress: (value: string
 
 function PaywallScreen({
   billing,
+  home,
   source,
   onChanged,
 }: {
   billing: BillingStatusView;
+  home?: MobileHomeSummaryView;
   source: string;
   onChanged: () => void;
 }) {
@@ -1036,27 +1038,37 @@ function PaywallScreen({
     return live?.product.priceString ?? pkg.priceLabel;
   }
 
+  const totalWins = home ? home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents : 0;
+
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
           <Crown color={theme.accent} size={36} />
         </View>
-        <Text style={[styles.panelTitle, { color: theme.ink }]}>{billing.pricingExperiment.paywallHeadline}</Text>
+        <Text style={[styles.panelTitle, { color: theme.ink }]}>Keep the dollars ZenFinance already found.</Text>
         <Text style={[styles.panelBody, { color: theme.muted }]}>{billing.pricingExperiment.paywallBody}</Text>
+        <StatusRail>
+          <MoneyMetric label="Found" value={home ? usd(totalWins, true) : 'Coach'} icon={CircleDollarSign} />
+          <MoneyMetric label="Audit" value={home ? String(home.subscriptionAudit.cancelCandidateCount) : 'Subs'} icon={CreditCard} />
+          <MoneyMetric label="Forecast" value="What-if" icon={SlidersHorizontal} />
+          <MoneyMetric label="Chat" value="24/7" icon={MessageCircle} />
+        </StatusRail>
         <View style={styles.featureList}>
-          <FeatureLine text="Unlimited linked accounts and multiple active goals" />
-          <FeatureLine text="Coach chat with scoped answers from your transactions" />
-          <FeatureLine text="What-if planning, subscription audits, and Money Wins tracking" />
+          <FeatureLine text="Ask the coach scoped questions from your own transactions" />
+          <FeatureLine text="Run what-if forecasts before a goal slips off pace" />
+          <FeatureLine text="Audit subscriptions and track every verified Money Win" />
         </View>
       </View>
 
       {billing.packages.map((pkg) => {
         const selected = selectedProductId === pkg.productId;
+        const featured = pkg.identifier === 'annual' && Boolean(pkg.savingsLabel);
         return (
           <PlanOption
             key={pkg.productId}
             selected={selected}
+            featured={featured}
             title={pkg.identifier === 'annual' ? 'Annual' : 'Monthly'}
             detail={`${pkg.introTrialDays}-day trial · ${pkg.savingsLabel ?? 'Cancel anytime'}`}
             price={livePrice(pkg)}
@@ -1072,6 +1084,9 @@ function PaywallScreen({
         disabled={busy !== null || !selectedStorePackage}
         onPress={purchase}
       />
+      <Text style={[styles.disclosure, { color: theme.muted }]}>
+        Trial and renewal are managed by the App Store. Cancel anytime before renewal.
+      </Text>
       <SecondaryButton
         label={busy === 'restore' ? 'Restoring...' : 'Restore purchases'}
         icon={RefreshCcw}
@@ -2095,12 +2110,14 @@ function InsightLedger({ facts }: { facts: ChatAnswerView['facts'] }) {
 
 function PlanOption({
   selected,
+  featured,
   title,
   detail,
   price,
   onPress,
 }: {
   selected: boolean;
+  featured?: boolean;
   title: string;
   detail: string;
   price: string;
@@ -2113,13 +2130,20 @@ function PlanOption({
         styles.planOption,
         {
           borderColor: selected ? theme.accent : theme.border,
-          backgroundColor: selected ? theme.accentSoft : theme.surface,
+          backgroundColor: selected ? theme.accentSoft : featured ? theme.goldSoft : theme.surface,
         },
       ]}
       onPress={onPress}
     >
       <View style={styles.flexShrink}>
-        <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
+        <View style={styles.planTitleRow}>
+          <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
+          {featured ? (
+            <View style={[styles.planBadge, { backgroundColor: theme.gold }]}>
+              <Text style={styles.planBadgeText}>Best value</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={[styles.rowDetail, { color: theme.muted }]}>{detail}</Text>
       </View>
       <Text style={[styles.amount, { color: selected ? theme.accent : theme.ink }]}>{price}</Text>
@@ -2296,6 +2320,9 @@ const styles = StyleSheet.create({
   featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
   planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  planTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  planBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  planBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
   row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   destructiveIconButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
