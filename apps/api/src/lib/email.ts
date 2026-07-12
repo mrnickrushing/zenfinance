@@ -1,0 +1,44 @@
+import { env } from '../env.js';
+
+export interface SupportEmailInput {
+  ticketId: number;
+  name: string;
+  email: string;
+  message: string;
+}
+
+/**
+ * Deliver a support ticket to the support inbox via Resend.
+ * Callers must persist the ticket BEFORE calling this — an email failure
+ * must never lose the ticket, so this function only logs on failure.
+ */
+export async function sendSupportEmail(input: SupportEmailInput): Promise<boolean> {
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM_EMAIL) {
+    console.warn('[email] RESEND_API_KEY/RESEND_FROM_EMAIL not set; ticket stored but not emailed');
+    return false;
+  }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: `ZenFinance Support <${env.RESEND_FROM_EMAIL}>`,
+        to: [env.SUPPORT_EMAIL],
+        reply_to: input.email,
+        subject: `[ZenFinance] Support ticket #${input.ticketId} from ${input.name}`,
+        text: `Ticket #${input.ticketId}\nFrom: ${input.name} <${input.email}>\n\n${input.message}`,
+      }),
+    });
+    if (!res.ok) {
+      console.error(`[email] Resend responded ${res.status} for ticket #${input.ticketId}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`[email] failed to send ticket #${input.ticketId}:`, err);
+    return false;
+  }
+}
