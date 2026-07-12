@@ -85,7 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'iOS UI phases 1-6 · 2026-07-12.2';
+const OTA_DIAGNOSTIC_LABEL = 'iOS Lazyweb auth demo · 2026-07-12.3';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -403,9 +403,36 @@ export default function App() {
 function AuthScreen() {
   const theme = useTheme();
   const setTokens = useAppStore((s) => s.setTokens);
+  const [transaction, setTransaction] = useState('"I spent $186 dining out this week"');
+  const [brief, setBrief] = useState({
+    action: 'Cap dining out at $100 to stay on track for your Japan trip goal.',
+    impact: 'Potential impact: Save $45',
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+
+  function generateBrief() {
+    const input = transaction.trim().toLowerCase();
+    if (input.includes('subscription') || input.includes('stream') || input.includes('netflix')) {
+      setBrief({
+        action: 'Cancel one unused subscription before it renews and move that money toward your buffer.',
+        impact: 'Potential impact: Save $60/yr',
+      });
+      return;
+    }
+    if (input.includes('coffee') || input.includes('cafe')) {
+      setBrief({
+        action: 'Set a $25 coffee cap for the rest of the week and keep the difference in savings.',
+        impact: 'Potential impact: Save $18',
+      });
+      return;
+    }
+    setBrief({
+      action: 'Cap dining out at $100 to stay on track for your Japan trip goal.',
+      impact: 'Potential impact: Save $45',
+    });
+  }
 
   async function submit(path: 'register' | 'login') {
     setBusy(true);
@@ -429,39 +456,86 @@ function AuthScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.authScreen, { backgroundColor: theme.bg }]}>
-      <StatusBar style={theme === dark ? 'light' : 'dark'} />
-      <View style={styles.brandMark}>
-        <Sparkles color={theme.accent} size={28} />
-      </View>
-      <Text style={[styles.heroTitle, { color: theme.ink }]}>ZenFinance</Text>
-      <Text style={[styles.heroCopy, { color: theme.muted }]}>
-        A calm money coach that turns your own transactions into one clear next action.
-      </Text>
-      <View style={[styles.authPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <TextInput
-          style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.bg }]}
-          placeholder="Email"
-          placeholderTextColor={theme.muted}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={setEmail}
-        />
-        <TextInput
-          style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.bg }]}
-          placeholder="Password"
-          placeholderTextColor={theme.muted}
-          secureTextEntry
-          value={password}
-          onChangeText={setPassword}
-        />
-        <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
-        <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
-      </View>
-      <Text style={[styles.disclosure, { color: theme.muted }]}>
-        Educational only. ZenFinance does not provide investment, tax, or legal advice.
-      </Text>
+    <SafeAreaView style={[styles.authScreen, { backgroundColor: dark.bg }]}>
+      <StatusBar style="light" />
+      <ScrollView contentContainerStyle={styles.authContentV2} showsVerticalScrollIndicator={false}>
+        <View style={styles.authBrandRow}>
+          <View style={[styles.authLogo, { backgroundColor: dark.surfaceAlt }]}>
+            <Sparkles color={dark.accent} size={24} />
+          </View>
+          <Text style={styles.authBrandText}>ZenFinance</Text>
+        </View>
+
+        <Text style={styles.heroTitleV2}>
+          A financial coach in your pocket that reads your transactions{' '}
+          <Text style={styles.heroAccent}>so you don't have to</Text>
+        </Text>
+        <Text style={styles.heroCopyV2}>
+          ZenFinance links your accounts, understands your spending, and tells you the one thing worth doing this week - in plain English.
+        </Text>
+
+        <View style={styles.demoPanel}>
+          <Text style={styles.demoLabel}>Try it: paste a transaction</Text>
+          <TextInput
+            value={transaction}
+            onChangeText={setTransaction}
+            placeholder='"I spent $186 dining out this week"'
+            placeholderTextColor={dark.muted}
+            style={styles.demoInput}
+          />
+          <Pressable style={styles.demoButton} onPress={generateBrief}>
+            <Sparkles color="#fff" size={16} />
+            <Text style={styles.demoButtonText}>Generate my brief</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.generatedBrief}>
+          <View style={styles.generatedCheck}>
+            <CheckCircle2 color="#fff" size={28} />
+          </View>
+          <View style={styles.flexShrink}>
+            <Text style={styles.generatedTitle}>This week's action:</Text>
+            <Text style={styles.generatedBody}>{brief.action}</Text>
+            <Text style={styles.generatedImpact}>{brief.impact}</Text>
+          </View>
+        </View>
+
+        <View style={styles.authProofGrid}>
+          <View style={styles.authProofCard}>
+            <Text style={styles.authProofKicker}>Keeps you on pace</Text>
+            <Text style={styles.authProofTitle}>Dining out is running hot</Text>
+            <Text style={styles.authProofBody}>You've spent $186 this week. Skipping two takeout orders keeps your trip goal on track.</Text>
+          </View>
+          <View style={styles.authProofCard}>
+            <Text style={styles.authProofKicker}>Potential save</Text>
+            <Text style={styles.authProofTitle}>Subscription got pricier</Text>
+            <Text style={styles.authProofBody}>A recurring charge moved from $11.99 to $16.99. The coach flags it before it becomes normal.</Text>
+          </View>
+        </View>
+
+        <View style={[styles.authPanelV2, { borderColor: dark.border }]}>
+          <TextInput
+            style={styles.authInputV2}
+            placeholder="Email"
+            placeholderTextColor={dark.muted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.authInputV2}
+            placeholder="Password"
+            placeholderTextColor={dark.muted}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
+          <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
+          <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -2410,14 +2484,39 @@ const styles = StyleSheet.create({
   centerGrow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   authScreen: { flex: 1 },
   authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
+  authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  authBrandText: { color: '#f6f3ed', fontSize: 16, fontWeight: '800' },
   appScreen: { flex: 1 },
   content: { flex: 1 },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
+  heroTitleV2: { color: '#f6f3ed', fontSize: 38, lineHeight: 41, fontWeight: '900', textAlign: 'center', marginTop: 18 },
+  heroAccent: { color: '#6bd2c7' },
   heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
+  heroCopyV2: { color: '#cbd5da', fontSize: 16, lineHeight: 24, textAlign: 'center', marginBottom: 4 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
+  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#151b22', padding: 14, gap: 10 },
+  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#26313a', backgroundColor: '#0d1117', color: '#f6f3ed', paddingHorizontal: 14, fontSize: 15 },
   inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
+  disclosureV2: { color: '#aab6bd', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  demoPanel: { borderWidth: 1, borderColor: '#26313a', borderRadius: 8, backgroundColor: '#151b22', padding: 14, gap: 10 },
+  demoLabel: { color: '#f6f3ed', fontSize: 14, fontWeight: '800' },
+  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#26313a', borderRadius: 8, backgroundColor: '#0d1117', color: '#f6f3ed', paddingHorizontal: 14, fontSize: 15 },
+  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#42a39c', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  demoButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  generatedBrief: { borderWidth: 1, borderColor: '#26313a', borderRadius: 8, backgroundColor: '#151b22', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#42a39c', alignItems: 'center', justifyContent: 'center' },
+  generatedTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  generatedBody: { color: '#d8e2e6', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  generatedImpact: { color: '#68d391', fontSize: 14, lineHeight: 20, fontWeight: '800', marginTop: 2 },
+  authProofGrid: { flexDirection: 'row', gap: 10 },
+  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#26313a', borderRadius: 8, backgroundColor: '#151b22', padding: 12 },
+  authProofKicker: { color: '#d8a143', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
+  authProofTitle: { color: '#fff', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
+  authProofBody: { color: '#cbd5da', fontSize: 12, lineHeight: 17, marginTop: 6 },
   topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
