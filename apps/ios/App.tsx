@@ -34,7 +34,7 @@ import {
   Volume2,
   WalletCards,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -157,31 +157,35 @@ const useAppStore = createStore<AppState>((set) => ({
 }));
 
 const light = {
-  bg: '#f7f4ef',
+  bg: '#f6f3ed',
   surface: '#ffffff',
-  surfaceAlt: '#f0ebe4',
-  ink: '#1f2933',
-  muted: '#667085',
-  border: '#ddd6cc',
-  accent: '#2f6f73',
-  accentSoft: '#dcefed',
-  gold: '#b7791f',
-  danger: '#b42318',
-  success: '#2f7a4f',
+  surfaceAlt: '#edf3f1',
+  ink: '#12161c',
+  muted: '#617078',
+  border: '#d9e0e2',
+  accent: '#2f7f7a',
+  accentBright: '#6bd2c7',
+  accentSoft: '#dcefeb',
+  gold: '#c8902e',
+  goldSoft: '#f7ead1',
+  danger: '#c2413a',
+  success: '#2f8f5b',
 };
 
 const dark = {
-  bg: '#101418',
-  surface: '#171d22',
-  surfaceAlt: '#20282f',
-  ink: '#f4f0ea',
-  muted: '#aab4bd',
-  border: '#303a42',
-  accent: '#7fc7bf',
-  accentSoft: '#173835',
-  gold: '#e0ad52',
-  danger: '#ff8a80',
-  success: '#85d39d',
+  bg: '#0d1117',
+  surface: '#151b22',
+  surfaceAlt: '#1b232b',
+  ink: '#f6f3ed',
+  muted: '#aab6bd',
+  border: '#26313a',
+  accent: '#6bd2c7',
+  accentBright: '#9df0e8',
+  accentSoft: '#123532',
+  gold: '#d8a143',
+  goldSoft: '#392c17',
+  danger: '#ff7f73',
+  success: '#68d391',
 };
 
 function usd(cents: number | null | undefined, compact = false): string {
@@ -357,6 +361,8 @@ function moneyPhysicalPayloadFromCustomerInfo(
 function useTheme() {
   return useColorScheme() === 'dark' ? dark : light;
 }
+
+type IconComponent = typeof Sparkles;
 
 export default function App() {
   const { accessToken, loading, setTokens, setLoading } = useAppStore();
@@ -701,21 +707,21 @@ function BriefScreen({
 function MetricStrip({ home }: { home: MobileHomeSummaryView }) {
   const audit = home.subscriptionAudit;
   return (
-    <View style={styles.metricStrip}>
-      <Metric label="Wins" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
-      <Metric label="Goals" value={String(home.goals.length)} icon={Target} />
-      <Metric label="Subs" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
-    </View>
+    <StatusRail>
+      <MoneyMetric label="Wins" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
+      <MoneyMetric label="Goals" value={String(home.goals.length)} icon={Target} />
+      <MoneyMetric label="Subs" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
+    </StatusRail>
   );
 }
 
 function SubscriptionMetricStrip({ audit }: { audit: SubscriptionAuditView }) {
   return (
-    <View style={styles.metricStrip}>
-      <Metric label="Monthly" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
-      <Metric label="Candidates" value={String(audit.cancelCandidateCount)} icon={Target} />
-      <Metric label="Potential" value={usd(audit.cancelCandidateMonthlyCents, true)} icon={CircleDollarSign} />
-    </View>
+    <StatusRail>
+      <MoneyMetric label="Monthly" value={usd(audit.totalMonthlyCents, true)} icon={CreditCard} />
+      <MoneyMetric label="Candidates" value={String(audit.cancelCandidateCount)} icon={Target} />
+      <MoneyMetric label="Potential" value={usd(audit.cancelCandidateMonthlyCents, true)} icon={CircleDollarSign} />
+    </StatusRail>
   );
 }
 
@@ -822,17 +828,13 @@ function CoachScreen() {
 function ChatBubble({ answer }: { answer: ChatAnswerView }) {
   const theme = useTheme();
   return (
-    <View style={[styles.chatBubble, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <CoachCard>
       <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
-      {answer.facts.map((fact) => (
-        <Text key={`${fact.label}-${fact.source}`} style={[styles.factLine, { color: theme.muted }]}>
-          {fact.label}: {fact.amountCents === null ? 'not available' : usd(fact.amountCents)}
-        </Text>
-      ))}
+      <InsightLedger facts={answer.facts} />
       {answer.actions.map((action) => (
         <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
       ))}
-    </View>
+    </CoachCard>
   );
 }
 
@@ -948,22 +950,14 @@ function PaywallScreen({
       {billing.packages.map((pkg) => {
         const selected = selectedProductId === pkg.productId;
         return (
-          <Pressable
+          <PlanOption
             key={pkg.productId}
-            style={[
-              styles.packageOption,
-              { borderColor: selected ? theme.accent : theme.border, backgroundColor: theme.surface },
-            ]}
+            selected={selected}
+            title={pkg.identifier === 'annual' ? 'Annual' : 'Monthly'}
+            detail={`${pkg.introTrialDays}-day trial · ${pkg.savingsLabel ?? 'Cancel anytime'}`}
+            price={livePrice(pkg)}
             onPress={() => setSelectedProductId(pkg.productId)}
-          >
-            <View style={styles.flexShrink}>
-              <Text style={[styles.rowTitle, { color: theme.ink }]}>{pkg.identifier === 'annual' ? 'Annual' : 'Monthly'}</Text>
-              <Text style={[styles.rowDetail, { color: theme.muted }]}>
-                {pkg.introTrialDays}-day trial · {pkg.savingsLabel ?? 'Cancel anytime'}
-              </Text>
-            </View>
-            <Text style={[styles.amount, { color: theme.ink }]}>{livePrice(pkg)}</Text>
-          </Pressable>
+          />
         );
       })}
 
@@ -1243,10 +1237,10 @@ function WinsScreen({
             <Text style={[styles.bigNumber, { color: theme.ink }]}>{moneyPhysical.latestReport.score}/100</Text>
             <Text style={[styles.panelTitle, { color: theme.ink }]}>{moneyPhysical.latestReport.headline}</Text>
             <Text style={[styles.panelBody, { color: theme.muted }]}>{moneyPhysical.latestReport.summary}</Text>
-            <View style={styles.metricStrip}>
-              <Metric label="90-day net" value={usd(moneyPhysical.latestReport.sections.cashFlow.netCashFlowCents, true)} icon={WalletCards} />
-              <Metric label="Recurring" value={usd(moneyPhysical.latestReport.sections.recurring.totalMonthlyCents, true)} icon={CreditCard} />
-            </View>
+            <StatusRail>
+              <MoneyMetric label="90-day net" value={usd(moneyPhysical.latestReport.sections.cashFlow.netCashFlowCents, true)} icon={WalletCards} />
+              <MoneyMetric label="Recurring" value={usd(moneyPhysical.latestReport.sections.recurring.totalMonthlyCents, true)} icon={CreditCard} />
+            </StatusRail>
             {moneyPhysical.latestReport.actions.map((action) => (
               <View key={action.title} style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
                 <Text style={[styles.actionTitle, { color: theme.ink }]}>{action.title}</Text>
@@ -1688,18 +1682,18 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           <>
             {freelancer ? (
               <>
-                <View style={styles.metricStrip}>
-                  <Metric label="Avg income" value={usd(freelancer.avgMonthlyIncomeCents, true)} icon={CircleDollarSign} />
-                  <Metric
+                <StatusRail>
+                  <MoneyMetric label="Avg income" value={usd(freelancer.avgMonthlyIncomeCents, true)} icon={CircleDollarSign} />
+                  <MoneyMetric
                     label="Runway"
                     value={freelancer.runwayMonths === null ? 'N/A' : `${freelancer.runwayMonths.toFixed(1)} mo`}
                     icon={PiggyBank}
                   />
-                </View>
-                <View style={styles.metricStrip}>
-                  <Metric label="Set aside" value={usd(freelancer.estimatedTaxSetAsideMonthlyCents, true)} icon={Landmark} />
-                  <Metric label="Target gap" value={usd(freelancer.targetMonthlyIncomeGapCents ?? 0, true)} icon={Target} />
-                </View>
+                </StatusRail>
+                <StatusRail>
+                  <MoneyMetric label="Set aside" value={usd(freelancer.estimatedTaxSetAsideMonthlyCents, true)} icon={Landmark} />
+                  <MoneyMetric label="Target gap" value={usd(freelancer.targetMonthlyIncomeGapCents ?? 0, true)} icon={Target} />
+                </StatusRail>
                 <Toggle label="Freelancer Mode" value={freelancer.profile.enabled} onValueChange={toggleFreelancer} />
                 <TextInput
                   value={targetIncome}
@@ -1952,7 +1946,11 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
   );
 }
 
-function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Sparkles }) {
+function StatusRail({ children }: { children: ReactNode }) {
+  return <View style={styles.statusRail}>{children}</View>;
+}
+
+function MoneyMetric({ label, value, icon: Icon }: { label: string; value: string; icon: IconComponent }) {
   const theme = useTheme();
   return (
     <View style={[styles.metric, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -1963,12 +1961,83 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string; ic
   );
 }
 
+function CoachCard({ children }: { children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.coachCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      {children}
+    </View>
+  );
+}
+
+function InsightLedger({ facts }: { facts: ChatAnswerView['facts'] }) {
+  const theme = useTheme();
+  if (facts.length === 0) return null;
+  return (
+    <View style={[styles.insightLedger, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
+      {facts.map((fact) => (
+        <View key={`${fact.label}-${fact.source}`} style={styles.ledgerRow}>
+          <Text style={[styles.ledgerLabel, { color: theme.muted }]} numberOfLines={1}>
+            {fact.label}
+          </Text>
+          <Text style={[styles.ledgerValue, { color: theme.ink }]}>
+            {fact.amountCents === null ? 'not available' : usd(fact.amountCents)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function PlanOption({
+  selected,
+  title,
+  detail,
+  price,
+  onPress,
+}: {
+  selected: boolean;
+  title: string;
+  detail: string;
+  price: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      style={[
+        styles.planOption,
+        {
+          borderColor: selected ? theme.accent : theme.border,
+          backgroundColor: selected ? theme.accentSoft : theme.surface,
+        },
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.flexShrink}>
+        <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
+        <Text style={[styles.rowDetail, { color: theme.muted }]}>{detail}</Text>
+      </View>
+      <Text style={[styles.amount, { color: selected ? theme.accent : theme.ink }]}>{price}</Text>
+    </Pressable>
+  );
+}
+
+function SectionBand({ children }: { children: ReactNode }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.sectionBand, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      {children}
+    </View>
+  );
+}
+
 function SectionHeader({ title }: { title: string }) {
   const theme = useTheme();
   return <Text style={[styles.sectionTitle, { color: theme.ink }]}>{title}</Text>;
 }
 
-function ActionRow({ icon: Icon, title, detail }: { icon: typeof Sparkles; title: string; detail: string }) {
+function ActionRow({ icon: Icon, title, detail }: { icon: IconComponent; title: string; detail: string }) {
   const theme = useTheme();
   return (
     <View style={[styles.row, { borderColor: theme.border }]}>
@@ -1987,10 +2056,10 @@ function ActionRow({ icon: Icon, title, detail }: { icon: typeof Sparkles; title
 function EmptyMini({ title, copy }: { title: string; copy: string }) {
   const theme = useTheme();
   return (
-    <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <SectionBand>
       <Text style={[styles.panelTitle, { color: theme.ink }]}>{title}</Text>
       <Text style={[styles.panelBody, { color: theme.muted }]}>{copy}</Text>
-    </View>
+    </SectionBand>
   );
 }
 
@@ -2014,7 +2083,9 @@ function PrimaryButton({
       onPress={onPress}
     >
       {Icon ? <Icon color={contentColor} size={18} /> : null}
-      <Text style={[styles.primaryButtonText, { color: contentColor }]}>{label}</Text>
+      <Text style={[styles.primaryButtonText, { color: contentColor }]} numberOfLines={2}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -2046,7 +2117,9 @@ function SecondaryButton({
       onPress={onPress}
     >
       {Icon ? <Icon color={danger ? theme.danger : theme.accent} size={17} /> : null}
-      <Text style={[styles.secondaryButtonText, { color: danger ? theme.danger : theme.ink }]}>{label}</Text>
+      <Text style={[styles.secondaryButtonText, { color: danger ? theme.danger : theme.ink }]} numberOfLines={2}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -2061,8 +2134,8 @@ const styles = StyleSheet.create({
   appScreen: { flex: 1 },
   content: { flex: 1 },
   brandMark: { marginBottom: 16 },
-  heroTitle: { fontSize: 42, fontWeight: '800' },
-  heroCopy: { fontSize: 18, lineHeight: 26, marginTop: 10, marginBottom: 28 },
+  heroTitle: { fontSize: 40, fontWeight: '800' },
+  heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
   inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
@@ -2073,22 +2146,23 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
   primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  primaryButtonText: { fontWeight: '800', fontSize: 15 },
+  primaryButtonText: { flexShrink: 1, fontWeight: '800', fontSize: 15, textAlign: 'center' },
   secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
-  secondaryButtonText: { fontWeight: '700', fontSize: 14 },
+  secondaryButtonText: { flexShrink: 1, fontWeight: '700', fontSize: 14, textAlign: 'center' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
   largeIcon: { width: 72, height: 72, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
   emptyCopy: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  metricStrip: { flexDirection: 'row', gap: 10 },
+  statusRail: { flexDirection: 'row', gap: 10 },
   metric: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
-  metricValue: { fontSize: 20, fontWeight: '800' },
+  metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
   primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12 },
+  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  panelTitle: { fontSize: 22, lineHeight: 28, fontWeight: '800' },
+  panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
   panelBody: { fontSize: 15, lineHeight: 22 },
   actionBox: { borderRadius: 8, padding: 14, gap: 4 },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
@@ -2097,19 +2171,23 @@ const styles = StyleSheet.create({
   featureList: { gap: 9 },
   featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  packageOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
   row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   destructiveIconButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '800' },
   rowDetail: { fontSize: 13, lineHeight: 18, marginTop: 2 },
-  amount: { fontSize: 15, fontWeight: '800' },
+  amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   tabBar: { borderTopWidth: 1, flexDirection: 'row', paddingTop: 7, paddingBottom: Platform.OS === 'ios' ? 18 : 8, paddingHorizontal: 8 },
   tabItem: { flex: 1, alignItems: 'center', gap: 3, minWidth: 0 },
   tabText: { fontSize: 11, fontWeight: '700' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
-  chatBubble: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10 },
+  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10 },
+  insightLedger: { borderWidth: 1, borderRadius: 8, padding: 10, gap: 6 },
+  ledgerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  ledgerLabel: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
+  ledgerValue: { fontSize: 12, lineHeight: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
   factLine: { fontSize: 12, lineHeight: 17 },
   suggestion: { borderWidth: 1, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, width: '100%' },
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
@@ -2118,7 +2196,7 @@ const styles = StyleSheet.create({
   sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8 },
-  bigNumber: { fontSize: 42, fontWeight: '800' },
+  bigNumber: { fontSize: 40, fontWeight: '800', fontVariant: ['tabular-nums'] },
   rightStack: { alignItems: 'flex-end', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '800' },
   toggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

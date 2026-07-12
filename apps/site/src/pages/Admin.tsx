@@ -25,7 +25,7 @@ export function AdminPage() {
 
 function PageShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-slate-50 px-6 py-12 dark:bg-slate-950">
+    <div className="min-h-screen bg-ledger-warm px-6 py-12 dark:bg-ledger-graphite">
       <div className="mx-auto max-w-5xl">{children}</div>
     </div>
   );
@@ -226,8 +226,7 @@ function StatTile({ label, value, sub }: { label: string; value: number | string
   );
 }
 
-/** Single-series daily bar chart. Colors validated for both surfaces:
- *  #7c3aed on white, #8b5cf6 on slate-950. */
+/** Single-series daily bar chart. Uses the ledger teal primary against both surfaces. */
 function SignupsChart({ daily }: { daily: Array<{ date: string; count: number }> }) {
   const [hover, setHover] = useState<number | null>(null);
 
@@ -305,7 +304,7 @@ function SignupsChart({ daily }: { daily: Array<{ date: string; count: number }>
       </svg>
       {hover !== null && (
         <div
-          className="pointer-events-none absolute -top-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs shadow-soft dark:border-slate-700 dark:bg-slate-900"
+          className="pointer-events-none absolute -top-2 rounded-card border border-ledger-border bg-ledger-panel px-2.5 py-1.5 text-xs shadow-soft dark:border-ledger-borderDark dark:bg-ledger-panelDark"
           style={{ left: `${(hover / days.length) * 100}%` }}
           role="status"
         >

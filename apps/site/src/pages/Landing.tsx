@@ -60,7 +60,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      <section aria-labelledby="briefs-heading" className="bg-white py-20 dark:bg-slate-900/50">
+      <section aria-labelledby="briefs-heading" className="bg-ledger-panel py-20 dark:bg-ledger-panelDark/70">
         <div className="mx-auto max-w-5xl px-6">
           <h2 id="briefs-heading" className="text-center text-3xl font-bold tracking-tight">
             What a coach brief looks like
@@ -164,7 +164,7 @@ function WaitlistForm() {
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="you@example.com"
-        className="h-12 flex-1 rounded-full border border-slate-300 bg-white px-5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        className="h-12 flex-1 rounded-card border border-ledger-border bg-ledger-panel px-5 text-sm text-ledger-ink placeholder:text-slate-400 focus:border-primary-500 dark:border-ledger-borderDark dark:bg-ledger-panelDark dark:text-ledger-warm"
       />
       <Button type="submit" size="lg" disabled={state === 'busy'} className="h-12">
         {state === 'busy' ? 'Joining…' : 'Join the waitlist'}
