@@ -80,6 +80,7 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] App Store privacy answers in `docs/APP_STORE_PRIVACY.md` match the final native build and App Store Connect entry
 - [ ] Referral redemption works: `/api/referrals/me`, `/api/referrals/redeem`, and billing status shows referral premium credit
 - [ ] `/insights` loads aggregate launch stats and suppresses public copy below the minimum sample size
+- [ ] Freelancer Mode works for premium users: `GET /api/freelancer/summary` returns income/runway data, free users get `402 premium_required`, and `/admin` shows the Freelancer metrics row
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development

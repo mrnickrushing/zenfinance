@@ -15,7 +15,7 @@ Last updated: July 12, 2026
 1. Export the waitlist from `/admin` and send the launch email in batches.
 2. Publish the App Store URL on the landing page, Product Hunt, and finance-adjacent newsletter/community posts.
 3. Keep the launch offer as extra trial access through referral credits. Do not discount the subscription price.
-4. Monitor `/admin` launch metrics twice daily for the first week: active users, paid users, MRR, churn, referrals, and verified Money Wins.
+4. Monitor `/admin` launch metrics twice daily for the first week: active users, paid users, MRR, churn, referrals, verified Money Wins, and Freelancer Mode adoption.
 5. Use `/insights` as the public aggregate-data page once it reaches the minimum linked-user sample size.
 
 ## Referral Program

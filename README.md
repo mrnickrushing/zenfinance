@@ -10,7 +10,7 @@ The product ships exclusively as an **iOS app**. The web presence at [zenfinance
 
 ```
 apps/api/          Express + TypeScript + Zod + Drizzle/Postgres — the backend
-                   (auth, linking, coaching, billing, webhooks, site serving)
+                   (auth, linking, coaching, billing, freelancer mode, webhooks, site serving)
 apps/site/         Marketing page, support, privacy/terms, admin console
                    (Vite + React + Tailwind; static build served by the API)
 apps/ios/          Expo iOS app with Plaid Link, coaching screens, RevenueCat IAP
@@ -27,6 +27,7 @@ infra/             railway.toml deploy config
 - **[docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)** — dependency audit, remediations, and release security checks
 - **[docs/BETA_RUNBOOK.md](docs/BETA_RUNBOOK.md)** / **[docs/FAILURE_DRILLS.md](docs/FAILURE_DRILLS.md)** — TestFlight beta operations and outage drills
 - **[docs/LAUNCH_RUNBOOK.md](docs/LAUNCH_RUNBOOK.md)** / **[docs/GROWTH_LOOP.md](docs/GROWTH_LOOP.md)** — Phase 7 launch sequence, referral program, aggregate content loop, and weekly growth cadence
+- **[docs/FREELANCER_MODE.md](docs/FREELANCER_MODE.md)** — Phase 8 Freelancer Mode profile, API, runway math, admin metrics, and tax-estimate boundaries
 
 ## Quick start
 

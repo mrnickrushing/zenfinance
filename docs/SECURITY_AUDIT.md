@@ -33,6 +33,7 @@ These are not in the production API request path. Recheck monthly and after new 
 - Account deletion revokes provider items where possible and writes a non-PII deletion audit event.
 - Referral premium credits are ledgered separately from RevenueCat entitlements, so promotional access does not overwrite App Store subscription state.
 - Public launch insight stats are aggregate-only and suppressed below the minimum linked-user sample size.
+- Freelancer Mode routes are premium-gated, store only user-owned settings, and delete profile rows through the user cascade.
 
 ## Required Release Checks
 

@@ -33,7 +33,9 @@ export function PrivacyPage() {
             (via Plaid); goals and preferences you set in the app; and standard diagnostics (crash
             reports, first-party usage events, subscription entitlement status, and support
             requests you send us). If you use referrals, we store your referral code,
-            redemption status, and premium-credit expiration dates.
+            redemption status, and premium-credit expiration dates. If you use Freelancer Mode, we
+            store your enabled state, income target, estimated set-aside percentage, and runway
+            target.
           </p>
         </section>
 
@@ -44,8 +46,9 @@ export function PrivacyPage() {
           <p className="mt-3 text-sm leading-relaxed">
             We use your data to authenticate your account, sync read-only financial data, generate
             coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
-            support, prevent abuse, run the referral program, publish minimum-sample aggregate
-            launch insights, and understand whether the beta or launch is working.
+            support, prevent abuse, run the referral program, calculate Freelancer Mode income and
+            runway summaries, publish minimum-sample aggregate launch insights, and understand
+            whether the beta or launch is working.
           </p>
         </section>
 

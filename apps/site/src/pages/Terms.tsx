@@ -23,8 +23,8 @@ export function TermsPage() {
           <p className="mt-3 text-sm leading-relaxed">
             ZenFinance provides educational information and behavioral coaching only. It does not
             provide investment, tax, legal, or professional financial advice, and its suggestions
-            should not be treated as such. Consult a qualified professional for decisions that
-            need one.
+            should not be treated as such. Freelancer Mode set-aside calculations are estimates for
+            planning, not tax advice. Consult a qualified professional for decisions that need one.
           </p>
         </section>
 

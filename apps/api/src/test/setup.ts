@@ -7,6 +7,7 @@ import {
   billingCustomers,
   billingEntitlements,
   billingEvents,
+  freelancerProfiles,
   privacyDeletionEvents,
   pricingExperiments,
   referralCodes,
@@ -35,6 +36,7 @@ export async function truncateAll(): Promise<void> {
   await db.delete(referralCredits);
   await db.delete(referralRedemptions);
   await db.delete(referralCodes);
+  await db.delete(freelancerProfiles);
   await db.delete(billingEvents);
   await db.delete(appEvents);
   await db.delete(billingEntitlements);

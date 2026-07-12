@@ -152,6 +152,21 @@ function Dashboard() {
             />
           </section>
 
+          <section aria-label="Freelancer metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Freelancer users" value={metrics.freelancer.enabledUsers} />
+            <StatTile label="Users with income" value={metrics.freelancer.usersWithIncome} />
+            <StatTile
+              label="Avg runway"
+              value={metrics.freelancer.avgRunwayMonths === null ? 'N/A' : metrics.freelancer.avgRunwayMonths}
+              sub="months"
+            />
+            <StatTile
+              label="Avg target gap"
+              value={metrics.freelancer.avgTargetGapCents === null ? 'N/A' : Math.round(metrics.freelancer.avgTargetGapCents / 100)}
+              sub="USD per month"
+            />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days
@@ -167,7 +182,7 @@ function Dashboard() {
   );
 }
 
-function StatTile({ label, value, sub }: { label: string; value: number; sub?: string }) {
+function StatTile({ label, value, sub }: { label: string; value: number | string; sub?: string }) {
   return (
     <Card>
       <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
