@@ -17,13 +17,13 @@ ZenFinance does not track users across apps or websites owned by other companies
 | App Store data type | Collected | Purpose | Notes |
 |---|---:|---|---|
 | Contact Info: Email Address | Yes | App functionality, account management, support | Stored in Postgres. Used for sign-in/support only. |
-| Financial Info: Payment Info | No | N/A | App Store and RevenueCat process subscription state; ZenFinance stores entitlement status, product id, renewal/cancellation dates, and RevenueCat app user id, not card details. |
+| Financial Info: Payment Info | No | N/A | App Store and RevenueCat process subscription and one-time purchase state; ZenFinance stores entitlement status, product id, renewal/cancellation dates, non-subscription transaction id, and RevenueCat app user id, not card details. |
 | Financial Info: Credit Info | No | N/A | Not collected. |
-| Financial Info: Other Financial Info | Yes | App functionality, analytics within the product | Plaid account balances, account metadata, transactions, recurring streams, goals, shared household goals, Freelancer Mode profile settings, alerts, coaching artifacts, and generated Voice Brief scripts. |
+| Financial Info: Other Financial Info | Yes | App functionality, analytics within the product | Plaid account balances, account metadata, transactions, recurring streams, goals, shared household goals, Freelancer Mode profile settings, alerts, coaching artifacts, generated Voice Brief scripts, and generated Money Physical reports. |
 | User Content: Customer Support | Yes | Support | Support tickets submitted on the site/API. |
 | Identifiers: User ID | Yes | App functionality, account management | Internal user id and RevenueCat app user id. |
-| Purchases | Yes | App functionality | Subscription entitlement/product status from RevenueCat. |
-| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, referrals, Voice Brief playback, Household Sharing use, Freelancer Mode use, and beta/launch retention events. |
+| Purchases | Yes | App functionality | Subscription entitlement/product status and Money Physical non-subscription transaction status from RevenueCat. |
+| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, referrals, Voice Brief playback, Money Physical purchase/report events, Household Sharing use, Freelancer Mode use, and beta/launch retention events. |
 | Diagnostics: Crash Data | Yes | App stability | Sentry with `sendDefaultPii=false` and server-side scrubbing. |
 
 ## Data Not Linked To The User
@@ -35,7 +35,7 @@ Aggregate launch metrics may be published without linking to a user only after t
 | Processor/SDK | Data shared | Purpose |
 |---|---|---|
 | Plaid | Institution account metadata and transactions through the user's linked item | Read-only account linking and transaction sync. |
-| RevenueCat | App user id, subscription product/entitlement state, store receipt handling | App Store subscription entitlement management. |
+| RevenueCat | App user id, subscription product/entitlement state, Money Physical non-subscription transaction state, store receipt handling | App Store subscription entitlement and one-time purchase management. |
 | Anthropic | Compact coaching context and redacted transaction summaries, not raw access tokens or credentials | Transaction enrichment and coaching brief generation when enabled. |
 | Sentry | Crash/error diagnostics after PII scrubbing | Reliability and crash triage. |
 | Expo Notifications/APNs | Push token and notification delivery metadata | Weekly briefs, anomalies, goal pacing. |
@@ -52,6 +52,7 @@ Users can:
 - Pause or edit Freelancer Mode settings from Settings; profile rows are deleted with the account.
 - Create, join, or leave a household from Settings; household membership is deleted with the account, while shared-goal history may keep a null author reference for the remaining household.
 - Play Voice Briefs on device; generated voice scripts and playback metadata are deleted with the account.
+- Buy or restore Money Physical; generated reports and stored non-subscription transaction metadata are included in export and deleted with the account.
 
 ## App Store Submission Checks
 
@@ -59,5 +60,6 @@ Users can:
 - Confirm RevenueCat products match:
   - `com.rushingtechnologies.zenfinance.coach.monthly`
   - `com.rushingtechnologies.zenfinance.coach.annual`
+  - `com.rushingtechnologies.zenfinance.money_physical`
 - Confirm Sentry, Plaid, RevenueCat, and any Expo privacy manifests are included in the native build output.
 - Update App Store Connect whenever data collection or third-party processors change.

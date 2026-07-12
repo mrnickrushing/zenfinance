@@ -75,6 +75,7 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] CORS: requests from other origins are rejected (`FRONTEND_URL` is the only allowed origin)
 - [ ] Sentry receives a test event (if configured)
 - [ ] RevenueCat sandbox purchase, cancellation, refund, and restore update `/api/billing/status`
+- [ ] RevenueCat Money Physical one-time purchase posts `NON_RENEWING_PURCHASE`, creates a `money_physical_reports` row, appears in `GET /api/money-physical/status`, and shows in `/admin`
 - [ ] Plaid sandbox item webhooks update item state (`login_required`, `active`, `disconnected`)
 - [ ] `/api/me/export` returns an authenticated data export and `DELETE /api/me` records a non-PII deletion audit event
 - [ ] App Store privacy answers in `docs/APP_STORE_PRIVACY.md` match the final native build and App Store Connect entry
@@ -83,6 +84,7 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] Freelancer Mode works for premium users: `GET /api/freelancer/summary` returns income/runway data, free users get `402 premium_required`, and `/admin` shows the Freelancer metrics row
 - [ ] Household Sharing works: free users get `402 premium_required` on household creation, a premium owner can create a household, share an invite, the invited account can accept, shared goals accept contributions, and `/admin` shows the Household metrics row
 - [ ] Voice Briefs work: free users get `402 premium_required`, premium users get `GET /api/voice-brief/latest`, iOS plays it through native speech, playback events post to `/api/voice-briefs/:id/events`, and `/admin` shows the Voice Brief metrics row
+- [ ] Money Physical works: the Money Wins tab loads the one-time RevenueCat product, purchase/restore syncs the non-subscription transaction id to `/api/money-physical/restore`, the generated report renders, export includes it, and `/admin` shows the Money Physical metrics row
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development

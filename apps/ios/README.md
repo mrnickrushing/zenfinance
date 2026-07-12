@@ -1,6 +1,6 @@
 # ZenFinance iOS App
 
-**The product.** This is the Expo SDK 57 iOS app: onboarding, Plaid Link, first-look and weekly brief cards, native text-to-speech Voice Briefs, coach chat, goals, deterministic what-if simulations, subscription audit, Money Wins, RevenueCat paywall/restore, referral credits, Freelancer Mode settings, Household Sharing, data export, notification preferences, Sentry wiring, and mobile funnel events.
+**The product.** This is the Expo SDK 57 iOS app: onboarding, Plaid Link, first-look and weekly brief cards, native text-to-speech Voice Briefs, coach chat, goals, deterministic what-if simulations, subscription audit, Money Wins, Money Physical one-time reports, RevenueCat paywall/purchase/restore, referral credits, Freelancer Mode settings, Household Sharing, data export, notification preferences, Sentry wiring, and mobile funnel events.
 
 ## Running the App
 
@@ -23,7 +23,9 @@ For Plaid sandbox linking, run the API with `TRANSACTION_PROVIDER=plaid`,
 bank credentials are `user_good` / `pass_good`.
 
 For RevenueCat sandbox purchases, set `expo.extra.revenueCatIosApiKey` in
-`app.json` and run a development build or TestFlight build. Expo Go cannot test
-native Plaid or RevenueCat purchase flows.
+`app.json` and configure both the Coach subscription products and the Money
+Physical non-subscription product in RevenueCat/App Store Connect. Run a
+development build or TestFlight build. Expo Go cannot test native Plaid or
+RevenueCat purchase flows.
 
 `assets/app-icon-master.png` is the App Store icon master.

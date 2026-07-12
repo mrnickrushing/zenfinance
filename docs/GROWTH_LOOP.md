@@ -37,9 +37,15 @@ The `/insights` page reads `GET /api/content/launch-stats` and publishes only an
 
 ## Feature Train
 
-Demand order after Phase 10:
+Demand order after Phase 11:
 
-1. Money Physical one-time report.
-2. Net-worth view.
+1. Net-worth view.
 
 A feature moves forward only when support tickets, user interviews, and usage data all point to the same demand.
+
+Built train:
+
+- Phase 8: Freelancer Mode.
+- Phase 9: Household Sharing.
+- Phase 10: Voice Briefs.
+- Phase 11: Money Physical one-time report.

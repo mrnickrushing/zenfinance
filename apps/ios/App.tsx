@@ -56,6 +56,7 @@ import {
 import { create, open } from 'react-native-plaid-link-sdk';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { create as createStore } from 'zustand';
+import { MONEY_PHYSICAL_PRODUCT_ID } from '@zenfinance/shared';
 import type {
   AnomalyView,
   AuthTokens,
@@ -68,6 +69,7 @@ import type {
   InsightView,
   LinkedItem,
   MobileHomeSummaryView,
+  MoneyPhysicalStatusView,
   MoneyWinsSummaryView,
   NotificationPreferencesView,
   PaywallPackageView,
@@ -106,6 +108,7 @@ const PREMIUM_TABS = new Set<TabKey>(['coach', 'subs', 'wins']);
 
 type RevenueCatCustomerInfo = Awaited<ReturnType<typeof Purchases.restorePurchases>>;
 type RevenueCatPackage = NonNullable<Awaited<ReturnType<typeof Purchases.getOfferings>>['current']>['availablePackages'][number];
+type RevenueCatStoreProduct = Awaited<ReturnType<typeof Purchases.getProducts>>[number];
 type RestorePayload = {
   appUserId: string;
   entitlementId: string;
@@ -115,6 +118,14 @@ type RestorePayload = {
   latestPurchaseDate?: string | null;
   willRenew?: boolean | null;
   managementUrl?: string | null;
+  store?: string;
+  environment: 'SANDBOX' | 'PRODUCTION' | 'UNKNOWN';
+};
+type MoneyPhysicalRestorePayload = {
+  appUserId: string;
+  productId: string;
+  transactionId: string;
+  purchaseDate?: string | null;
   store?: string;
   environment: 'SANDBOX' | 'PRODUCTION' | 'UNKNOWN';
 };
@@ -303,6 +314,24 @@ function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo
   };
 }
 
+function moneyPhysicalPayloadFromCustomerInfo(
+  billing: BillingStatusView,
+  customerInfo: RevenueCatCustomerInfo,
+): MoneyPhysicalRestorePayload | null {
+  const transaction = [...customerInfo.nonSubscriptionTransactions]
+    .reverse()
+    .find((txn) => txn.productIdentifier === MONEY_PHYSICAL_PRODUCT_ID);
+  if (!transaction) return null;
+  return {
+    appUserId: billing.appUserId,
+    productId: MONEY_PHYSICAL_PRODUCT_ID,
+    transactionId: transaction.transactionIdentifier,
+    purchaseDate: transaction.purchaseDate,
+    store: Platform.OS === 'ios' ? 'APP_STORE' : 'PLAY_STORE',
+    environment: 'UNKNOWN',
+  };
+}
+
 function useTheme() {
   return useColorScheme() === 'dark' ? dark : light;
 }
@@ -446,7 +475,7 @@ function ProductShell() {
     if (tab === 'coach') return <CoachScreen />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
-    if (tab === 'wins') return <WinsScreen wins={home.moneyWins} anomalies={home.openAnomalies} onChanged={refresh} />;
+    if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
@@ -1086,14 +1115,92 @@ function SubscriptionsScreen({ audit, onChanged }: { audit: SubscriptionAuditVie
 
 function WinsScreen({
   wins,
+  moneyPhysical,
+  billing,
   anomalies,
   onChanged,
 }: {
   wins: MoneyWinsSummaryView;
+  moneyPhysical: MoneyPhysicalStatusView;
+  billing: BillingStatusView;
   anomalies: AnomalyView[];
   onChanged: () => void;
 }) {
   const theme = useTheme();
+  const [physicalBusy, setPhysicalBusy] = useState<string | null>(null);
+  const [physicalProduct, setPhysicalProduct] = useState<RevenueCatStoreProduct | null>(null);
+  const [physicalMessage, setPhysicalMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (moneyPhysical.purchased) return;
+    void (async () => {
+      const configured = await configureRevenueCat(billing);
+      if (!configured) {
+        setPhysicalMessage('Store purchases require a RevenueCat iOS API key in the app config.');
+        return;
+      }
+      try {
+        const products = await Purchases.getProducts([MONEY_PHYSICAL_PRODUCT_ID], Purchases.PRODUCT_CATEGORY.NON_SUBSCRIPTION);
+        setPhysicalProduct(products[0] ?? null);
+        if (!products[0]) setPhysicalMessage('Money Physical is not available from the store yet.');
+      } catch (err) {
+        Sentry.captureException(err);
+        setPhysicalMessage(err instanceof Error ? err.message : 'Money Physical could not be loaded.');
+      }
+    })();
+  }, [billing, moneyPhysical.purchased]);
+
+  async function syncMoneyPhysical(customerInfo: RevenueCatCustomerInfo) {
+    const payload = moneyPhysicalPayloadFromCustomerInfo(billing, customerInfo);
+    if (!payload) throw new Error('Money Physical purchase was not found on this RevenueCat customer.');
+    await requestApi('/api/money-physical/restore', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    onChanged();
+  }
+
+  async function purchaseMoneyPhysical() {
+    if (!physicalProduct) return;
+    setPhysicalBusy('purchase');
+    try {
+      await trackBillingEvent('money_physical_purchase_started', { productId: MONEY_PHYSICAL_PRODUCT_ID });
+      const result = await Purchases.purchaseStoreProduct(physicalProduct);
+      await syncMoneyPhysical(result.customerInfo);
+      await trackBillingEvent('money_physical_purchase_completed', { productId: MONEY_PHYSICAL_PRODUCT_ID });
+    } catch (err) {
+      await trackBillingEvent('money_physical_purchase_failed', {
+        productId: MONEY_PHYSICAL_PRODUCT_ID,
+        message: err instanceof Error ? err.message : 'unknown',
+      });
+      Alert.alert('Money Physical', err instanceof Error ? err.message : 'Purchase failed');
+    } finally {
+      setPhysicalBusy(null);
+    }
+  }
+
+  async function restoreMoneyPhysical() {
+    setPhysicalBusy('restore');
+    try {
+      const configured = await configureRevenueCat(billing);
+      if (!configured) {
+        Alert.alert('RevenueCat not configured', 'Add the iOS RevenueCat public API key in app.json to restore store purchases.');
+        return;
+      }
+      const customerInfo = await Purchases.restorePurchases();
+      await syncMoneyPhysical(customerInfo);
+      await trackBillingEvent('money_physical_restore_completed', { productId: MONEY_PHYSICAL_PRODUCT_ID });
+    } catch (err) {
+      await trackBillingEvent('money_physical_restore_failed', {
+        productId: MONEY_PHYSICAL_PRODUCT_ID,
+        message: err instanceof Error ? err.message : 'unknown',
+      });
+      Alert.alert('Money Physical', err instanceof Error ? err.message : 'Restore failed');
+    } finally {
+      setPhysicalBusy(null);
+    }
+  }
+
   async function confirm(id: number) {
     await requestApi(`/api/money-wins/${id}/confirm`, { method: 'POST' });
     onChanged();
@@ -1104,6 +1211,49 @@ function WinsScreen({
   }
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <ShieldCheck color={theme.accent} size={20} />
+          <Text style={[styles.panelKicker, { color: theme.accent }]}>Money Physical</Text>
+        </View>
+        {moneyPhysical.latestReport ? (
+          <>
+            <Text style={[styles.bigNumber, { color: theme.ink }]}>{moneyPhysical.latestReport.score}/100</Text>
+            <Text style={[styles.panelTitle, { color: theme.ink }]}>{moneyPhysical.latestReport.headline}</Text>
+            <Text style={[styles.panelBody, { color: theme.muted }]}>{moneyPhysical.latestReport.summary}</Text>
+            <View style={styles.metricStrip}>
+              <Metric label="90-day net" value={usd(moneyPhysical.latestReport.sections.cashFlow.netCashFlowCents, true)} icon={WalletCards} />
+              <Metric label="Recurring" value={usd(moneyPhysical.latestReport.sections.recurring.totalMonthlyCents, true)} icon={CreditCard} />
+            </View>
+            {moneyPhysical.latestReport.actions.map((action) => (
+              <View key={action.title} style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+                <Text style={[styles.actionTitle, { color: theme.ink }]}>{action.title}</Text>
+                <Text style={[styles.actionMeta, { color: theme.muted }]}>{action.detail}</Text>
+              </View>
+            ))}
+          </>
+        ) : (
+          <>
+            <Text style={[styles.panelTitle, { color: theme.ink }]}>90-day money checkup</Text>
+            <Text style={[styles.panelBody, { color: theme.muted }]}>
+              A one-time report that scores cash flow, spending concentration, goal pacing, recurring charges, and Money Wins.
+            </Text>
+            {physicalMessage ? <Text style={[styles.actionMeta, { color: theme.gold }]}>{physicalMessage}</Text> : null}
+            <PrimaryButton
+              label={physicalBusy === 'purchase' ? 'Purchasing...' : `Buy ${physicalProduct?.priceString ?? moneyPhysical.priceLabel}`}
+              icon={ShieldCheck}
+              disabled={physicalBusy !== null || !physicalProduct}
+              onPress={purchaseMoneyPhysical}
+            />
+            <SecondaryButton
+              label={physicalBusy === 'restore' ? 'Restoring...' : 'Restore Money Physical'}
+              icon={RefreshCcw}
+              disabled={physicalBusy !== null}
+              onPress={restoreMoneyPhysical}
+            />
+          </>
+        )}
+      </View>
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <Text style={[styles.panelKicker, { color: theme.accent }]}>Money Wins</Text>
         <Text style={[styles.bigNumber, { color: theme.ink }]}>{usd(wins.verifiedTotalCents + wins.estimatedTotalCents, true)}</Text>

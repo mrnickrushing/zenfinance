@@ -189,6 +189,17 @@ function Dashboard() {
             />
           </section>
 
+          <section aria-label="Money Physical metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Money Physical purchases" value={metrics.moneyPhysical.purchasedReports} />
+            <StatTile label="Money Physical reports" value={metrics.moneyPhysical.generatedReports} />
+            <StatTile
+              label="Avg physical score"
+              value={metrics.moneyPhysical.avgScore === null ? 'N/A' : metrics.moneyPhysical.avgScore}
+              sub="0-100"
+            />
+            <StatTile label="Physical revenue" value={Math.round(metrics.moneyPhysical.revenueCents / 100)} sub="USD" />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days

@@ -45,6 +45,7 @@ import {
   transactions,
 } from '../db/schema.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
+import { getMoneyPhysicalStatus } from '../moneyPhysical/service.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
@@ -613,7 +614,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
 
   router.get('/api/mobile/home', requireUser, async (_req, res) => {
     const userId = res.locals.userId as number;
-    const [billing, linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, anomaliesList, txns] =
+    const [billing, linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, moneyPhysical, anomaliesList, txns] =
       await Promise.all([
         getBillingStatus(db, userId),
         linkedItems(userId),
@@ -623,6 +624,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
         listGoals(userId),
         auditSubscriptions(db, userId),
         getMoneyWinsSummary(db, userId),
+        getMoneyPhysicalStatus(db, userId),
         openAnomalies(userId),
         recentTransactions(userId, 12),
       ]);
@@ -638,6 +640,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
         ? subscriptionAudit
         : { items: [], totalMonthlyCents: 0, cancelCandidateMonthlyCents: 0, cancelCandidateCount: 0 },
       moneyWins,
+      moneyPhysical,
       openAnomalies: anomaliesList,
       recentTransactions: txns,
     };

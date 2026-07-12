@@ -111,7 +111,7 @@ Chosen to match the stack the RushingTech agents toolkit already reviews and sca
   - *Haiku* for high-volume, low-stakes work: categorization, merchant name cleanup, recurring-charge detection assist, anomaly triage. Batch 50–100 transactions per call.
   - *Sonnet* for the weekly brief, chat coach, and what-if scenarios where reasoning quality is the product.
   - Prompt caching on the static system/coaching-policy prompt; per-user context assembled as compact structured summaries (see §4). Chat additionally gets a deterministic, user-scoped transaction-query tool (parameterized SQL behind a tool interface, redacted fields only) — the model never receives bulk raw-transaction dumps.
-- **RevenueCat as the entitlement source of truth** for App Store subscriptions — one entitlements check in the API. Stripe enters the picture only if a web checkout is ever wanted; nothing in the design depends on it.
+- **RevenueCat as the entitlement and purchase source of truth** for App Store monetization — subscription entitlements for Coach plus non-subscription transaction events for one-time reports. Stripe enters the picture only if a web checkout is ever wanted; nothing in the design depends on it.
 
 ---
 
@@ -168,7 +168,7 @@ Apple's commission (15% under the Small Business Program while revenue < $1M/yr)
 
 **Targets:** free→paid conversion 5–8% (finance apps convert well when ROI is visible — that's the Money Wins ledger's job), monthly churn <5% (annual plans + renewal-time savings recap), LTV $85–150. Break-even on fixed costs (~$100–200/mo infra + Plaid Growth minimum) at roughly **35–60 subscribers** (after Apple's cut).
 
-**Monetization mechanics:** App Store IAP via RevenueCat — entitlements, receipt validation, billing-retry/dunning, and webhooks into the API, with RevenueCat as the entitlement source of truth. Reviewed by `StripeBillingAgent` (which covers RevenueCat sync/receipt validation) before launch (§7). Stripe web checkout is out of scope unless a web purchase path is ever wanted.
+**Monetization mechanics:** App Store IAP via RevenueCat — entitlements, non-subscription purchases, receipt validation, billing-retry/dunning, and webhooks into the API, with RevenueCat as the store state source of truth. Reviewed by `StripeBillingAgent` (which covers RevenueCat sync/receipt validation) before launch (§7). Stripe web checkout is out of scope unless a web purchase path is ever wanted.
 
 ---
 
@@ -285,7 +285,7 @@ sign-off, and live beta retention/Sentry observation windows.
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
 - Referral mechanic: "give a month, get a month" (finance advice spreads by word of mouth)
 - Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links; published on the marketing site
-- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8, household sharing is built in Phase 9, and voice briefs are built in Phase 10; next demand-ordered items are Money Physical one-time report → net-worth view
+- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8, household sharing is built in Phase 9, voice briefs are built in Phase 10, and Money Physical is built in Phase 11; the next demand-ordered item is net-worth view
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
 - **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
@@ -349,6 +349,22 @@ playback from the Brief tab. Docs are updated in `docs/VOICE_BRIEFS.md`,
 README, deploy checklist, privacy inventory, App Store privacy inventory,
 growth loop, and security notes.
 
+### Phase 11 — Money Physical *(Post-launch feature train item 4)*
+- One-time App Store purchase through RevenueCat non-subscription product `com.rushingtechnologies.zenfinance.money_physical`
+- Persisted `money_physical_reports` table keyed by RevenueCat transaction id for idempotent restore/webhook handling
+- Deterministic 90-day report with score, cash-flow section, spending concentration, goal pacing, recurring burden, Money Wins totals, and three bounded action items
+- iOS Money Wins tab purchase/restore surface plus generated report display
+- RevenueCat webhook support for `NON_RENEWING_PURCHASE`, client restore endpoint, mobile home status, privacy export, and admin metrics
+- **Exit gate:** status, restore, idempotent report generation, webhook duplicate handling, mobile home inclusion, export, and admin metrics are covered by `apps/api/src/test/phase11.test.ts`.
+
+**Implementation status in this repo:** Phase 11 is implemented as a one-time
+Money Physical report product. The API owns the `money_physical_reports` table,
+`/api/money-physical/*` routes, and RevenueCat non-subscription webhook
+handling. The iOS app exposes purchase, restore, and report viewing from the
+Money Wins tab. Docs are updated in `docs/MONEY_PHYSICAL.md`, README, deploy
+checklist, privacy inventory, App Store privacy inventory, growth loop, public
+privacy/terms pages, launch runbook, and security notes.
+
 ---
 
 ## 9. Risks & Mitigations
@@ -377,4 +393,4 @@ growth loop, and security notes.
 
 ---
 
-*Current status: Phases 0–10 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, Voice Brief playback, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, Phase 8 Freelancer Mode for variable-income users, Phase 9 Household Sharing with shared goals and individual privacy zones, and Phase 10 Voice Briefs. Mock-provider paths and Phase 10 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*
+*Current status: Phases 0–11 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, Voice Brief playback, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, Money Physical one-time reports, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, Phase 8 Freelancer Mode for variable-income users, Phase 9 Household Sharing with shared goals and individual privacy zones, Phase 10 Voice Briefs, and Phase 11 Money Physical. Mock-provider paths and Phase 11 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, RevenueCat product configuration, Sentry observation, launch promotion, and 90-day KPI measurement.*

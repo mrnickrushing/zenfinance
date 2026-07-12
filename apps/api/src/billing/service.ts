@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   ANNUAL_PRODUCT_ID,
+  MONEY_PHYSICAL_PRODUCT_ID,
   MONTHLY_PRODUCT_ID,
   type BillingEntitlementView,
   type BillingLimitsView,
@@ -21,6 +22,7 @@ import {
   users,
 } from '../db/schema.js';
 import { env } from '../env.js';
+import { recordMoneyPhysicalPurchase } from '../moneyPhysical/service.js';
 import { getActiveReferralCreditExpiry } from '../referrals/service.js';
 
 export const PREMIUM_STATUSES = new Set<BillingStatus>(['trialing', 'active', 'grace_period']);
@@ -74,11 +76,11 @@ interface RevenueCatRestEntitlement {
   purchase_date?: string | null;
 }
 
-function appUserIdFor(userId: number): string {
+export function appUserIdFor(userId: number): string {
   return `zenfinance:${userId}`;
 }
 
-function userIdFromAppUserId(appUserId: string | undefined | null): number | null {
+export function userIdFromAppUserId(appUserId: string | undefined | null): number | null {
   const match = appUserId?.match(/^zenfinance:(\d+)$/);
   if (!match) return null;
   return Number(match[1]);
@@ -427,6 +429,24 @@ export async function processRevenueCatWebhook(db: Db, body: RevenueCatWebhookBo
       sourceEventId: event.id,
       rawPayload: body,
     });
+  }
+  const productId = event.new_product_id ?? event.product_id ?? null;
+  if (userId && productId === MONEY_PHYSICAL_PRODUCT_ID) {
+    await recordMoneyPhysicalPurchase(
+      db,
+      userId,
+      {
+        productId,
+        transactionId: event.transaction_id ?? event.original_transaction_id ?? event.id,
+        store: event.store ?? null,
+        environment: event.environment ?? 'UNKNOWN',
+        purchasedAt: dateFromMs(event.purchased_at_ms ?? event.event_timestamp_ms ?? null) ?? new Date(),
+        purchaseSource: 'revenuecat_webhook',
+        rawPayload: body,
+      },
+      'revenuecat_webhook',
+      body,
+    );
   }
   return { ok: true, duplicate: false, userId };
 }
