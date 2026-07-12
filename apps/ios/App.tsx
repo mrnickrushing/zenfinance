@@ -1,40 +1,165 @@
+import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
+import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
-import { useCallback, useEffect, useState } from 'react';
+import {
+  ArrowDownRight,
+  Bell,
+  Bot,
+  CheckCircle2,
+  ChevronRight,
+  CircleDollarSign,
+  CreditCard,
+  Landmark,
+  LogOut,
+  MessageCircle,
+  Moon,
+  PiggyBank,
+  Plus,
+  RefreshCcw,
+  Send,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Target,
+  Trash2,
+  WalletCards,
+} from 'lucide-react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Button,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
+  useColorScheme,
   View,
 } from 'react-native';
 import { create, open } from 'react-native-plaid-link-sdk';
-
-// Phase 1 link harness: sign in → link a bank via Plaid Link → watch the
-// 90-day backfill land → disconnect. The real app UI comes in Phase 4.
+import { create as createStore } from 'zustand';
+import type {
+  AnomalyView,
+  AuthTokens,
+  ChatAnswerView,
+  GoalView,
+  InsightView,
+  LinkedItem,
+  MobileHomeSummaryView,
+  MoneyWinsSummaryView,
+  NotificationPreferencesView,
+  SubscriptionAuditView,
+  WhatIfResultView,
+} from '@zenfinance/shared';
 
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
+const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 
-interface Account {
-  id: number;
-  name: string;
-  mask: string | null;
-  currentBalanceCents: number | null;
-}
-interface Item {
-  id: number;
-  institutionName: string | null;
-  lastSyncedAt: string | null;
-  accounts: Account[];
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    sendDefaultPii: false,
+    tracesSampleRate: 0.2,
+  });
 }
 
-async function api<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
-  const token = await SecureStore.getItemAsync('accessToken');
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: false,
+    shouldSetBadge: true,
+  }),
+});
+
+type TabKey = 'brief' | 'coach' | 'goals' | 'subs' | 'wins' | 'settings';
+
+interface AppState {
+  accessToken: string | null;
+  refreshToken: string | null;
+  home: MobileHomeSummaryView | null;
+  notificationPrefs: NotificationPreferencesView | null;
+  loading: boolean;
+  setTokens: (tokens: AuthTokens | null) => void;
+  setHome: (home: MobileHomeSummaryView | null) => void;
+  setNotificationPrefs: (prefs: NotificationPreferencesView | null) => void;
+  setLoading: (loading: boolean) => void;
+}
+
+const useAppStore = createStore<AppState>((set) => ({
+  accessToken: null,
+  refreshToken: null,
+  home: null,
+  notificationPrefs: null,
+  loading: true,
+  setTokens: (tokens) => set({ accessToken: tokens?.accessToken ?? null, refreshToken: tokens?.refreshToken ?? null }),
+  setHome: (home) => set({ home }),
+  setNotificationPrefs: (notificationPrefs) => set({ notificationPrefs }),
+  setLoading: (loading) => set({ loading }),
+}));
+
+const light = {
+  bg: '#f7f4ef',
+  surface: '#ffffff',
+  surfaceAlt: '#f0ebe4',
+  ink: '#1f2933',
+  muted: '#667085',
+  border: '#ddd6cc',
+  accent: '#2f6f73',
+  accentSoft: '#dcefed',
+  gold: '#b7791f',
+  danger: '#b42318',
+  success: '#2f7a4f',
+};
+
+const dark = {
+  bg: '#101418',
+  surface: '#171d22',
+  surfaceAlt: '#20282f',
+  ink: '#f4f0ea',
+  muted: '#aab4bd',
+  border: '#303a42',
+  accent: '#7fc7bf',
+  accentSoft: '#173835',
+  gold: '#e0ad52',
+  danger: '#ff8a80',
+  success: '#85d39d',
+};
+
+function usd(cents: number | null | undefined, compact = false): string {
+  if (cents === null || cents === undefined) return '$0';
+  const value = cents / 100;
+  return value.toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: compact ? 0 : 2,
+    minimumFractionDigits: compact ? 0 : 2,
+  });
+}
+
+function dateLabel(value: string | null | undefined): string {
+  if (!value) return 'Not set';
+  return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+async function persistTokens(tokens: AuthTokens | null): Promise<void> {
+  if (!tokens) {
+    await SecureStore.deleteItemAsync('accessToken');
+    await SecureStore.deleteItemAsync('refreshToken');
+    return;
+  }
+  await SecureStore.setItemAsync('accessToken', tokens.accessToken);
+  await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
+}
+
+async function requestApi<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+  const token = useAppStore.getState().accessToken ?? (await SecureStore.getItemAsync('accessToken'));
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
@@ -43,51 +168,67 @@ async function api<T>(path: string, init: RequestInit = {}, retry = true): Promi
       ...(init.headers ?? {}),
     },
   });
+
   if (res.status === 401 && retry) {
-    const refreshToken = await SecureStore.getItemAsync('refreshToken');
+    const refreshToken = useAppStore.getState().refreshToken ?? (await SecureStore.getItemAsync('refreshToken'));
     if (refreshToken) {
-      const r = await fetch(`${API_URL}/api/auth/refresh`, {
+      const refresh = await fetch(`${API_URL}/api/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
       });
-      if (r.ok) {
-        const tokens = await r.json();
-        await SecureStore.setItemAsync('accessToken', tokens.accessToken);
-        await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
-        return api<T>(path, init, false);
+      if (refresh.ok) {
+        const tokens = (await refresh.json()) as AuthTokens;
+        await persistTokens(tokens);
+        useAppStore.getState().setTokens(tokens);
+        return requestApi<T>(path, init, false);
       }
     }
-    await SecureStore.deleteItemAsync('accessToken');
-    await SecureStore.deleteItemAsync('refreshToken');
+    await persistTokens(null);
+    useAppStore.getState().setTokens(null);
   }
+
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.error?.message ?? `Request failed (${res.status})`);
   }
-  return res.json();
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+function useTheme() {
+  return useColorScheme() === 'dark' ? dark : light;
 }
 
 export default function App() {
-  const [authed, setAuthed] = useState<boolean | null>(null);
+  const { accessToken, loading, setTokens, setLoading } = useAppStore();
+  const theme = useTheme();
 
   useEffect(() => {
-    SecureStore.getItemAsync('accessToken').then((t) => setAuthed(Boolean(t)));
-  }, []);
+    void (async () => {
+      const [access, refresh] = await Promise.all([
+        SecureStore.getItemAsync('accessToken'),
+        SecureStore.getItemAsync('refreshToken'),
+      ]);
+      setTokens(access && refresh ? { accessToken: access, refreshToken: refresh } : null);
+      setLoading(false);
+    })();
+  }, [setLoading, setTokens]);
 
-  if (authed === null) {
+  if (loading) {
     return (
-      <SafeAreaView style={styles.center}>
-        <ActivityIndicator />
+      <SafeAreaView style={[styles.center, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator color={theme.accent} />
       </SafeAreaView>
     );
   }
-  return authed ? <LinkScreen onSignOut={() => setAuthed(false)} /> : (
-    <AuthScreen onAuthed={() => setAuthed(true)} />
-  );
+
+  return accessToken ? <ProductShell /> : <AuthScreen />;
 }
 
-function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
+function AuthScreen() {
+  const theme = useTheme();
+  const setTokens = useAppStore((s) => s.setTokens);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -95,82 +236,151 @@ function AuthScreen({ onAuthed }: { onAuthed: () => void }) {
   async function submit(path: 'register' | 'login') {
     setBusy(true);
     try {
-      const tokens = await api<{ accessToken: string; refreshToken: string }>(
+      const tokens = await requestApi<AuthTokens>(
         `/api/auth/${path}`,
         { method: 'POST', body: JSON.stringify({ email, password }) },
         false,
       );
-      await SecureStore.setItemAsync('accessToken', tokens.accessToken);
-      await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
-      onAuthed();
+      await persistTokens(tokens);
+      setTokens(tokens);
+      void requestApi('/api/app-events', {
+        method: 'POST',
+        body: JSON.stringify({ name: path === 'register' ? 'onboarding:registered' : 'onboarding:logged_in' }),
+      }).catch(() => {});
     } catch (err) {
-      Alert.alert('Auth failed', err instanceof Error ? err.message : 'Unknown error');
+      Alert.alert('Sign-in failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="auto" />
-      <Text style={styles.title}>ZenFinance</Text>
-      <Text style={styles.subtitle}>Phase 1 link harness</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password (10+ chars)"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <Button title={busy ? '…' : 'Sign in'} disabled={busy} onPress={() => submit('login')} />
-      <Button title="Create account" disabled={busy} onPress={() => submit('register')} />
+    <SafeAreaView style={[styles.authScreen, { backgroundColor: theme.bg }]}>
+      <StatusBar style={theme === dark ? 'light' : 'dark'} />
+      <View style={styles.brandMark}>
+        <Sparkles color={theme.accent} size={28} />
+      </View>
+      <Text style={[styles.heroTitle, { color: theme.ink }]}>ZenFinance</Text>
+      <Text style={[styles.heroCopy, { color: theme.muted }]}>
+        A calm money coach that turns your own transactions into one clear next action.
+      </Text>
+      <View style={[styles.authPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <TextInput
+          style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.bg }]}
+          placeholder="Email"
+          placeholderTextColor={theme.muted}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          value={email}
+          onChangeText={setEmail}
+        />
+        <TextInput
+          style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.bg }]}
+          placeholder="Password"
+          placeholderTextColor={theme.muted}
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
+        />
+        <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
+        <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
+      </View>
+      <Text style={[styles.disclosure, { color: theme.muted }]}>
+        Educational only. ZenFinance does not provide investment, tax, or legal advice.
+      </Text>
     </SafeAreaView>
   );
 }
 
-function LinkScreen({ onSignOut }: { onSignOut: () => void }) {
-  const [items, setItems] = useState<Item[]>([]);
-  const [txnCount, setTxnCount] = useState<number>(0);
-  const [busy, setBusy] = useState(false);
+function ProductShell() {
+  const theme = useTheme();
+  const home = useAppStore((s) => s.home);
+  const setHome = useAppStore((s) => s.setHome);
+  const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
+  const [tab, setTab] = useState<TabKey>('brief');
+  const [refreshing, setRefreshing] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [itemsRes, txns] = await Promise.all([
-      api<{ items: Item[] }>('/api/items'),
-      api<{ total: number }>('/api/transactions?pageSize=1'),
-    ]);
-    setItems(itemsRes.items);
-    setTxnCount(txns.total);
-  }, []);
+    setRefreshing(true);
+    try {
+      const [nextHome, prefs] = await Promise.all([
+        requestApi<MobileHomeSummaryView>('/api/mobile/home'),
+        requestApi<NotificationPreferencesView>('/api/notifications/preferences'),
+      ]);
+      setHome(nextHome);
+      setNotificationPrefs(prefs);
+    } catch (err) {
+      Sentry.captureException(err);
+      Alert.alert('Could not refresh', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setRefreshing(false);
+    }
+  }, [setHome, setNotificationPrefs]);
 
   useEffect(() => {
-    refresh().catch(() => {});
+    void refresh();
   }, [refresh]);
+
+  const content = useMemo(() => {
+    if (!home) {
+      return (
+        <View style={styles.centerGrow}>
+          <ActivityIndicator color={theme.accent} />
+        </View>
+      );
+    }
+    if (home.items.length === 0) {
+      return <LinkingScreen onLinked={refresh} />;
+    }
+    if (tab === 'brief') return <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} />;
+    if (tab === 'coach') return <CoachScreen />;
+    if (tab === 'goals') return <GoalsScreen goals={home.goals} onChanged={refresh} />;
+    if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
+    if (tab === 'wins') return <WinsScreen wins={home.moneyWins} anomalies={home.openAnomalies} onChanged={refresh} />;
+    return <SettingsScreen items={home.items} onChanged={refresh} />;
+  }, [home, refresh, refreshing, tab, theme.accent]);
+
+  return (
+    <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
+      <StatusBar style={theme === dark ? 'light' : 'dark'} />
+      <View style={styles.topBar}>
+        <View>
+          <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance</Text>
+          <Text style={[styles.appSub, { color: theme.muted }]}>{home?.transactionCount ?? 0} transactions synced</Text>
+        </View>
+        <Pressable style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
+          {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
+        </Pressable>
+      </View>
+      <View style={styles.content}>{content}</View>
+      {home && home.items.length > 0 ? <TabBar active={tab} onChange={setTab} /> : null}
+    </SafeAreaView>
+  );
+}
+
+function LinkingScreen({ onLinked }: { onLinked: () => void }) {
+  const theme = useTheme();
+  const [busy, setBusy] = useState(false);
 
   async function linkBank() {
     setBusy(true);
     try {
-      const { linkToken } = await api<{ linkToken: string }>('/api/link/token', {
-        method: 'POST',
-      });
+      const { linkToken } = await requestApi<{ linkToken: string }>('/api/link/token', { method: 'POST' });
       create({ token: linkToken });
       open({
         onSuccess: async (success) => {
-          await api('/api/link/exchange', {
+          await requestApi('/api/link/exchange', {
             method: 'POST',
             body: JSON.stringify({
               publicToken: success.publicToken,
               institutionName: success.metadata.institution?.name,
             }),
           });
-          await refresh();
+          await requestApi('/api/app-events', {
+            method: 'POST',
+            body: JSON.stringify({ name: 'onboarding:linked_bank', properties: { institution: success.metadata.institution?.name } }),
+          }).catch(() => {});
+          onLinked();
           setBusy(false);
         },
         onExit: () => setBusy(false),
@@ -181,78 +391,689 @@ function LinkScreen({ onSignOut }: { onSignOut: () => void }) {
     }
   }
 
-  async function disconnect(itemId: number) {
-    await api(`/api/items/${itemId}`, { method: 'DELETE' });
-    await refresh();
-  }
+  return (
+    <View style={styles.emptyState}>
+      <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+        <Landmark color={theme.accent} size={38} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: theme.ink }]}>Link your first account</Text>
+      <Text style={[styles.emptyCopy, { color: theme.muted }]}>
+        Plaid connects read-only bank data. Tokens stay on the server, and you can disconnect or delete everything from settings.
+      </Text>
+      <PrimaryButton label={busy ? 'Opening Plaid...' : 'Link a bank'} icon={Landmark} disabled={busy} onPress={linkBank} />
+    </View>
+  );
+}
 
-  async function signOut() {
-    const refreshToken = await SecureStore.getItemAsync('refreshToken');
-    if (refreshToken) {
-      await api('/api/auth/logout', {
+function BriefScreen({
+  home,
+  onRefresh,
+  refreshing,
+}: {
+  home: MobileHomeSummaryView;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  const theme = useTheme();
+  const brief = home.weeklyBrief ?? home.firstLook;
+  return (
+    <ScrollView
+      contentContainerStyle={styles.scrollContent}
+      refreshControl={undefined}
+      showsVerticalScrollIndicator={false}
+    >
+      <MetricStrip home={home} />
+      {brief ? <InsightPanel insight={brief} /> : <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />}
+      <SectionHeader title="Next Actions" />
+      <ActionRow
+        icon={Target}
+        title={home.goals[0]?.name ?? 'Create one savings goal'}
+        detail={home.goals[0] ? `${usd(home.goals[0].pacing.remainingAmountCents, true)} remaining` : 'Give the coach a target to pace against'}
+      />
+      <ActionRow
+        icon={CreditCard}
+        title="Subscription audit"
+        detail={`${usd(home.subscriptionAudit.cancelCandidateMonthlyCents, true)}/mo in likely cancellation candidates`}
+      />
+      <ActionRow
+        icon={Bell}
+        title="Open alerts"
+        detail={`${home.openAnomalies.length} charge${home.openAnomalies.length === 1 ? '' : 's'} worth reviewing`}
+      />
+      <SectionHeader title="Recent Transactions" />
+      {home.recentTransactions.slice(0, 6).map((txn) => (
+        <View key={txn.id} style={[styles.row, { borderColor: theme.border }]}>
+          <View>
+            <Text style={[styles.rowTitle, { color: theme.ink }]}>{txn.merchantClean ?? txn.merchantName ?? txn.name}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>{dateLabel(txn.postedDate)} · {txn.category ?? 'uncategorized'}</Text>
+          </View>
+          <Text style={[styles.amount, { color: txn.amountCents > 0 ? theme.ink : theme.success }]}>{usd(txn.amountCents)}</Text>
+        </View>
+      ))}
+      <SecondaryButton label={refreshing ? 'Refreshing...' : 'Refresh'} icon={RefreshCcw} onPress={onRefresh} />
+    </ScrollView>
+  );
+}
+
+function MetricStrip({ home }: { home: MobileHomeSummaryView }) {
+  return (
+    <View style={styles.metricStrip}>
+      <Metric label="Wins" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
+      <Metric label="Goals" value={String(home.goals.length)} icon={Target} />
+      <Metric label="Subs" value={usd(home.subscriptionAudit.totalMonthlyCents, true)} icon={CreditCard} />
+    </View>
+  );
+}
+
+function InsightPanel({ insight }: { insight: InsightView }) {
+  const theme = useTheme();
+  async function feedback(rating: 'up' | 'down') {
+    await requestApi(`/api/insights/${insight.id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    }).catch((err) => Alert.alert('Feedback failed', err instanceof Error ? err.message : 'Unknown error'));
+  }
+  return (
+    <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.panelHeader}>
+        <Sparkles color={theme.accent} size={20} />
+        <Text style={[styles.panelKicker, { color: theme.accent }]}>{insight.kind === 'first_look' ? 'First look' : 'Weekly brief'}</Text>
+      </View>
+      <Text style={[styles.panelTitle, { color: theme.ink }]}>{insight.headline}</Text>
+      <Text style={[styles.panelBody, { color: theme.muted }]}>{insight.body}</Text>
+      <View style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+        <Text style={[styles.actionTitle, { color: theme.ink }]}>{insight.action.description}</Text>
+        <Text style={[styles.actionMeta, { color: theme.muted }]}>
+          {insight.action.estimatedImpactCents ? `${usd(insight.action.estimatedImpactCents)} estimated impact · ` : ''}
+          {insight.action.timeframe}
+        </Text>
+      </View>
+      <View style={styles.inlineButtons}>
+        <SecondaryButton label="Useful" onPress={() => feedback('up')} compact />
+        <SecondaryButton label="Not useful" onPress={() => feedback('down')} compact />
+      </View>
+    </View>
+  );
+}
+
+function CoachScreen() {
+  const theme = useTheme();
+  const [question, setQuestion] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [answers, setAnswers] = useState<ChatAnswerView[]>([]);
+
+  async function ask() {
+    const trimmed = question.trim();
+    if (trimmed.length < 3) return;
+    setQuestion('');
+    setBusy(true);
+    try {
+      const answer = await requestApi<ChatAnswerView>('/api/chat', {
         method: 'POST',
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ question: trimmed }),
+      });
+      setAnswers((items) => [answer, ...items]);
+      await requestApi('/api/app-events', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'coach:asked_question' }),
       }).catch(() => {});
+    } catch (err) {
+      Alert.alert('Coach failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(false);
     }
-    await SecureStore.deleteItemAsync('accessToken');
-    await SecureStore.deleteItemAsync('refreshToken');
-    onSignOut();
   }
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <StatusBar style="auto" />
-      <Text style={styles.title}>Linked banks</Text>
-      <Text style={styles.subtitle}>{txnCount} transactions synced</Text>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <FlatList
-        data={items}
-        keyExtractor={(i) => String(i.id)}
-        refreshing={busy}
-        onRefresh={refresh}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{item.institutionName ?? 'Bank'}</Text>
-            {item.accounts.map((a) => (
-              <Text key={a.id} style={styles.cardLine}>
-                {a.name} ····{a.mask} — $
-                {((a.currentBalanceCents ?? 0) / 100).toFixed(2)}
-              </Text>
-            ))}
-            <Text style={styles.cardMeta}>
-              Last sync: {item.lastSyncedAt ? new Date(item.lastSyncedAt).toLocaleString() : 'pending…'}
+        data={answers}
+        keyExtractor={(item) => item.id}
+        inverted
+        contentContainerStyle={styles.chatList}
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+              <Bot color={theme.accent} size={34} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: theme.ink }]}>Ask about your money</Text>
+            <Text style={[styles.emptyCopy, { color: theme.muted }]}>
+              Try a merchant, category, purchase amount, subscription, or date range.
             </Text>
-            <Button title="Disconnect" color="#b91c1c" onPress={() => disconnect(item.id)} />
+            <Suggestion onPress={setQuestion} value="How much did I spend on coffee in the last 90 days?" />
+            <Suggestion onPress={setQuestion} value="Can I afford $600 this month?" />
+            <Suggestion onPress={setQuestion} value="Which subscriptions should I cancel?" />
           </View>
-        )}
-        ListEmptyComponent={<Text style={styles.cardMeta}>No banks linked yet.</Text>}
+        }
+        renderItem={({ item }) => <ChatBubble answer={item} />}
       />
-      <Button title={busy ? 'Linking…' : 'Link a bank account'} disabled={busy} onPress={linkBank} />
-      <Button title="Sign out" onPress={signOut} />
-    </SafeAreaView>
+      <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+        <TextInput
+          style={[styles.composerInput, { color: theme.ink }]}
+          placeholder="Ask the coach"
+          placeholderTextColor={theme.muted}
+          value={question}
+          onChangeText={setQuestion}
+          returnKeyType="send"
+          onSubmitEditing={ask}
+        />
+        <Pressable style={[styles.sendButton, { backgroundColor: theme.accent }]} disabled={busy} onPress={ask}>
+          {busy ? <ActivityIndicator color="#fff" /> : <Send color="#fff" size={18} />}
+        </Pressable>
+      </View>
+    </KeyboardAvoidingView>
+  );
+}
+
+function ChatBubble({ answer }: { answer: ChatAnswerView }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.chatBubble, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
+      {answer.facts.map((fact) => (
+        <Text key={`${fact.label}-${fact.source}`} style={[styles.factLine, { color: theme.muted }]}>
+          {fact.label}: {fact.amountCents === null ? 'not available' : usd(fact.amountCents)}
+        </Text>
+      ))}
+      {answer.actions.map((action) => (
+        <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
+      ))}
+    </View>
+  );
+}
+
+function Suggestion({ value, onPress }: { value: string; onPress: (value: string) => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable style={[styles.suggestion, { borderColor: theme.border, backgroundColor: theme.surface }]} onPress={() => onPress(value)}>
+      <Text style={[styles.suggestionText, { color: theme.ink }]}>{value}</Text>
+    </Pressable>
+  );
+}
+
+function GoalsScreen({ goals, onChanged }: { goals: GoalView[]; onChanged: () => void }) {
+  const theme = useTheme();
+  const [name, setName] = useState('');
+  const [target, setTarget] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
+
+  async function addGoal() {
+    const dollars = Number(target);
+    if (!name.trim() || !Number.isFinite(dollars) || dollars <= 0) return;
+    setSaving(true);
+    try {
+      await requestApi('/api/goals', {
+        method: 'POST',
+        body: JSON.stringify({ name: name.trim(), targetAmountCents: Math.round(dollars * 100) }),
+      });
+      setName('');
+      setTarget('');
+      onChanged();
+    } catch (err) {
+      Alert.alert('Goal failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function runScenario(goalId?: number) {
+    try {
+      setScenario(
+        await requestApi<WhatIfResultView>('/api/what-if', {
+          method: 'POST',
+          body: JSON.stringify({ goalId, monthlySpendReductionCents: 15000, oneTimeSavingsCents: 2500 }),
+        }),
+      );
+    } catch (err) {
+      Alert.alert('Simulation failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SectionHeader title="Goals" />
+      {goals.map((goal) => (
+        <View key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <Text style={[styles.panelTitle, { color: theme.ink }]}>{goal.name}</Text>
+          <ProgressBar value={goal.pacing.progressRatio} />
+          <Text style={[styles.rowDetail, { color: theme.muted }]}>
+            {usd(goal.currentAmountCents, true)} of {usd(goal.targetAmountCents, true)} · {goal.pacing.pacingStatus.replace('_', ' ')}
+          </Text>
+          <Text style={[styles.factLine, { color: theme.muted }]}>
+            Projected completion: {dateLabel(goal.pacing.projectedCompletionDate)}
+          </Text>
+          <SecondaryButton label="Run $150/mo what-if" icon={SlidersHorizontal} onPress={() => runScenario(goal.id)} />
+        </View>
+      ))}
+      {scenario ? (
+        <View style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.actionTitle, { color: theme.ink }]}>{scenario.narration}</Text>
+          <Text style={[styles.actionMeta, { color: theme.muted }]}>Weekly net change: {usd(scenario.weeklyNetChangeCents)}</Text>
+        </View>
+      ) : null}
+      <SectionHeader title="New Goal" />
+      <TextInput
+        style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+        placeholder="Goal name"
+        placeholderTextColor={theme.muted}
+        value={name}
+        onChangeText={setName}
+      />
+      <TextInput
+        style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+        placeholder="Target amount"
+        placeholderTextColor={theme.muted}
+        keyboardType="decimal-pad"
+        value={target}
+        onChangeText={setTarget}
+      />
+      <PrimaryButton label={saving ? 'Saving...' : 'Add goal'} icon={Plus} disabled={saving} onPress={addGoal} />
+    </ScrollView>
+  );
+}
+
+function ProgressBar({ value }: { value: number }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.progressTrack, { backgroundColor: theme.surfaceAlt }]}>
+      <View style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, value * 100))}%`, backgroundColor: theme.accent }]} />
+    </View>
+  );
+}
+
+function SubscriptionsScreen({ audit, onChanged }: { audit: SubscriptionAuditView; onChanged: () => void }) {
+  const theme = useTheme();
+  async function cancel(recurringStreamId: number) {
+    try {
+      await requestApi('/api/subscriptions/cancel', {
+        method: 'POST',
+        body: JSON.stringify({ recurringStreamId }),
+      });
+      onChanged();
+    } catch (err) {
+      Alert.alert('Could not record cancellation', err instanceof Error ? err.message : 'Unknown error');
+    }
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <MetricStrip
+        home={{
+          moneyWins: { verifiedTotalCents: 0, estimatedTotalCents: audit.cancelCandidateMonthlyCents, wins: [] },
+          goals: [],
+          subscriptionAudit: audit,
+          openAnomalies: [],
+          items: [],
+          transactionCount: 0,
+          firstLook: null,
+          weeklyBrief: null,
+          recentTransactions: [],
+        }}
+      />
+      {audit.items.map((item) => (
+        <View key={item.recurringStreamId} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.panelHeader}>
+            <CreditCard color={item.isCancelCandidate ? theme.gold : theme.accent} size={20} />
+            <Text style={[styles.panelKicker, { color: item.isCancelCandidate ? theme.gold : theme.accent }]}>
+              {item.cadence}
+            </Text>
+          </View>
+          <Text style={[styles.panelTitle, { color: theme.ink }]}>{item.merchantClean}</Text>
+          <Text style={[styles.rowDetail, { color: theme.muted }]}>
+            {usd(item.monthlyEquivalentCents)}/mo normalized · last charged {dateLabel(item.lastSeenDate)}
+          </Text>
+          {item.priceCreep ? <Text style={[styles.actionMeta, { color: theme.gold }]}>Price creep: {usd(item.priceCreepCents)}</Text> : null}
+          {item.isCancelCandidate ? <SecondaryButton label="I canceled this" icon={CheckCircle2} onPress={() => cancel(item.recurringStreamId)} /> : null}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function WinsScreen({
+  wins,
+  anomalies,
+  onChanged,
+}: {
+  wins: MoneyWinsSummaryView;
+  anomalies: AnomalyView[];
+  onChanged: () => void;
+}) {
+  const theme = useTheme();
+  async function confirm(id: number) {
+    await requestApi(`/api/money-wins/${id}/confirm`, { method: 'POST' });
+    onChanged();
+  }
+  async function recover(id: number) {
+    await requestApi(`/api/anomalies/${id}/recover`, { method: 'POST' });
+    onChanged();
+  }
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <Text style={[styles.panelKicker, { color: theme.accent }]}>Money Wins</Text>
+        <Text style={[styles.bigNumber, { color: theme.ink }]}>{usd(wins.verifiedTotalCents + wins.estimatedTotalCents, true)}</Text>
+        <Text style={[styles.rowDetail, { color: theme.muted }]}>
+          {usd(wins.verifiedTotalCents, true)} verified · {usd(wins.estimatedTotalCents, true)} estimated
+        </Text>
+      </View>
+      {wins.wins.map((win) => (
+        <View key={win.id} style={[styles.row, { borderColor: theme.border }]}>
+          <View style={styles.flexShrink}>
+            <Text style={[styles.rowTitle, { color: theme.ink }]}>{win.description}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>{win.status} · {dateLabel(win.createdAt)}</Text>
+          </View>
+          <View style={styles.rightStack}>
+            <Text style={[styles.amount, { color: win.status === 'verified' ? theme.success : theme.gold }]}>{usd(win.amountCents, true)}</Text>
+            {win.status === 'estimated' ? <Pressable onPress={() => confirm(win.id)}><Text style={[styles.linkText, { color: theme.accent }]}>confirm</Text></Pressable> : null}
+          </View>
+        </View>
+      ))}
+      <SectionHeader title="Charge Alerts" />
+      {anomalies.map((item) => (
+        <View key={item.id} style={[styles.row, { borderColor: theme.border }]}>
+          <View style={styles.flexShrink}>
+            <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.title}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>{item.detail}</Text>
+          </View>
+          <Pressable onPress={() => recover(item.id)}>
+            <Text style={[styles.linkText, { color: theme.accent }]}>recovered</Text>
+          </Pressable>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function SettingsScreen({ items, onChanged }: { items: LinkedItem[]; onChanged: () => void }) {
+  const theme = useTheme();
+  const prefs = useAppStore((s) => s.notificationPrefs);
+  const setPrefs = useAppStore((s) => s.setNotificationPrefs);
+  const setTokens = useAppStore((s) => s.setTokens);
+
+  async function registerPush() {
+    const permission = await Notifications.requestPermissionsAsync();
+    if (!permission.granted) return;
+    const token = await Notifications.getExpoPushTokenAsync();
+    const next = await requestApi<NotificationPreferencesView>('/api/push-tokens', {
+      method: 'POST',
+      body: JSON.stringify({ token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
+    });
+    setPrefs(next);
+  }
+
+  async function updatePrefs(next: NotificationPreferencesView) {
+    const saved = await requestApi<NotificationPreferencesView>('/api/notifications/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify({
+        weeklyBrief: next.weeklyBrief,
+        anomalies: next.anomalies,
+        goalPacing: next.goalPacing,
+        marketing: next.marketing,
+      }),
+    });
+    setPrefs(saved);
+  }
+
+  async function disconnect(itemId: number) {
+    await requestApi(`/api/items/${itemId}`, { method: 'DELETE' });
+    onChanged();
+  }
+
+  async function signOut() {
+    const refreshToken = useAppStore.getState().refreshToken;
+    if (refreshToken) {
+      await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
+    }
+    await persistTokens(null);
+    setTokens(null);
+  }
+
+  async function deleteAccount() {
+    Alert.alert('Delete account', 'This permanently deletes your ZenFinance data from the app database.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await requestApi('/api/me', { method: 'DELETE' });
+          await persistTokens(null);
+          setTokens(null);
+        },
+      },
+    ]);
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SectionHeader title="Notifications" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <PrimaryButton label={prefs?.pushEnabled ? 'Push enabled' : 'Enable push notifications'} icon={Bell} onPress={registerPush} />
+        {prefs ? (
+          <>
+            <Toggle label="Weekly brief" value={prefs.weeklyBrief} onValueChange={(v) => updatePrefs({ ...prefs, weeklyBrief: v })} />
+            <Toggle label="Charge alerts" value={prefs.anomalies} onValueChange={(v) => updatePrefs({ ...prefs, anomalies: v })} />
+            <Toggle label="Goal pacing" value={prefs.goalPacing} onValueChange={(v) => updatePrefs({ ...prefs, goalPacing: v })} />
+          </>
+        ) : null}
+      </View>
+      <SectionHeader title="Linked Banks" />
+      {items.map((item) => (
+        <View key={item.id} style={[styles.row, { borderColor: theme.border }]}>
+          <View>
+            <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.institutionName ?? 'Bank'}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>{item.accounts.length} account(s) · synced {dateLabel(item.lastSyncedAt)}</Text>
+          </View>
+          <Pressable onPress={() => disconnect(item.id)}>
+            <Trash2 color={theme.danger} size={20} />
+          </Pressable>
+        </View>
+      ))}
+      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
+      <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
+    </ScrollView>
+  );
+}
+
+function Toggle({ label, value, onValueChange }: { label: string; value: boolean; onValueChange: (value: boolean) => void }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={[styles.rowTitle, { color: theme.ink }]}>{label}</Text>
+      <Switch value={value} onValueChange={onValueChange} trackColor={{ true: theme.accent, false: theme.border }} />
+    </View>
+  );
+}
+
+function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
+  const theme = useTheme();
+  const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
+    { key: 'brief', icon: Sparkles, label: 'Brief' },
+    { key: 'coach', icon: MessageCircle, label: 'Coach' },
+    { key: 'goals', icon: Target, label: 'Goals' },
+    { key: 'subs', icon: WalletCards, label: 'Subs' },
+    { key: 'wins', icon: PiggyBank, label: 'Wins' },
+    { key: 'settings', icon: Moon, label: 'More' },
+  ];
+  return (
+    <View style={[styles.tabBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const selected = active === tab.key;
+        return (
+          <Pressable key={tab.key} style={styles.tabItem} onPress={() => onChange(tab.key)}>
+            <Icon color={selected ? theme.accent : theme.muted} size={20} />
+            <Text style={[styles.tabText, { color: selected ? theme.accent : theme.muted }]} numberOfLines={1}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Sparkles }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.metric, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Icon color={theme.accent} size={18} />
+      <Text style={[styles.metricValue, { color: theme.ink }]}>{value}</Text>
+      <Text style={[styles.metricLabel, { color: theme.muted }]}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  const theme = useTheme();
+  return <Text style={[styles.sectionTitle, { color: theme.ink }]}>{title}</Text>;
+}
+
+function ActionRow({ icon: Icon, title, detail }: { icon: typeof Sparkles; title: string; detail: string }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.row, { borderColor: theme.border }]}>
+      <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
+        <Icon color={theme.accent} size={18} />
+      </View>
+      <View style={styles.flexShrink}>
+        <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
+        <Text style={[styles.rowDetail, { color: theme.muted }]}>{detail}</Text>
+      </View>
+      <ChevronRight color={theme.muted} size={18} />
+    </View>
+  );
+}
+
+function EmptyMini({ title, copy }: { title: string; copy: string }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <Text style={[styles.panelTitle, { color: theme.ink }]}>{title}</Text>
+      <Text style={[styles.panelBody, { color: theme.muted }]}>{copy}</Text>
+    </View>
+  );
+}
+
+function PrimaryButton({
+  label,
+  icon: Icon,
+  disabled,
+  onPress,
+}: {
+  label: string;
+  icon?: typeof Sparkles;
+  disabled?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      style={[styles.primaryButton, { backgroundColor: disabled ? theme.border : theme.accent }]}
+      disabled={disabled}
+      onPress={onPress}
+    >
+      {Icon ? <Icon color="#fff" size={18} /> : null}
+      <Text style={styles.primaryButtonText}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function SecondaryButton({
+  label,
+  icon: Icon,
+  disabled,
+  compact,
+  danger,
+  onPress,
+}: {
+  label: string;
+  icon?: typeof Sparkles;
+  disabled?: boolean;
+  compact?: boolean;
+  danger?: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      style={[
+        styles.secondaryButton,
+        compact ? styles.compactButton : null,
+        { borderColor: danger ? theme.danger : theme.border, backgroundColor: theme.surface },
+      ]}
+      disabled={disabled}
+      onPress={onPress}
+    >
+      {Icon ? <Icon color={danger ? theme.danger : theme.accent} size={17} /> : null}
+      <Text style={[styles.secondaryButtonText, { color: danger ? theme.danger : theme.ink }]}>{label}</Text>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 24, gap: 8 },
+  flex: { flex: 1 },
+  flexShrink: { flex: 1, minWidth: 0 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 28, fontWeight: '700', marginTop: 16 },
-  subtitle: { fontSize: 15, color: '#64748b', marginBottom: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 16,
-    padding: 16,
-    marginVertical: 6,
-    gap: 4,
-  },
-  cardTitle: { fontWeight: '600', fontSize: 16 },
-  cardLine: { fontSize: 14 },
-  cardMeta: { fontSize: 12, color: '#94a3b8' },
+  centerGrow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  authScreen: { flex: 1, justifyContent: 'center', padding: 24 },
+  appScreen: { flex: 1 },
+  content: { flex: 1 },
+  brandMark: { marginBottom: 16 },
+  heroTitle: { fontSize: 42, fontWeight: '800' },
+  heroCopy: { fontSize: 18, lineHeight: 26, marginTop: 10, marginBottom: 28 },
+  authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
+  disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
+  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  appTitle: { fontSize: 24, fontWeight: '800' },
+  appSub: { fontSize: 13, marginTop: 2 },
+  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
+  input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
+  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  primaryButtonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
+  compactButton: { minHeight: 38, flex: 1 },
+  secondaryButtonText: { fontWeight: '700', fontSize: 14 },
+  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
+  largeIcon: { width: 72, height: 72, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  emptyTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
+  emptyCopy: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  metricStrip: { flexDirection: 'row', gap: 10 },
+  metric: { flex: 1, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
+  metricValue: { fontSize: 20, fontWeight: '800' },
+  metricLabel: { fontSize: 12, fontWeight: '700' },
+  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12 },
+  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
+  panelTitle: { fontSize: 22, lineHeight: 28, fontWeight: '800' },
+  panelBody: { fontSize: 15, lineHeight: 22 },
+  actionBox: { borderRadius: 8, padding: 14, gap: 4 },
+  actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
+  actionMeta: { fontSize: 13, lineHeight: 18 },
+  inlineButtons: { flexDirection: 'row', gap: 10 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
+  row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rowTitle: { fontSize: 15, fontWeight: '800' },
+  rowDetail: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  amount: { fontSize: 15, fontWeight: '800' },
+  smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  tabBar: { borderTopWidth: 1, flexDirection: 'row', paddingTop: 7, paddingBottom: Platform.OS === 'ios' ? 18 : 8, paddingHorizontal: 8 },
+  tabItem: { flex: 1, alignItems: 'center', gap: 3, minWidth: 0 },
+  tabText: { fontSize: 11, fontWeight: '700' },
+  chatList: { flexGrow: 1, padding: 20, gap: 10 },
+  chatBubble: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10 },
+  factLine: { fontSize: 12, lineHeight: 17 },
+  suggestion: { borderWidth: 1, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 12, width: '100%' },
+  suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
+  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
+  progressFill: { height: '100%', borderRadius: 8 },
+  bigNumber: { fontSize: 42, fontWeight: '800' },
+  rightStack: { alignItems: 'flex-end', gap: 4 },
+  linkText: { fontSize: 12, fontWeight: '800' },
+  toggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
 });

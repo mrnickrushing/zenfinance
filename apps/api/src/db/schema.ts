@@ -473,3 +473,63 @@ export const moneyWins = pgTable(
     index('money_wins_user_status_idx').on(t.userId, t.status),
   ],
 );
+
+// ---------- Phase 4: mobile product surface ----------
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    answer: text('answer').notNull(),
+    facts: jsonb('facts').notNull().default('[]'),
+    actions: jsonb('actions').notNull().default('[]'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('chat_messages_user_created_idx').on(t.userId, t.createdAt)],
+);
+
+export const pushTokens = pgTable(
+  'push_tokens',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    token: text('token').notNull(),
+    platform: text('platform').notNull().default('ios'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('push_tokens_token_idx').on(t.token), index('push_tokens_user_idx').on(t.userId)],
+);
+
+export const notificationPreferences = pgTable(
+  'notification_preferences',
+  {
+    userId: integer('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    weeklyBrief: boolean('weekly_brief').notNull().default(true),
+    anomalies: boolean('anomalies').notNull().default(true),
+    goalPacing: boolean('goal_pacing').notNull().default(true),
+    marketing: boolean('marketing').notNull().default(false),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+export const appEvents = pgTable(
+  'app_events',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    properties: jsonb('properties').notNull().default('{}'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('app_events_user_created_idx').on(t.userId, t.createdAt), index('app_events_name_idx').on(t.name)],
+);

@@ -11,6 +11,7 @@ import { createCoachingRouter } from './routes/coaching.js';
 import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
+import { createMobileRouter } from './routes/mobile.js';
 import { createSupportRouter } from './routes/support.js';
 import { createTransactionsRouter } from './routes/transactions.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
@@ -41,6 +42,7 @@ export function createApp(): express.Express {
   app.use(createTransactionsRouter());
   app.use(createGoalsRouter());
   app.use(createCoachingRouter());
+  app.use(createMobileRouter());
   app.use(createWebhooksRouter());
 
   // Serve the built site (marketing/support/admin pages) in production.

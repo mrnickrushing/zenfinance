@@ -5,6 +5,7 @@
   "description": "ZenFinance — AI personal finance coach (iOS app). This monorepo holds the API, the marketing/support/admin site, and shared packages.",
   "workspaces": [
     "apps/api",
+    "apps/ios",
     "apps/site",
     "packages/*"
   ],

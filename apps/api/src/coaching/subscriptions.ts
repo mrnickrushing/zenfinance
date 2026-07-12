@@ -1,4 +1,5 @@
 import { and, eq, isNull } from 'drizzle-orm';
+import type { RecurringCadence, SubscriptionAuditItemView, SubscriptionAuditView } from '@zenfinance/shared';
 import type { Db } from '../db/client.js';
 import { accounts, items, recurringStreams, transactionEnrichments, transactions } from '../db/schema.js';
 import { merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
@@ -17,30 +18,6 @@ const MONTHLY_MULTIPLIER: Record<string, number> = {
 const CANCEL_CANDIDATE_CATEGORIES = new Set(['SUBSCRIPTIONS_AND_STREAMING', 'FITNESS_AND_GYM']);
 
 const PRICE_CREEP_RATIO = 1.1;
-
-export interface SubscriptionAuditItem {
-  recurringStreamId: number;
-  merchantClean: string;
-  cadence: string;
-  category: string | null;
-  avgAmountCents: number;
-  lastAmountCents: number;
-  monthlyEquivalentCents: number;
-  occurrences: number;
-  firstSeenDate: string;
-  lastSeenDate: string;
-  isCancelCandidate: boolean;
-  priceCreep: boolean; // last charge meaningfully higher than the running average
-  priceCreepCents: number | null;
-  cancellationScript: string | null; // draft for cancel-candidates
-}
-
-export interface SubscriptionAudit {
-  items: SubscriptionAuditItem[];
-  totalMonthlyCents: number;
-  cancelCandidateMonthlyCents: number;
-  cancelCandidateCount: number;
-}
 
 function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -67,7 +44,7 @@ function cancellationScript(merchant: string, amountCents: number, cadence: stri
  * that are realistic cancel candidates (streaming, gym). Rent/utilities/etc.
  * are listed for completeness but never flagged.
  */
-export async function auditSubscriptions(db: Db, userId: number): Promise<SubscriptionAudit> {
+export async function auditSubscriptions(db: Db, userId: number): Promise<SubscriptionAuditView> {
   const streams = await db
     .select()
     .from(recurringStreams)
@@ -104,12 +81,13 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
     return [...votes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   };
 
-  const items_: SubscriptionAuditItem[] = [];
+  const items_: SubscriptionAuditItemView[] = [];
   let totalMonthlyCents = 0;
   let cancelCandidateMonthlyCents = 0;
   let cancelCandidateCount = 0;
 
   for (const s of streams) {
+    if (s.avgAmountCents <= 0) continue;
     const category = dominantCategory(s.accountId, s.merchantKey);
     const multiplier = MONTHLY_MULTIPLIER[s.cadence] ?? 1;
     const monthlyEquivalentCents = Math.round(s.avgAmountCents * multiplier);
@@ -125,7 +103,7 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
     items_.push({
       recurringStreamId: s.id,
       merchantClean: s.merchantClean,
-      cadence: s.cadence,
+      cadence: s.cadence as RecurringCadence,
       category,
       avgAmountCents: s.avgAmountCents,
       lastAmountCents: s.lastAmountCents,
