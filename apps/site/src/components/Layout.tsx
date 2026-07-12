@@ -11,17 +11,23 @@ export function Layout() {
           </Link>
           <nav aria-label="Main" className="flex items-center gap-6 text-sm">
             <Link
+              to="/insights"
+              className="text-slate-600 transition-colors duration-standard hover:text-primary-700 dark:text-slate-300 dark:hover:text-primary-300"
+            >
+              Insights
+            </Link>
+            <Link
               to="/support"
               className="text-slate-600 transition-colors duration-standard hover:text-primary-700 dark:text-slate-300 dark:hover:text-primary-300"
             >
               Support
             </Link>
-            <a
-              href="#waitlist"
+            <Link
+              to="/#waitlist"
               className="rounded-full bg-primary-600 px-4 py-2 font-medium text-white transition-colors duration-standard hover:bg-primary-700"
             >
               Join the waitlist
-            </a>
+            </Link>
           </nav>
         </div>
       </header>
@@ -36,6 +42,9 @@ export function Layout() {
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2">
             <Link to="/support" className="hover:text-primary-700 dark:hover:text-primary-300">
               Support
+            </Link>
+            <Link to="/insights" className="hover:text-primary-700 dark:hover:text-primary-300">
+              Insights
             </Link>
             <a
               href="mailto:support@rushingtechnologies.com"

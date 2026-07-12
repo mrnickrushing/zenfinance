@@ -141,6 +141,17 @@ function Dashboard() {
             />
           </section>
 
+          <section aria-label="Launch metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Active users · 7 days" value={metrics.launch.activeUsers7Days} />
+            <StatTile label="Premium users" value={metrics.launch.premiumUsers} sub={`${metrics.launch.trialUsers} trial · ${metrics.launch.paidUsers} paid`} />
+            <StatTile label="MRR" value={Math.round(metrics.launch.mrrCents / 100)} sub="USD, annualized monthly" />
+            <StatTile
+              label="Avg verified wins"
+              value={Math.round(metrics.launch.verifiedMoneyWinsAvgCents / 100)}
+              sub={`${metrics.launch.referralRedemptions} referral redemptions`}
+            />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days

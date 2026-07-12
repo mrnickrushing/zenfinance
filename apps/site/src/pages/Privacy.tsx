@@ -32,7 +32,8 @@ export function PrivacyPage() {
             Your email address; account and transaction data from institutions you choose to link
             (via Plaid); goals and preferences you set in the app; and standard diagnostics (crash
             reports, first-party usage events, subscription entitlement status, and support
-            requests you send us).
+            requests you send us). If you use referrals, we store your referral code,
+            redemption status, and premium-credit expiration dates.
           </p>
         </section>
 
@@ -43,7 +44,8 @@ export function PrivacyPage() {
           <p className="mt-3 text-sm leading-relaxed">
             We use your data to authenticate your account, sync read-only financial data, generate
             coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
-            support, prevent abuse, and understand whether the beta is working.
+            support, prevent abuse, run the referral program, publish minimum-sample aggregate
+            launch insights, and understand whether the beta or launch is working.
           </p>
         </section>
 
@@ -81,6 +83,17 @@ export function PrivacyPage() {
             You can disconnect a bank, export your data, disable notification types, cancel your
             subscription through the App Store, or delete your account from the app. Privacy
             requests can also be sent to support@rushingtechnologies.com.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Public aggregate insights
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            ZenFinance may publish launch-cohort statistics only as anonymized aggregate metrics,
+            such as average recurring charges or average verified Money Wins. We do not publish
+            raw transactions, individual merchants tied to a user, or small-cohort slices.
           </p>
         </section>
 

@@ -23,12 +23,12 @@ ZenFinance does not track users across apps or websites owned by other companies
 | User Content: Customer Support | Yes | Support | Support tickets submitted on the site/API. |
 | Identifiers: User ID | Yes | App functionality, account management | Internal user id and RevenueCat app user id. |
 | Purchases | Yes | App functionality | Subscription entitlement/product status from RevenueCat. |
-| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, and beta retention events. |
+| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, referrals, and beta/launch retention events. |
 | Diagnostics: Crash Data | Yes | App stability | Sentry with `sendDefaultPii=false` and server-side scrubbing. |
 
 ## Data Not Linked To The User
 
-None intentionally collected at launch. If aggregate marketing analytics are added later, update this document and App Store Connect before release.
+Aggregate launch metrics may be published without linking to a user only after the minimum sample size is reached. These are derived from first-party app data and do not include raw transactions or user-level slices.
 
 ## Third-Party Processors And SDKs
 
@@ -48,6 +48,7 @@ Users can:
 - Disconnect a linked bank item from Settings.
 - Export their data from Settings or `GET /api/me/export`.
 - Delete the account from Settings or `DELETE /api/me`; the API revokes provider items, cascades the database delete, and writes a non-PII deletion audit event.
+- Share or redeem referral codes from Settings; referral records are deleted with the account.
 
 ## App Store Submission Checks
 

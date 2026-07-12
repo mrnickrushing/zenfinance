@@ -9,6 +9,9 @@ import {
   billingEvents,
   privacyDeletionEvents,
   pricingExperiments,
+  referralCodes,
+  referralCredits,
+  referralRedemptions,
   supportRequests,
   users,
   waitlistSignups,
@@ -29,6 +32,9 @@ export async function migrateOnce(): Promise<void> {
 
 export async function truncateAll(): Promise<void> {
   await db.delete(adminRefreshTokens);
+  await db.delete(referralCredits);
+  await db.delete(referralRedemptions);
+  await db.delete(referralCodes);
   await db.delete(billingEvents);
   await db.delete(appEvents);
   await db.delete(billingEntitlements);

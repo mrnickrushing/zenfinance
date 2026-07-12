@@ -11,6 +11,7 @@ import {
   CircleDollarSign,
   CreditCard,
   Crown,
+  Gift,
   Landmark,
   LockKeyhole,
   LogOut,
@@ -61,6 +62,8 @@ import type {
   MoneyWinsSummaryView,
   NotificationPreferencesView,
   PaywallPackageView,
+  ReferralRedeemView,
+  ReferralStatusView,
   SubscriptionAuditView,
   UserDataExportView,
   WhatIfResultView,
@@ -1037,6 +1040,15 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   const setPrefs = useAppStore((s) => s.setNotificationPrefs);
   const setTokens = useAppStore((s) => s.setTokens);
   const [billingBusy, setBillingBusy] = useState(false);
+  const [referral, setReferral] = useState<ReferralStatusView | null>(null);
+  const [redeemCode, setRedeemCode] = useState('');
+  const [referralBusy, setReferralBusy] = useState(false);
+
+  useEffect(() => {
+    requestApi<ReferralStatusView>('/api/referrals/me')
+      .then(setReferral)
+      .catch(() => setReferral(null));
+  }, []);
 
   async function registerPush() {
     const permission = await Notifications.requestPermissionsAsync();
@@ -1102,6 +1114,33 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     }
   }
 
+  async function shareReferral() {
+    if (!referral) return;
+    await Share.share({
+      title: 'Join ZenFinance',
+      message: referral.shareText,
+    });
+  }
+
+  async function redeemReferral() {
+    if (!redeemCode.trim()) return;
+    setReferralBusy(true);
+    try {
+      const res = await requestApi<ReferralRedeemView>('/api/referrals/redeem', {
+        method: 'POST',
+        body: JSON.stringify({ code: redeemCode.trim().toUpperCase() }),
+      });
+      setReferral(res.referral);
+      setRedeemCode('');
+      onChanged();
+      Alert.alert('Referral applied', 'Thirty days of ZenFinance Coach credit was added.');
+    } catch (err) {
+      Alert.alert('Referral failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setReferralBusy(false);
+    }
+  }
+
   function manageSubscription() {
     const url = billing.entitlement?.managementUrl;
     if (!url) {
@@ -1152,6 +1191,41 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         </Text>
         <SecondaryButton label={billingBusy ? 'Restoring...' : 'Restore purchases'} icon={RefreshCcw} disabled={billingBusy} onPress={restorePurchases} />
         {billing.isPremium ? <SecondaryButton label="Manage subscription" icon={CreditCard} onPress={manageSubscription} /> : null}
+      </View>
+      <SectionHeader title="Invite Credit" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <Gift color={theme.accent} size={20} />
+          <Text style={[styles.panelKicker, { color: theme.accent }]}>
+            {referral?.code ?? 'Referral'}
+          </Text>
+        </View>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>
+          {referral
+            ? `${referral.referredUsers} redeemed invite(s) · ${referral.premiumDaysAwarded} premium day(s) awarded${referral.activeCreditExpiresAt ? ` · active until ${dateLabel(referral.activeCreditExpiresAt)}` : ''}`
+            : 'Loading your invite code...'}
+        </Text>
+        <SecondaryButton label="Share invite" icon={Gift} disabled={!referral} onPress={shareReferral} />
+        {!referral?.redeemedCode ? (
+          <>
+            <TextInput
+              value={redeemCode}
+              onChangeText={setRedeemCode}
+              autoCapitalize="characters"
+              placeholder="Referral code"
+              placeholderTextColor={theme.muted}
+              style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            />
+            <SecondaryButton
+              label={referralBusy ? 'Applying...' : 'Redeem code'}
+              icon={CheckCircle2}
+              disabled={referralBusy || !redeemCode.trim()}
+              onPress={redeemReferral}
+            />
+          </>
+        ) : (
+          <Text style={[styles.rowDetail, { color: theme.muted }]}>Redeemed code {referral.redeemedCode}</Text>
+        )}
       </View>
       <SectionHeader title="Notifications" />
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
