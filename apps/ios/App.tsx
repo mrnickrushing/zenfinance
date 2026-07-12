@@ -38,6 +38,7 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -61,6 +62,7 @@ import type {
   NotificationPreferencesView,
   PaywallPackageView,
   SubscriptionAuditView,
+  UserDataExportView,
   WhatIfResultView,
 } from '@zenfinance/shared';
 
@@ -79,6 +81,8 @@ if (SENTRY_DSN) {
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: false,
     shouldSetBadge: true,
   }),
@@ -1086,6 +1090,18 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     }
   }
 
+  async function exportData() {
+    try {
+      const data = await requestApi<UserDataExportView>('/api/me/export');
+      await Share.share({
+        title: 'ZenFinance data export',
+        message: JSON.stringify(data, null, 2),
+      });
+    } catch (err) {
+      Alert.alert('Export failed', err instanceof Error ? err.message : 'Unknown error');
+    }
+  }
+
   function manageSubscription() {
     const url = billing.entitlement?.managementUrl;
     if (!url) {
@@ -1153,13 +1169,17 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         <View key={item.id} style={[styles.row, { borderColor: theme.border }]}>
           <View>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.institutionName ?? 'Bank'}</Text>
-            <Text style={[styles.rowDetail, { color: theme.muted }]}>{item.accounts.length} account(s) · synced {dateLabel(item.lastSyncedAt)}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>
+              {item.status.replace('_', ' ')} · {item.accounts.length} account(s) · synced {dateLabel(item.lastSyncedAt)}
+            </Text>
           </View>
           <Pressable onPress={() => disconnect(item.id)}>
             <Trash2 color={theme.danger} size={20} />
           </Pressable>
         </View>
       ))}
+      <SectionHeader title="Data Rights" />
+      <SecondaryButton label="Export my data" icon={ShieldCheck} onPress={exportData} />
       <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
       <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
     </ScrollView>

@@ -3,7 +3,7 @@ export function PrivacyPage() {
     <div className="prose-zen mx-auto max-w-3xl px-6 py-16">
       <h1 className="text-3xl font-bold tracking-tight">Privacy Policy</h1>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        Draft — this policy will be finalized with legal review before the app launches.
+        Last updated July 12, 2026 — prepared for final legal review before App Store submission.
       </p>
 
       <div className="mt-8 space-y-8 text-slate-700 dark:text-slate-300">
@@ -15,6 +15,7 @@ export function PrivacyPage() {
             <li>We never see or store your bank username or password — linking happens through Plaid.</li>
             <li>Our access to your accounts is read-only. We cannot move your money.</li>
             <li>You can disconnect an account or delete everything with one tap, any time.</li>
+            <li>You can export your data from the app or through the API before deleting.</li>
             <li>We don't sell your data. Ever.</li>
             <li>
               Only the minimum context needed to generate your coaching is shared with our AI
@@ -30,7 +31,32 @@ export function PrivacyPage() {
           <p className="mt-3 text-sm leading-relaxed">
             Your email address; account and transaction data from institutions you choose to link
             (via Plaid); goals and preferences you set in the app; and standard diagnostics (crash
-            reports, anonymized usage events).
+            reports, first-party usage events, subscription entitlement status, and support
+            requests you send us).
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            How we use data
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            We use your data to authenticate your account, sync read-only financial data, generate
+            coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
+            support, prevent abuse, and understand whether the beta is working.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Processors
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            ZenFinance uses Plaid for read-only account linking, RevenueCat for App Store
+            subscription entitlements, Anthropic for optional AI enrichment/coaching, Sentry for
+            diagnostics, Expo/APNs for push notifications, Railway/Postgres for hosting, and Resend
+            for support email. We configure diagnostics to avoid default PII collection and scrub
+            common secrets before error events leave the server.
           </p>
         </section>
 
@@ -39,9 +65,22 @@ export function PrivacyPage() {
             How deletion works
           </h2>
           <p className="mt-3 text-sm leading-relaxed">
-            Deleting your account removes your data from our production systems immediately and
-            from backups within their documented expiry window (30 days), and triggers deletion
-            requests with our processors, including Plaid and our AI provider.
+            Deleting your account revokes linked provider items when possible, removes your
+            account data from production database tables through cascade deletion, and stores only
+            non-PII deletion evidence: a salted email hash, item count, revocation-failure count,
+            and completion timestamp. Backups expire within their documented window, currently 30
+            days.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Your choices
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            You can disconnect a bank, export your data, disable notification types, cancel your
+            subscription through the App Store, or delete your account from the app. Privacy
+            requests can also be sent to support@rushingtechnologies.com.
           </p>
         </section>
 

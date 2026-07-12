@@ -6,11 +6,12 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { accounts, items, users } from '../db/schema.js';
+import { accounts, items } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
 import { enforceItemLimit } from '../middleware/billing.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
+import { deleteUserAccount } from '../privacy/service.js';
 import { getProvider } from '../providers/index.js';
 import { enqueueItemSync } from '../queue/index.js';
 
@@ -109,17 +110,12 @@ export function createLinkRouter(): ReturnType<typeof Router> {
   // Full account deletion: revoke every provider connection, then delete the
   // user row — everything else cascades.
   linkRouter.delete('/api/me', requireUser, async (_req, res) => {
-    const userId = res.locals.userId as number;
-    const userItems = await db.select().from(items).where(eq(items.userId, userId));
-    for (const item of userItems) {
-      try {
-        await getProvider().removeItem(decryptToken(item.encryptedAccessToken));
-      } catch (err) {
-        console.error(`[link] provider removeItem failed for item ${item.id}:`, err);
-      }
+    const result = await deleteUserAccount(db, res.locals.userId as number);
+    if (!result) {
+      res.status(404).json({ error: { code: 'not_found', message: 'User not found' } });
+      return;
     }
-    await db.delete(users).where(eq(users.id, userId));
-    res.json({ ok: true });
+    res.json(result);
   });
 
   return linkRouter;

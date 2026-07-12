@@ -9,7 +9,7 @@ import { count, desc, eq, gte, sql } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
-import { supportRequests, waitlistSignups } from '../db/schema.js';
+import { appEvents, insights, items, supportRequests, users, waitlistSignups } from '../db/schema.js';
 import {
   issueAccessToken,
   issueRefreshToken,
@@ -112,6 +112,27 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       .select({ n: count() })
       .from(supportRequests)
       .where(eq(supportRequests.status, 'open'));
+    const [registeredUsers] = await db.select({ n: count() }).from(users);
+    const [linkedUsers] = await db.select({ n: sql<number>`count(distinct ${items.userId})` }).from(items);
+    const [firstBriefUsers] = await db
+      .select({ n: sql<number>`count(distinct ${insights.userId})` })
+      .from(insights)
+      .where(eq(insights.kind, 'first_look'));
+    const [actedUsers] = await db
+      .select({ n: sql<number>`count(distinct ${insights.userId})` })
+      .from(insights)
+      .where(eq(insights.feedbackFollowedThrough, true));
+    const [retainedWeek4Users] = await db
+      .select({ n: sql<number>`count(distinct ${users.id})` })
+      .from(users)
+      .innerJoin(appEvents, eq(appEvents.userId, users.id))
+      .where(sql`${users.createdAt} <= now() - interval '28 days' and ${appEvents.createdAt} >= ${users.createdAt} + interval '28 days'`);
+
+    const userCount = Number(registeredUsers!.n);
+    const linkedUserCount = Number(linkedUsers!.n);
+    const firstBriefUserCount = Number(firstBriefUsers!.n);
+    const actedUserCount = Number(actedUsers!.n);
+    const retainedWeek4UserCount = Number(retainedWeek4Users!.n);
 
     const metrics: AdminMetrics = {
       waitlist: {
@@ -124,6 +145,16 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         total: supportTotal!.n,
         open: supportOpen!.n,
         resolved: supportTotal!.n - supportOpen!.n,
+      },
+      beta: {
+        registeredUsers: userCount,
+        linkedUsers: linkedUserCount,
+        firstBriefUsers: firstBriefUserCount,
+        actedUsers: actedUserCount,
+        retainedWeek4Users: retainedWeek4UserCount,
+        activationRate: userCount ? firstBriefUserCount / userCount : 0,
+        actionRate: userCount ? actedUserCount / userCount : 0,
+        week4RetentionRate: userCount ? retainedWeek4UserCount / userCount : 0,
       },
     };
     res.json(metrics);

@@ -7,6 +7,7 @@ import {
   billingCustomers,
   billingEntitlements,
   billingEvents,
+  privacyDeletionEvents,
   pricingExperiments,
   supportRequests,
   users,
@@ -33,6 +34,7 @@ export async function truncateAll(): Promise<void> {
   await db.delete(billingEntitlements);
   await db.delete(pricingExperiments);
   await db.delete(billingCustomers);
+  await db.delete(privacyDeletionEvents);
   await db.delete(supportRequests);
   await db.delete(waitlistSignups);
   await db.delete(users); // cascades refresh tokens, items, accounts, transactions

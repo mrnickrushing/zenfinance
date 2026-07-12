@@ -1,0 +1,45 @@
+# Phase 6 Security Audit
+
+Last run: July 12, 2026
+
+## Dependency Gate
+
+Command:
+
+```bash
+npm audit --audit-level=high
+```
+
+Result: passes for high and critical vulnerabilities. `npm audit` still reports moderate advisories in development/tooling dependencies:
+
+- `esbuild <=0.24.2` through `drizzle-kit`'s `@esbuild-kit` loader path.
+- `uuid <11.1.1` through Expo config tooling's `xcode` path.
+
+These are not in the production API request path. Recheck monthly and after new `drizzle-kit` or Expo SDK releases.
+
+## Remediations Applied
+
+- Upgraded `drizzle-orm` to clear the server ORM advisory.
+- Upgraded `@sentry/node` to the current major and added API event scrubbing before send.
+- Upgraded API test/runtime tooling (`vitest`, `tsx`) to remove high/critical audit findings.
+- Upgraded the iOS app to Expo SDK 57 with matching React Native, Expo modules, Sentry React Native, and TypeScript versions.
+- Added root npm overrides for `tar` and `@xmldom/xmldom` as defense-in-depth if vulnerable transitive paths reappear.
+
+## Runtime Hardening
+
+- Sentry payloads are recursively redacted for token, secret, password, Plaid, cookie, authorization, and email-like keys.
+- Express central error handling now captures exceptions in Sentry without leaking stack traces to clients.
+- Plaid item webhooks explicitly transition items through `active`, `login_required`, and `disconnected` states.
+- Account deletion revokes provider items where possible and writes a non-PII deletion audit event.
+
+## Required Release Checks
+
+Before external beta or App Store submission:
+
+```bash
+npm run typecheck
+DATABASE_URL=postgres://dev:dev@localhost:5434/zenfinance_test npm run test -w @zenfinance/api
+npm run build
+npm audit --audit-level=high
+cd apps/ios && npx expo install --check
+```

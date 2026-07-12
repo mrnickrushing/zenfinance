@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import helmet from 'helmet';
+import * as Sentry from '@sentry/node';
 import { env } from './env.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createAuthRouter } from './routes/auth.js';
@@ -13,6 +14,7 @@ import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
 import { createMobileRouter } from './routes/mobile.js';
+import { createPrivacyRouter } from './routes/privacy.js';
 import { createSupportRouter } from './routes/support.js';
 import { createTransactionsRouter } from './routes/transactions.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
@@ -52,6 +54,7 @@ export function createApp(): express.Express {
   app.use(createGoalsRouter());
   app.use(createCoachingRouter());
   app.use(createMobileRouter());
+  app.use(createPrivacyRouter());
   app.use(createWebhooksRouter());
 
   // Serve the built site (marketing/support/admin pages) in production.
@@ -68,8 +71,11 @@ export function createApp(): express.Express {
   });
 
   // Central error handler: consistent shape, no stack traces to clients.
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     console.error('[api] unhandled error:', err);
+    Sentry.captureException(err, {
+      tags: { route: req.path, method: req.method },
+    });
     res.status(500).json({ error: { code: 'internal', message: 'Internal server error' } });
   });
 

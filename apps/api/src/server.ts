@@ -17,6 +17,21 @@ if (env.SENTRY_DSN) {
     environment: env.NODE_ENV,
     tracesSampleRate: env.NODE_ENV === 'production' ? 0.2 : 1.0,
     sendDefaultPii: false,
+    beforeSend(event) {
+      const scrub = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(scrub);
+        if (!value || typeof value !== 'object') return value;
+        return Object.fromEntries(
+          Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+            if (/email|password|token|secret|authorization|cookie|plaid|revenuecat/i.test(key)) {
+              return [key, '[Filtered]'];
+            }
+            return [key, scrub(entry)];
+          }),
+        );
+      };
+      return scrub(event) as typeof event;
+    },
   });
 }
 

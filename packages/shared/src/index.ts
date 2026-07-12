@@ -71,6 +71,16 @@ export interface AdminMetrics {
     open: number;
     resolved: number;
   };
+  beta: {
+    registeredUsers: number;
+    linkedUsers: number;
+    firstBriefUsers: number;
+    actedUsers: number;
+    retainedWeek4Users: number;
+    activationRate: number;
+    actionRate: number;
+    week4RetentionRate: number;
+  };
 }
 
 export interface Paginated<T> {
@@ -148,6 +158,30 @@ export interface TransactionView {
   merchantName: string | null;
   pending: boolean;
   transferPairId: string | null;
+}
+
+export interface UserDataExportView {
+  generatedAt: string;
+  user: {
+    id: number;
+    email: string;
+    appleLinked: boolean;
+    createdAt: string;
+  };
+  items: LinkedItem[];
+  transactions: EnrichedTransactionView[];
+  goals: GoalView[];
+  insights: InsightView[];
+  anomalies: AnomalyView[];
+  moneyWins: MoneyWinsSummaryView;
+  billing: BillingStatusView;
+  notificationPreferences: NotificationPreferencesView | null;
+}
+
+export interface PrivacyDeletionEventView {
+  ok: true;
+  deletionEventId: number;
+  completedAt: string;
 }
 
 // ---------- AI enrichment (Phase 2) ----------

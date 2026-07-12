@@ -534,6 +534,24 @@ export const appEvents = pgTable(
   (t) => [index('app_events_user_created_idx').on(t.userId, t.createdAt), index('app_events_name_idx').on(t.name)],
 );
 
+// Phase 6 deletion evidence: after a user row is deleted, this keeps a
+// non-reversible email hash and provider-revocation outcome for compliance
+// audit without retaining user data.
+export const privacyDeletionEvents = pgTable(
+  'privacy_deletion_events',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    emailHash: text('email_hash').notNull(),
+    itemCount: integer('item_count').notNull(),
+    providerRevocationFailures: integer('provider_revocation_failures').notNull().default(0),
+    processorDeletionStatus: jsonb('processor_deletion_status').notNull().default('{}'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+  },
+  (t) => [index('privacy_deletion_user_idx').on(t.userId), index('privacy_deletion_requested_idx').on(t.requestedAt)],
+);
+
 // ---------- Phase 5: RevenueCat billing and entitlement gates ----------
 
 export const billingStatusEnum = pgEnum('billing_status', [

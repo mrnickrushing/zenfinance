@@ -75,6 +75,9 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] CORS: requests from other origins are rejected (`FRONTEND_URL` is the only allowed origin)
 - [ ] Sentry receives a test event (if configured)
 - [ ] RevenueCat sandbox purchase, cancellation, refund, and restore update `/api/billing/status`
+- [ ] Plaid sandbox item webhooks update item state (`login_required`, `active`, `disconnected`)
+- [ ] `/api/me/export` returns an authenticated data export and `DELETE /api/me` records a non-PII deletion audit event
+- [ ] App Store privacy answers in `docs/APP_STORE_PRIVACY.md` match the final native build and App Store Connect entry
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development
