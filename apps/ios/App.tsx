@@ -896,21 +896,15 @@ function CoachScreen() {
         inverted
         contentContainerStyle={styles.chatList}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
-              <Bot color={theme.accent} size={34} />
-            </View>
-            <Text style={[styles.emptyTitle, { color: theme.ink }]}>Ask about your money</Text>
-            <Text style={[styles.emptyCopy, { color: theme.muted }]}>
-              Try a merchant, category, purchase amount, subscription, or date range.
-            </Text>
-            <Suggestion onPress={setQuestion} value="How much did I spend on coffee in the last 90 days?" />
-            <Suggestion onPress={setQuestion} value="Can I afford $600 this month?" />
-            <Suggestion onPress={setQuestion} value="Which subscriptions should I cancel?" />
-          </View>
+          <CoachPromptBoard onPress={setQuestion} />
         }
         renderItem={({ item }) => <ChatBubble answer={item} />}
       />
+      <View style={[styles.quickPromptRail, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+        <QuickPromptChip label="Can I afford..." value="Can I afford $600 this month?" onPress={setQuestion} />
+        <QuickPromptChip label="Find waste" value="Which subscriptions should I cancel?" onPress={setQuestion} />
+        <QuickPromptChip label="Explain charge" value="Explain my largest unusual charge this month." onPress={setQuestion} />
+      </View>
       <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
         <TextInput
           style={[styles.composerInput, { color: theme.ink }]}
@@ -939,6 +933,69 @@ function ChatBubble({ answer }: { answer: ChatAnswerView }) {
         <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
       ))}
     </CoachCard>
+  );
+}
+
+function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
+  const theme = useTheme();
+  const groups = [
+    {
+      title: 'Spending',
+      icon: WalletCards,
+      prompts: ['How much did I spend on coffee in the last 90 days?', 'What changed in my dining spend?'],
+    },
+    {
+      title: 'Affordability',
+      icon: CircleDollarSign,
+      prompts: ['Can I afford $600 this month?', 'What would I need to cut to save $150?'],
+    },
+    {
+      title: 'Subscriptions',
+      icon: CreditCard,
+      prompts: ['Which subscriptions should I cancel?', 'Did any recurring charge get more expensive?'],
+    },
+    {
+      title: 'Goals',
+      icon: Target,
+      prompts: ['Am I on pace for my top goal?', 'What would move my goal up by two weeks?'],
+    },
+  ];
+
+  return (
+    <View style={styles.promptBoard}>
+      <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+        <Bot color={theme.accent} size={34} />
+      </View>
+      <Text style={[styles.emptyTitle, { color: theme.ink }]}>Ask about your money</Text>
+      <Text style={[styles.emptyCopy, { color: theme.muted }]}>
+        Start with a question that has a dollar amount, merchant, category, or goal attached.
+      </Text>
+      {groups.map((group) => {
+        const Icon = group.icon;
+        return (
+          <View key={group.title} style={[styles.promptGroup, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+            <View style={styles.panelHeader}>
+              <Icon color={theme.accent} size={18} />
+              <Text style={[styles.actionTitle, { color: theme.ink }]}>{group.title}</Text>
+            </View>
+            {group.prompts.map((prompt) => (
+              <Suggestion key={prompt} onPress={onPress} value={prompt} />
+            ))}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function QuickPromptChip({ label, value, onPress }: { label: string; value: string; onPress: (value: string) => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable style={[styles.quickPromptChip, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} onPress={() => onPress(value)}>
+      <Text style={[styles.quickPromptText, { color: theme.ink }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -2335,6 +2392,11 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 11, fontWeight: '700' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
   coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10 },
+  promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
+  promptGroup: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
+  quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
+  quickPromptChip: { flex: 1, minHeight: 36, borderWidth: 1, borderRadius: 8, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  quickPromptText: { fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
   insightLedger: { borderWidth: 1, borderRadius: 8, padding: 10, gap: 6 },
   ledgerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   ledgerLabel: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
