@@ -10,6 +10,8 @@ import type {
   NotificationPreferencesView,
   PrivacyDeletionEventView,
   UserDataExportView,
+  VoiceBriefView,
+  VoiceBriefSegmentView,
 } from '@zenfinance/shared';
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getBillingStatus } from '../billing/service.js';
@@ -33,6 +35,7 @@ import {
   transactionEnrichments,
   transactions,
   users,
+  voiceBriefs,
 } from '../db/schema.js';
 import { env } from '../env.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
@@ -326,10 +329,44 @@ async function householdExport(db: Db, userId: number): Promise<HouseholdStatusV
   };
 }
 
+async function voiceBriefViews(db: Db, userId: number): Promise<VoiceBriefView[]> {
+  const rows = await db
+    .select({
+      id: voiceBriefs.id,
+      insightId: voiceBriefs.insightId,
+      insightKind: insights.kind,
+      headline: insights.headline,
+      script: voiceBriefs.script,
+      segments: voiceBriefs.segments,
+      durationSeconds: voiceBriefs.durationSeconds,
+      playCount: voiceBriefs.playCount,
+      completedAt: voiceBriefs.completedAt,
+      createdAt: voiceBriefs.createdAt,
+      updatedAt: voiceBriefs.updatedAt,
+    })
+    .from(voiceBriefs)
+    .innerJoin(insights, eq(insights.id, voiceBriefs.insightId))
+    .where(eq(voiceBriefs.userId, userId))
+    .orderBy(desc(voiceBriefs.createdAt));
+  return rows.map((row) => ({
+    id: row.id,
+    insightId: row.insightId,
+    insightKind: row.insightKind,
+    headline: row.headline,
+    script: row.script,
+    durationSeconds: row.durationSeconds,
+    segments: (row.segments as VoiceBriefSegmentView[]) ?? [],
+    playCount: row.playCount,
+    completedAt: row.completedAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }));
+}
+
 export async function buildUserDataExport(db: Db, userId: number): Promise<UserDataExportView | null> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
-  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household] = await Promise.all([
+  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList] = await Promise.all([
     itemViews(db, userId),
     transactionViews(db, userId),
     goalViews(db, userId),
@@ -339,6 +376,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     getBillingStatus(db, userId),
     notificationPrefs(db, userId),
     householdExport(db, userId),
+    voiceBriefViews(db, userId),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -357,6 +395,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     billing,
     notificationPreferences: prefs,
     household,
+    voiceBriefs: voiceBriefsList,
   };
 }
 

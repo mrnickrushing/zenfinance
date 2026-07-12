@@ -21,6 +21,7 @@ import { createPrivacyRouter } from './routes/privacy.js';
 import { createReferralsRouter } from './routes/referrals.js';
 import { createSupportRouter } from './routes/support.js';
 import { createTransactionsRouter } from './routes/transactions.js';
+import { createVoiceBriefsRouter } from './routes/voiceBriefs.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
 import { createWebhooksRouter } from './routes/webhooks.js';
 
@@ -60,6 +61,7 @@ export function createApp(): express.Express {
   app.use(createCoachingRouter());
   app.use(createFreelancerRouter());
   app.use(createHouseholdsRouter());
+  app.use(createVoiceBriefsRouter());
   app.use(createMobileRouter());
   app.use(createPrivacyRouter());
   app.use(createReferralsRouter());

@@ -19,11 +19,11 @@ ZenFinance does not track users across apps or websites owned by other companies
 | Contact Info: Email Address | Yes | App functionality, account management, support | Stored in Postgres. Used for sign-in/support only. |
 | Financial Info: Payment Info | No | N/A | App Store and RevenueCat process subscription state; ZenFinance stores entitlement status, product id, renewal/cancellation dates, and RevenueCat app user id, not card details. |
 | Financial Info: Credit Info | No | N/A | Not collected. |
-| Financial Info: Other Financial Info | Yes | App functionality, analytics within the product | Plaid account balances, account metadata, transactions, recurring streams, goals, shared household goals, Freelancer Mode profile settings, alerts, and coaching artifacts. |
+| Financial Info: Other Financial Info | Yes | App functionality, analytics within the product | Plaid account balances, account metadata, transactions, recurring streams, goals, shared household goals, Freelancer Mode profile settings, alerts, coaching artifacts, and generated Voice Brief scripts. |
 | User Content: Customer Support | Yes | Support | Support tickets submitted on the site/API. |
 | Identifiers: User ID | Yes | App functionality, account management | Internal user id and RevenueCat app user id. |
 | Purchases | Yes | App functionality | Subscription entitlement/product status from RevenueCat. |
-| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, referrals, Household Sharing use, Freelancer Mode use, and beta/launch retention events. |
+| Usage Data: Product Interaction | Yes | Analytics | First-party app events only: registration, linking, paywall, coach use, referrals, Voice Brief playback, Household Sharing use, Freelancer Mode use, and beta/launch retention events. |
 | Diagnostics: Crash Data | Yes | App stability | Sentry with `sendDefaultPii=false` and server-side scrubbing. |
 
 ## Data Not Linked To The User
@@ -51,6 +51,7 @@ Users can:
 - Share or redeem referral codes from Settings; referral records are deleted with the account.
 - Pause or edit Freelancer Mode settings from Settings; profile rows are deleted with the account.
 - Create, join, or leave a household from Settings; household membership is deleted with the account, while shared-goal history may keep a null author reference for the remaining household.
+- Play Voice Briefs on device; generated voice scripts and playback metadata are deleted with the account.
 
 ## App Store Submission Checks
 

@@ -107,6 +107,11 @@ export interface AdminMetrics {
     pendingInvites: number;
     sharedGoals: number;
   };
+  voice: {
+    generatedBriefs: number;
+    completedBriefs: number;
+    avgDurationSeconds: number | null;
+  };
 }
 
 export interface Paginated<T> {
@@ -203,6 +208,7 @@ export interface UserDataExportView {
   billing: BillingStatusView;
   notificationPreferences: NotificationPreferencesView | null;
   household?: HouseholdStatusView;
+  voiceBriefs?: VoiceBriefView[];
 }
 
 export interface PrivacyDeletionEventView {
@@ -294,6 +300,34 @@ export const insightFeedbackSchema = z.object({
   followedThrough: z.boolean().optional(),
 });
 export type InsightFeedbackInput = z.infer<typeof insightFeedbackSchema>;
+
+// ---------- Voice Briefs (Phase 10) ----------
+
+export interface VoiceBriefSegmentView {
+  label: 'intro' | 'summary' | 'action' | 'closing';
+  text: string;
+  durationSeconds: number;
+}
+
+export interface VoiceBriefView {
+  id: number;
+  insightId: number;
+  insightKind: InsightKind;
+  headline: string;
+  script: string;
+  durationSeconds: number;
+  segments: VoiceBriefSegmentView[];
+  playCount: number;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const voiceBriefEventSchema = z.object({
+  event: z.enum(['started', 'completed']),
+  positionSeconds: z.number().int().min(0).max(600).optional(),
+});
+export type VoiceBriefEventInput = z.infer<typeof voiceBriefEventSchema>;
 
 export type GoalStatus = 'active' | 'achieved' | 'archived';
 export type PacingStatus = 'on_track' | 'behind' | 'ahead' | 'no_deadline' | 'unknown';

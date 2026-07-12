@@ -394,6 +394,32 @@ export const insights = pgTable(
   ],
 );
 
+// ---------- Phase 10: voice briefs ----------
+
+export const voiceBriefs = pgTable(
+  'voice_briefs',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    insightId: integer('insight_id')
+      .notNull()
+      .references(() => insights.id, { onDelete: 'cascade' }),
+    script: text('script').notNull(),
+    segments: jsonb('segments').notNull().default('[]'),
+    durationSeconds: integer('duration_seconds').notNull(),
+    playCount: integer('play_count').notNull().default(0),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('voice_briefs_insight_idx').on(t.insightId),
+    index('voice_briefs_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
 export const anomalyKindEnum = pgEnum('anomaly_kind', [
   'duplicate_charge',
   'unusual_amount',

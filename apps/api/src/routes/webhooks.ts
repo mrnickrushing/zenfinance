@@ -19,50 +19,60 @@ export function createWebhooksRouter(): ReturnType<typeof Router> {
     legacyHeaders: false,
   });
 
-  // Plaid transaction webhooks. Always answers 200 with no detail — the body
-  // is untrusted input that can at most trigger a sync of an item we already
-  // hold, and revealing whether an item exists would be an oracle.
+  // Plaid webhooks. Always answers 200 with no detail — the body is untrusted
+  // input that can at most update/sync an item we already hold, and revealing
+  // whether an item exists would be an oracle.
   webhooksRouter.post('/api/webhooks/plaid', webhookLimiter, async (req, res) => {
-    res.json({ ok: true });
-
-    const body = req.body as {
-      webhook_type?: string;
-      webhook_code?: string;
-      item_id?: string;
-      error?: { error_code?: string };
-    };
-    if (typeof body.item_id !== 'string' || body.item_id.length === 0) return;
-
-    const [item] = await db
-      .select({ id: items.id })
-      .from(items)
-      .where(eq(items.providerItemId, body.item_id))
-      .limit(1);
-    if (!item) return;
-
-    if (body.webhook_type === 'ITEM') {
-      if (body.webhook_code === 'LOGIN_REPAIRED') {
-        await db.update(items).set({ status: 'active', updatedAt: new Date() }).where(eq(items.id, item.id));
-        return;
-      }
-      const needsUpdateMode =
-        LOGIN_REQUIRED_ITEM_CODES.has(body.webhook_code ?? '') || body.error?.error_code === 'ITEM_LOGIN_REQUIRED';
-      if (needsUpdateMode) {
-        await db.update(items).set({ status: 'login_required', updatedAt: new Date() }).where(eq(items.id, item.id));
-        return;
-      }
-      if (DISCONNECTED_ITEM_CODES.has(body.webhook_code ?? '')) {
-        await db.update(items).set({ status: 'disconnected', updatedAt: new Date() }).where(eq(items.id, item.id));
-        return;
-      }
-    }
-
-    if (body.webhook_type !== 'TRANSACTIONS' || !SYNC_CODES.has(body.webhook_code ?? '')) return;
     try {
-      await enqueueItemSync(item.id);
+      const body = req.body as {
+        webhook_type?: string;
+        webhook_code?: string;
+        item_id?: string;
+        error?: { error_code?: string };
+      };
+      if (typeof body.item_id !== 'string' || body.item_id.length === 0) {
+        res.json({ ok: true });
+        return;
+      }
+
+      const [item] = await db
+        .select({ id: items.id })
+        .from(items)
+        .where(eq(items.providerItemId, body.item_id))
+        .limit(1);
+      if (!item) {
+        res.json({ ok: true });
+        return;
+      }
+
+      if (body.webhook_type === 'ITEM') {
+        if (body.webhook_code === 'LOGIN_REPAIRED') {
+          await db.update(items).set({ status: 'active', updatedAt: new Date() }).where(eq(items.id, item.id));
+          res.json({ ok: true });
+          return;
+        }
+        const needsUpdateMode =
+          LOGIN_REQUIRED_ITEM_CODES.has(body.webhook_code ?? '') || body.error?.error_code === 'ITEM_LOGIN_REQUIRED';
+        if (needsUpdateMode) {
+          await db.update(items).set({ status: 'login_required', updatedAt: new Date() }).where(eq(items.id, item.id));
+          res.json({ ok: true });
+          return;
+        }
+        if (DISCONNECTED_ITEM_CODES.has(body.webhook_code ?? '')) {
+          await db.update(items).set({ status: 'disconnected', updatedAt: new Date() }).where(eq(items.id, item.id));
+          res.json({ ok: true });
+          return;
+        }
+      }
+
+      if (body.webhook_type === 'TRANSACTIONS' && SYNC_CODES.has(body.webhook_code ?? '')) {
+        await enqueueItemSync(item.id);
+      }
     } catch (err) {
-      console.error(`[webhook] sync enqueue failed for item ${item.id}:`, err);
+      console.error('[webhook] plaid webhook processing failed:', err);
     }
+
+    res.json({ ok: true });
   });
 
   return webhooksRouter;

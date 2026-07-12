@@ -1,6 +1,6 @@
 # ZenFinance iOS App
 
-**The product.** This is the Expo SDK 57 iOS app: onboarding, Plaid Link, first-look and weekly brief cards, coach chat, goals, deterministic what-if simulations, subscription audit, Money Wins, RevenueCat paywall/restore, referral credits, Freelancer Mode settings, Household Sharing, data export, notification preferences, Sentry wiring, and mobile funnel events.
+**The product.** This is the Expo SDK 57 iOS app: onboarding, Plaid Link, first-look and weekly brief cards, native text-to-speech Voice Briefs, coach chat, goals, deterministic what-if simulations, subscription audit, Money Wins, RevenueCat paywall/restore, referral credits, Freelancer Mode settings, Household Sharing, data export, notification preferences, Sentry wiring, and mobile funnel events.
 
 ## Running the App
 
