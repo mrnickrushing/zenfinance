@@ -39,6 +39,8 @@ module.exports = {
     },
     updates: {
       url: 'https://u.expo.dev/d8a500af-3ff0-476e-85a0-6cfc003d4b61',
+      checkAutomatically: 'ON_LOAD',
+      fallbackToCacheTimeout: 30000,
     },
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',

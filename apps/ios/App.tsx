@@ -3,6 +3,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import * as Speech from 'expo-speech';
+import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import {
   Bell,
@@ -84,6 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
+const OTA_DIAGNOSTIC_LABEL = 'iOS UI phases 1-6 · 2026-07-12.2';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -1542,6 +1544,14 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   const [sharedGoalName, setSharedGoalName] = useState('');
   const [sharedGoalTarget, setSharedGoalTarget] = useState('');
   const [householdContribution, setHouseholdContribution] = useState<Record<number, string>>({});
+  const [updateBusy, setUpdateBusy] = useState(false);
+
+  const updateMeta = [
+    `Build marker: ${OTA_DIAGNOSTIC_LABEL}`,
+    `Channel: ${Updates.channel ?? 'embedded'}`,
+    `Runtime: ${Updates.runtimeVersion ?? 'unknown'}`,
+    `Update ID: ${Updates.updateId ?? 'embedded'}`,
+  ].join('\n');
 
   useEffect(() => {
     requestApi<ReferralStatusView>('/api/referrals/me')
@@ -1603,6 +1613,29 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
       }),
     });
     setPrefs(saved);
+  }
+
+  async function checkForUpdate() {
+    if (!Updates.isEnabled) {
+      Alert.alert('Updates unavailable', 'This build was not configured for OTA updates.');
+      return;
+    }
+    setUpdateBusy(true);
+    try {
+      const result = await Updates.checkForUpdateAsync();
+      if (!result.isAvailable) {
+        Alert.alert('No update found', `You are on the latest update for ${Updates.channel ?? 'this channel'}.`);
+        return;
+      }
+      await Updates.fetchUpdateAsync();
+      Alert.alert('Update ready', 'ZenFinance will restart now to apply the latest bundle.', [
+        { text: 'Restart', onPress: () => void Updates.reloadAsync() },
+      ]);
+    } catch (err) {
+      Alert.alert('Update check failed', err instanceof Error ? err.message : 'Unable to check for updates.');
+    } finally {
+      setUpdateBusy(false);
+    }
   }
 
   async function disconnect(itemId: number) {
@@ -2118,6 +2151,16 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
       ))}
       <SectionHeader title="Data Rights" />
       <SecondaryButton label="Export my data" icon={ShieldCheck} onPress={exportData} />
+      <SectionHeader title="App Update" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <Text style={[styles.updateMeta, { color: theme.muted }]}>{updateMeta}</Text>
+        <SecondaryButton
+          label={updateBusy ? 'Checking...' : 'Check for update'}
+          icon={RefreshCcw}
+          disabled={updateBusy}
+          onPress={checkForUpdate}
+        />
+      </View>
       <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
       <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
     </ScrollView>
@@ -2425,6 +2468,7 @@ const styles = StyleSheet.create({
   destructiveIconButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '800' },
   rowDetail: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   tabBar: { borderTopWidth: 1, flexDirection: 'row', paddingTop: 7, paddingBottom: Platform.OS === 'ios' ? 18 : 8, paddingHorizontal: 8 },
