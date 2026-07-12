@@ -126,6 +126,21 @@ function Dashboard() {
             />
           </section>
 
+          <section aria-label="Beta metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Registered users" value={metrics.beta.registeredUsers} />
+            <StatTile label="Linked users" value={metrics.beta.linkedUsers} />
+            <StatTile
+              label="First-brief activation"
+              value={Math.round(metrics.beta.activationRate * 100)}
+              sub={`${metrics.beta.firstBriefUsers} users · percent`}
+            />
+            <StatTile
+              label="Week-4 retention"
+              value={Math.round(metrics.beta.week4RetentionRate * 100)}
+              sub={`${metrics.beta.retainedWeek4Users} users · percent`}
+            />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days

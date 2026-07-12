@@ -22,6 +22,10 @@ infra/             railway.toml deploy config
 
 - **[PLAN.md](PLAN.md)** — the full product + technical plan: premium feature set, architecture, AI coaching engine, security/compliance, unit economics, and the 8-phase roadmap (~16–20 weeks) to App Store launch
 - **[DEPLOY.md](DEPLOY.md)** — Railway deploy, GoDaddy DNS, Resend email setup, and the local dev loop
+- **[docs/APP_STORE_PRIVACY.md](docs/APP_STORE_PRIVACY.md)** — App Store privacy answers and data inventory
+- **[docs/PLAID_PRODUCTION_CHECKLIST.md](docs/PLAID_PRODUCTION_CHECKLIST.md)** — Plaid production-access checklist and webhook coverage
+- **[docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)** — Phase 6 dependency audit, remediations, and release security checks
+- **[docs/BETA_RUNBOOK.md](docs/BETA_RUNBOOK.md)** / **[docs/FAILURE_DRILLS.md](docs/FAILURE_DRILLS.md)** — TestFlight beta operations and outage drills
 
 ## Quick start
 

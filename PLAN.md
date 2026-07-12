@@ -269,6 +269,17 @@ coverage lives in `apps/api/src/test/phase5.test.ts`.
 - Closed beta via TestFlight: 50–100 waitlist users; instrument activation (link rate, first-brief reaction) and week-4 retention
 - **Exit gate:** Plaid production approved; App Store review passed; beta week-4 retention >30%; zero critical Sentry issues for 7 days.
 
+**Implementation status in this repo:** Phase 6 hardening is implemented in code
+and docs: dependency upgrades with `npm audit --audit-level=high` passing,
+Sentry event scrubbing, central error capture, data export, audited account
+deletion, Plaid item reauth/revocation webhook state handling, admin beta
+activation/action/week-4 retention metrics, iOS data export access, Expo SDK 57
+compatibility, updated privacy/terms pages, App Store privacy inventory, Plaid
+production checklist, security audit record, TestFlight beta runbook, and
+failure drill runbook. External gates that cannot be completed from the repo
+remain Plaid production approval, App Store/TestFlight review, attorney
+sign-off, and live beta retention/Sentry observation windows.
+
 ### Phase 7 — Launch & Growth Loop *(Week 19+, ongoing)*
 - App Store launch: Product Hunt + the waitlist + finance-adjacent newsletters/podcasts; launch offer for waitlist (extended trial, not a discount — protect the price point)
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
@@ -306,4 +317,4 @@ coverage lives in `apps/api/src/test/phase5.test.ts`.
 
 ---
 
-*Current status: Phases 0–4 are built in code. Phase 4 replaces the iOS link harness with the product app: onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, Sentry wiring, and mobile funnel events. The API now includes the Phase 4 mobile contracts and persistence (`chat_messages`, `push_tokens`, `notification_preferences`, `app_events`) plus tests for mobile summary, chat, streaming chat, what-if math, push preferences, and app events. Mock-provider paths are fully tested and pass. Real-world exit gates still require external credentials and distribution steps outside this environment: Plaid sandbox/live linking, `ANTHROPIC_API_KEY` runs, an EAS/TestFlight build, Sentry project configuration, and 5 friendly users linked and receiving briefs.*
+*Current status: Phases 0–6 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, and Phase 6 runbooks. Mock-provider paths and Phase 6 hardening tests pass. Real-world exit gates still require external credentials, approvals, and live operations outside this environment: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/TestFlight distribution, Sentry project observation, and beta retention data.*
