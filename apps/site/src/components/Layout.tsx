@@ -3,8 +3,8 @@ import { Link, Outlet } from 'react-router-dom';
 export function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="border-b border-ledger-border bg-ledger-panel/85 backdrop-blur dark:border-ledger-borderDark dark:bg-ledger-graphite/85">
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-4 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:py-0">
+      <header className="border-b border-ledger-borderDark bg-ledger-graphite/90 text-ledger-warm backdrop-blur">
+        <div className="mx-auto flex max-w-[62rem] flex-col gap-3 px-6 py-4 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:py-0">
           <Link to="/" className="flex items-center gap-2.5 font-semibold tracking-tight">
             <img src="/favicon-64.png" alt="" className="h-8 w-8 rounded-lg" />
             ZenFinance
@@ -12,13 +12,13 @@ export function Layout() {
           <nav aria-label="Main" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Link
               to="/insights"
-              className="text-slate-600 transition-colors duration-standard hover:text-primary-700 dark:text-slate-300 dark:hover:text-primary-300"
+              className="text-slate-300 transition-colors duration-standard hover:text-primary-300"
             >
               Insights
             </Link>
             <Link
               to="/support"
-              className="text-slate-600 transition-colors duration-standard hover:text-primary-700 dark:text-slate-300 dark:hover:text-primary-300"
+              className="text-slate-300 transition-colors duration-standard hover:text-primary-300"
             >
               Support
             </Link>
