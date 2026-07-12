@@ -11,6 +11,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createBillingRouter } from './routes/billing.js';
 import { createCoachingRouter } from './routes/coaching.js';
 import { createContentRouter } from './routes/content.js';
+import { createFreelancerRouter } from './routes/freelancer.js';
 import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
@@ -56,6 +57,7 @@ export function createApp(): express.Express {
   app.use(createTransactionsRouter());
   app.use(createGoalsRouter());
   app.use(createCoachingRouter());
+  app.use(createFreelancerRouter());
   app.use(createMobileRouter());
   app.use(createPrivacyRouter());
   app.use(createReferralsRouter());

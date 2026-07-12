@@ -5,32 +5,66 @@ import {
   type AdminMetrics,
   type SupportUpdateInput,
 } from '@zenfinance/shared';
-import { count, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
 import {
   appEvents,
+  accounts,
   billingEntitlements,
+  freelancerProfiles,
   insights,
   items,
   moneyWins,
   referralCredits,
   referralRedemptions,
   supportRequests,
+  transactionEnrichments,
+  transactions,
   users,
   waitlistSignups,
 } from '../db/schema.js';
-import {
-  issueAccessToken,
-  issueRefreshToken,
-  revokeRefreshToken,
-  rotateRefreshToken,
-  verifyAdminSecret,
-} from '../lib/tokens.js';
+import { issueAccessToken, issueRefreshToken, revokeRefreshToken, rotateRefreshToken, verifyAdminSecret } from '../lib/tokens.js';
 import { requireAdmin } from '../middleware/adminAuth.js';
 import { validateBody } from '../middleware/validate.js';
 import { env } from '../env.js';
+
+const FREELANCER_ADMIN_WINDOW_MONTHS = 6;
+const FREELANCER_ESSENTIAL_CATEGORIES = new Set([
+  'bills',
+  'debt',
+  'food_and_drink',
+  'groceries',
+  'healthcare',
+  'home',
+  'housing',
+  'insurance',
+  'medical',
+  'rent',
+  'taxes',
+  'transportation',
+  'utilities',
+]);
+
+function freelancerCategoryKey(category: string | null): string {
+  return (category ?? '').trim().toLowerCase().replaceAll(/[^a-z0-9]+/g, '_').replaceAll(/^_+|_+$/g, '');
+}
+
+function freelancerEssentialSpend(category: string | null, isDiscretionary: boolean | null): boolean {
+  if (isDiscretionary === true) return false;
+  const key = freelancerCategoryKey(category);
+  if (!key) return true;
+  if (FREELANCER_ESSENTIAL_CATEGORIES.has(key)) return true;
+  return [...FREELANCER_ESSENTIAL_CATEGORIES].some((essential) => key.includes(essential));
+}
+
+function freelancerWindowStart(): string {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  start.setUTCMonth(start.getUTCMonth() - (FREELANCER_ADMIN_WINDOW_MONTHS - 1));
+  return start.toISOString().slice(0, 10);
+}
 
 export function createAdminRouter(): ReturnType<typeof Router> {
   const adminRouter = Router();
@@ -187,6 +221,98 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       .where(eq(moneyWins.status, 'verified'));
     const [referralRedemptionCount] = await db.select({ n: sql<number>`count(*)` }).from(referralRedemptions);
     const [referralCreditCount] = await db.select({ n: sql<number>`count(*)` }).from(referralCredits);
+    const freelancerProfileRows = await db
+      .select({
+        userId: freelancerProfiles.userId,
+        targetMonthlyIncomeCents: freelancerProfiles.targetMonthlyIncomeCents,
+      })
+      .from(freelancerProfiles)
+      .where(eq(freelancerProfiles.enabled, true));
+    const freelancerUserIds = freelancerProfileRows.map((profile) => profile.userId);
+    let freelancerUsersWithIncome = 0;
+    let freelancerAvgRunwayMonths: number | null = null;
+    let freelancerAvgTargetGapCents: number | null = null;
+
+    if (freelancerUserIds.length > 0) {
+      const profileByUser = new Map(freelancerProfileRows.map((profile) => [profile.userId, profile]));
+      const accountRows = await db
+        .select({
+          userId: items.userId,
+          accountId: accounts.id,
+          type: accounts.type,
+          currentBalanceCents: accounts.currentBalanceCents,
+        })
+        .from(accounts)
+        .innerJoin(items, eq(accounts.itemId, items.id))
+        .where(inArray(items.userId, freelancerUserIds));
+      const accountIds = accountRows.map((account) => account.accountId);
+      const cashByUser = new Map<number, number>();
+      for (const account of accountRows) {
+        if ((account.type === 'depository' || account.type === 'cash') && account.currentBalanceCents !== null) {
+          cashByUser.set(account.userId, (cashByUser.get(account.userId) ?? 0) + account.currentBalanceCents);
+        }
+      }
+
+      const incomeByUser = new Map<number, number>();
+      const essentialSpendByUser = new Map<number, number>();
+      if (accountIds.length > 0) {
+        const txRows = await db
+          .select({
+            userId: items.userId,
+            amountCents: transactions.amountCents,
+            category: transactionEnrichments.category,
+            isDiscretionary: transactionEnrichments.isDiscretionary,
+          })
+          .from(transactions)
+          .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+          .innerJoin(items, eq(accounts.itemId, items.id))
+          .leftJoin(
+            transactionEnrichments,
+            and(eq(transactionEnrichments.transactionId, transactions.id), isNull(transactionEnrichments.supersededAt)),
+          )
+          .where(
+            and(
+              inArray(transactions.accountId, accountIds),
+              isNull(transactions.removedAt),
+              isNull(transactions.supersededAt),
+              isNull(transactions.transferPairId),
+              eq(transactions.pending, false),
+              sql`${transactions.postedDate} >= ${freelancerWindowStart()}`,
+            ),
+          );
+
+        for (const row of txRows) {
+          if (row.amountCents < 0) {
+            incomeByUser.set(row.userId, (incomeByUser.get(row.userId) ?? 0) + Math.abs(row.amountCents));
+          } else if (row.amountCents > 0 && freelancerEssentialSpend(row.category, row.isDiscretionary)) {
+            essentialSpendByUser.set(row.userId, (essentialSpendByUser.get(row.userId) ?? 0) + row.amountCents);
+          }
+        }
+      }
+
+      freelancerUsersWithIncome = [...incomeByUser.values()].filter((amount) => amount > 0).length;
+      const runwayValues: number[] = [];
+      const targetGapValues: number[] = [];
+      for (const userId of freelancerUserIds) {
+        const monthlyEssentialSpend = Math.round((essentialSpendByUser.get(userId) ?? 0) / FREELANCER_ADMIN_WINDOW_MONTHS);
+        const cashBalance = cashByUser.get(userId);
+        if (cashBalance !== undefined && monthlyEssentialSpend > 0) {
+          runwayValues.push(cashBalance / monthlyEssentialSpend);
+        }
+
+        const target = profileByUser.get(userId)?.targetMonthlyIncomeCents;
+        if (target !== null && target !== undefined) {
+          const monthlyIncome = Math.round((incomeByUser.get(userId) ?? 0) / FREELANCER_ADMIN_WINDOW_MONTHS);
+          targetGapValues.push(Math.max(0, target - monthlyIncome));
+        }
+      }
+      freelancerAvgRunwayMonths = runwayValues.length
+        ? Number((runwayValues.reduce((sum, value) => sum + value, 0) / runwayValues.length).toFixed(1))
+        : null;
+      freelancerAvgTargetGapCents = targetGapValues.length
+        ? Math.round(targetGapValues.reduce((sum, value) => sum + value, 0) / targetGapValues.length)
+        : null;
+    }
 
     const userCount = Number(registeredUsers!.n);
     const linkedUserCount = Number(linkedUsers!.n);
@@ -231,6 +357,12 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         verifiedMoneyWinsAvgCents: userCount ? Math.round(Number(verifiedWins!.amountCents) / userCount) : 0,
         referralRedemptions: Number(referralRedemptionCount!.n),
         referralCreditsAwarded: Number(referralCreditCount!.n),
+      },
+      freelancer: {
+        enabledUsers: freelancerUserIds.length,
+        usersWithIncome: freelancerUsersWithIncome,
+        avgRunwayMonths: freelancerAvgRunwayMonths,
+        avgTargetGapCents: freelancerAvgTargetGapCents,
       },
     };
     res.json(metrics);

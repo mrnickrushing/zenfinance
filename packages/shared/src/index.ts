@@ -95,6 +95,12 @@ export interface AdminMetrics {
     referralRedemptions: number;
     referralCreditsAwarded: number;
   };
+  freelancer: {
+    enabledUsers: number;
+    usersWithIncome: number;
+    avgRunwayMonths: number | null;
+    avgTargetGapCents: number | null;
+  };
 }
 
 export interface Paginated<T> {
@@ -520,6 +526,61 @@ export interface LaunchContentStatsView {
     avgVerifiedMoneyWinsCentsPerUser: number;
     referralRedemptions: number;
   };
+}
+
+// ---------- Freelancer Mode (Phase 8) ----------
+
+export const freelancerProfileUpdateSchema = z.object({
+  enabled: z.boolean().optional(),
+  targetMonthlyIncomeCents: z.number().int().min(0).max(1_000_000_000).nullable().optional(),
+  taxSetAsideBps: z.number().int().min(0).max(5000).optional(),
+  runwayTargetMonths: z.number().int().min(1).max(24).optional(),
+});
+export type FreelancerProfileUpdateInput = z.infer<typeof freelancerProfileUpdateSchema>;
+
+export interface FreelancerProfileView {
+  enabled: boolean;
+  targetMonthlyIncomeCents: number | null;
+  taxSetAsideBps: number;
+  runwayTargetMonths: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FreelancerIncomeMonthView {
+  month: string;
+  incomeCents: number;
+  essentialSpendCents: number;
+  netCents: number;
+}
+
+export interface FreelancerRecommendationView {
+  kind: 'tax_set_aside' | 'runway' | 'income_target' | 'income_volatility' | 'link_accounts';
+  severity: 'info' | 'warning' | 'urgent';
+  title: string;
+  body: string;
+}
+
+export interface FreelancerSummaryView {
+  generatedAt: string;
+  windowStart: string;
+  windowEnd: string;
+  profile: FreelancerProfileView;
+  months: FreelancerIncomeMonthView[];
+  avgMonthlyIncomeCents: number;
+  minMonthlyIncomeCents: number;
+  maxMonthlyIncomeCents: number;
+  incomeVolatilityRatio: number;
+  incomeConfidence: 'none' | 'low' | 'medium' | 'high';
+  essentialMonthlySpendCents: number;
+  cashBalanceCents: number | null;
+  runwayMonths: number | null;
+  runwayTargetGapCents: number | null;
+  targetMonthlyIncomeGapCents: number | null;
+  estimatedTaxSetAsideMonthlyCents: number;
+  estimatedTaxSetAsideRateBps: number;
+  nextSlowMonthBufferCents: number;
+  recommendations: FreelancerRecommendationView[];
 }
 
 // ---------- Mobile app product surface (Phase 4 + Phase 5) ----------

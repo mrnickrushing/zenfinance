@@ -285,7 +285,7 @@ sign-off, and live beta retention/Sentry observation windows.
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
 - Referral mechanic: "give a month, get a month" (finance advice spreads by word of mouth)
 - Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links; published on the marketing site
-- Post-launch feature train (strictly demand-ordered): freelancer mode → household sharing → voice briefs → Money Physical one-time report → net-worth view
+- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8; next demand-ordered items are household sharing → voice briefs → Money Physical one-time report → net-worth view
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
 - **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
@@ -297,6 +297,24 @@ dashboard, a public sample-size-gated `/insights` aggregate-data page, a
 public `/api/content/launch-stats` endpoint, and launch/growth runbooks.
 External launch work remains App Store publication, Product Hunt/newsletter
 posting, waitlist emailing, and live 90-day KPI measurement.
+
+### Phase 8 — Freelancer Mode *(Post-launch feature train item 1)*
+- Premium Freelancer Mode profile with monthly income target, estimated set-aside percentage, runway target, and enabled/paused state
+- Six-month income stability summary from linked transactions: income, essential spend, net cash flow, income volatility, cash runway, target gap, estimated set-aside, and slow-month buffer
+- Premium-gated API routes: `GET /api/freelancer/profile`, `PATCH /api/freelancer/profile`, and `GET /api/freelancer/summary`
+- iOS Settings surface for saving Freelancer Mode inputs and reviewing runway/income recommendations
+- Admin metrics for enabled Freelancer Mode users, users with recent income, average runway, and average target gap
+- Documentation and legal boundary updates: set-aside math is an estimate for planning, not tax advice
+- **Exit gate:** free-user paywall, profile persistence, summary math, recommendations, and admin adoption metrics are covered by `apps/api/src/test/phase8.test.ts`.
+
+**Implementation status in this repo:** Phase 8 is implemented behind the
+existing `zen_coach` entitlement. The API owns a `freelancer_profiles` table,
+profile and summary routes, deterministic runway/income calculations, and admin
+aggregate metrics. The iOS app exposes Freelancer Mode in Settings for premium
+users. Docs are updated in `docs/FREELANCER_MODE.md`, README, deploy checklist,
+privacy inventory, and public privacy/terms pages. Packaging can still move to
+an add-on or higher tier later; the current repo implementation ships it as a
+Coach premium feature.
 
 ---
 
@@ -326,4 +344,4 @@ posting, waitlist emailing, and live 90-day KPI measurement.
 
 ---
 
-*Current status: Phases 0–7 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, and Phase 7 runbooks. Mock-provider paths and Phase 7 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*
+*Current status: Phases 0–8 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, and Phase 8 Freelancer Mode for variable-income users. Mock-provider paths and Phase 8 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*

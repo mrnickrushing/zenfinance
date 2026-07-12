@@ -705,3 +705,17 @@ export const referralCredits = pgTable(
     index('referral_credits_redemption_idx').on(t.redemptionId),
   ],
 );
+
+// ---------- Phase 8: freelancer mode ----------
+
+export const freelancerProfiles = pgTable('freelancer_profiles', {
+  userId: integer('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  enabled: boolean('enabled').notNull().default(true),
+  targetMonthlyIncomeCents: bigint('target_monthly_income_cents', { mode: 'number' }),
+  taxSetAsideBps: integer('tax_set_aside_bps').notNull().default(2500),
+  runwayTargetMonths: integer('runway_target_months').notNull().default(3),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});

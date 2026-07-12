@@ -55,6 +55,7 @@ import type {
   AuthTokens,
   BillingStatusView,
   ChatAnswerView,
+  FreelancerSummaryView,
   GoalView,
   InsightView,
   LinkedItem,
@@ -177,6 +178,19 @@ function usd(cents: number | null | undefined, compact = false): string {
 function dateLabel(value: string | null | undefined): string {
   if (!value) return 'Not set';
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function centsToDollarInput(cents: number | null | undefined): string {
+  if (!cents) return '';
+  return String(Math.round(cents / 100));
+}
+
+function dollarInputToCents(value: string): number | null {
+  const normalized = value.replace(/[$,\s]/g, '');
+  if (!normalized) return null;
+  const amount = Number(normalized);
+  if (!Number.isFinite(amount) || amount < 0) return null;
+  return Math.round(amount * 100);
 }
 
 async function persistTokens(tokens: AuthTokens | null): Promise<void> {
@@ -1043,12 +1057,37 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   const [referral, setReferral] = useState<ReferralStatusView | null>(null);
   const [redeemCode, setRedeemCode] = useState('');
   const [referralBusy, setReferralBusy] = useState(false);
+  const [freelancer, setFreelancer] = useState<FreelancerSummaryView | null>(null);
+  const [freelancerBusy, setFreelancerBusy] = useState(false);
+  const [targetIncome, setTargetIncome] = useState('');
+  const [taxSetAside, setTaxSetAside] = useState('25');
+  const [runwayTarget, setRunwayTarget] = useState('3');
 
   useEffect(() => {
     requestApi<ReferralStatusView>('/api/referrals/me')
       .then(setReferral)
       .catch(() => setReferral(null));
   }, []);
+
+  const loadFreelancer = useCallback(async () => {
+    if (!billing.isPremium) {
+      setFreelancer(null);
+      return;
+    }
+    try {
+      const summary = await requestApi<FreelancerSummaryView>('/api/freelancer/summary');
+      setFreelancer(summary);
+      setTargetIncome(centsToDollarInput(summary.profile.targetMonthlyIncomeCents));
+      setTaxSetAside(String(Math.round(summary.profile.taxSetAsideBps / 100)));
+      setRunwayTarget(String(summary.profile.runwayTargetMonths));
+    } catch {
+      setFreelancer(null);
+    }
+  }, [billing.isPremium]);
+
+  useEffect(() => {
+    void loadFreelancer();
+  }, [loadFreelancer]);
 
   async function registerPush() {
     const permission = await Notifications.requestPermissionsAsync();
@@ -1141,6 +1180,45 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     }
   }
 
+  async function saveFreelancer() {
+    if (!billing.isPremium) return;
+    const tax = Math.min(50, Math.max(0, Math.round(Number(taxSetAside) || 0)));
+    const runway = Math.min(24, Math.max(1, Math.round(Number(runwayTarget) || 3)));
+    setFreelancerBusy(true);
+    try {
+      await requestApi('/api/freelancer/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          enabled: freelancer?.profile.enabled ?? true,
+          targetMonthlyIncomeCents: dollarInputToCents(targetIncome),
+          taxSetAsideBps: tax * 100,
+          runwayTargetMonths: runway,
+        }),
+      });
+      await loadFreelancer();
+    } catch (err) {
+      Alert.alert('Freelancer Mode', err instanceof Error ? err.message : 'Unable to save settings');
+    } finally {
+      setFreelancerBusy(false);
+    }
+  }
+
+  async function toggleFreelancer(enabled: boolean) {
+    if (!billing.isPremium) return;
+    setFreelancerBusy(true);
+    try {
+      await requestApi('/api/freelancer/profile', {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      });
+      await loadFreelancer();
+    } catch (err) {
+      Alert.alert('Freelancer Mode', err instanceof Error ? err.message : 'Unable to update Freelancer Mode');
+    } finally {
+      setFreelancerBusy(false);
+    }
+  }
+
   function manageSubscription() {
     const url = billing.entitlement?.managementUrl;
     if (!url) {
@@ -1225,6 +1303,78 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </>
         ) : (
           <Text style={[styles.rowDetail, { color: theme.muted }]}>Redeemed code {referral.redeemedCode}</Text>
+        )}
+      </View>
+      <SectionHeader title="Freelancer Mode" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <CircleDollarSign color={billing.isPremium ? theme.accent : theme.muted} size={20} />
+          <Text style={[styles.panelKicker, { color: billing.isPremium ? theme.accent : theme.muted }]}>
+            {billing.isPremium ? (freelancer?.profile.enabled === false ? 'Paused' : 'Active') : 'Coach only'}
+          </Text>
+        </View>
+        {billing.isPremium ? (
+          <>
+            {freelancer ? (
+              <>
+                <View style={styles.metricStrip}>
+                  <Metric label="Avg income" value={usd(freelancer.avgMonthlyIncomeCents, true)} icon={CircleDollarSign} />
+                  <Metric
+                    label="Runway"
+                    value={freelancer.runwayMonths === null ? 'N/A' : `${freelancer.runwayMonths.toFixed(1)} mo`}
+                    icon={PiggyBank}
+                  />
+                </View>
+                <View style={styles.metricStrip}>
+                  <Metric label="Set aside" value={usd(freelancer.estimatedTaxSetAsideMonthlyCents, true)} icon={Landmark} />
+                  <Metric label="Target gap" value={usd(freelancer.targetMonthlyIncomeGapCents ?? 0, true)} icon={Target} />
+                </View>
+                <Toggle label="Freelancer Mode" value={freelancer.profile.enabled} onValueChange={toggleFreelancer} />
+                <TextInput
+                  value={targetIncome}
+                  onChangeText={setTargetIncome}
+                  keyboardType="number-pad"
+                  placeholder="Monthly income target"
+                  placeholderTextColor={theme.muted}
+                  style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+                />
+                <TextInput
+                  value={taxSetAside}
+                  onChangeText={setTaxSetAside}
+                  keyboardType="number-pad"
+                  placeholder="Estimated set-aside %"
+                  placeholderTextColor={theme.muted}
+                  style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+                />
+                <TextInput
+                  value={runwayTarget}
+                  onChangeText={setRunwayTarget}
+                  keyboardType="number-pad"
+                  placeholder="Runway target months"
+                  placeholderTextColor={theme.muted}
+                  style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+                />
+                <SecondaryButton
+                  label={freelancerBusy ? 'Saving...' : 'Save Freelancer Mode'}
+                  icon={CheckCircle2}
+                  disabled={freelancerBusy}
+                  onPress={saveFreelancer}
+                />
+                {freelancer.recommendations.slice(0, 2).map((rec) => (
+                  <View key={`${rec.kind}-${rec.title}`} style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+                    <Text style={[styles.actionTitle, { color: theme.ink }]}>{rec.title}</Text>
+                    <Text style={[styles.actionMeta, { color: theme.muted }]}>{rec.body}</Text>
+                  </View>
+                ))}
+              </>
+            ) : (
+              <SecondaryButton label="Load Freelancer Mode" icon={RefreshCcw} disabled={freelancerBusy} onPress={loadFreelancer} />
+            )}
+          </>
+        ) : (
+          <Text style={[styles.panelBody, { color: theme.muted }]}>
+            Available with ZenFinance Coach.
+          </Text>
         )}
       </View>
       <SectionHeader title="Notifications" />
