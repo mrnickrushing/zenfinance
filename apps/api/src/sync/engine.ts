@@ -11,11 +11,17 @@ const TRANSFER_HINT = /transfer/i;
 /**
  * Cursor-based sync for one item: upserts added/modified pages, soft-removes
  * provider-removed rows, reconciles pending→posted, then runs transfer-pair
- * detection across the owning user's accounts.
+ * detection across the owning user's accounts. Returns the item's userId so
+ * the caller (the queue layer) can chain an enrichment pass — kept out of
+ * this module to avoid a sync/engine.ts <-> queue/index.ts import cycle.
  */
-export async function syncItem(db: Db, provider: TransactionProvider, itemId: number): Promise<void> {
+export async function syncItem(
+  db: Db,
+  provider: TransactionProvider,
+  itemId: number,
+): Promise<{ userId: number } | null> {
   const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
-  if (!item || item.status === 'disconnected') return;
+  if (!item || item.status === 'disconnected') return null;
 
   const accessToken = decryptToken(item.encryptedAccessToken);
   const accountRows = await db.select().from(accounts).where(eq(accounts.itemId, item.id));
@@ -74,6 +80,7 @@ export async function syncItem(db: Db, provider: TransactionProvider, itemId: nu
     .where(eq(items.id, item.id));
 
   await detectTransferPairs(db, item.userId);
+  return { userId: item.userId };
 }
 
 async function upsertTransaction(db: Db, accountId: number, txn: ProviderTransaction): Promise<void> {

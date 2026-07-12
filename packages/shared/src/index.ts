@@ -149,3 +149,50 @@ export interface TransactionView {
   pending: boolean;
   transferPairId: string | null;
 }
+
+// ---------- AI enrichment (Phase 2) ----------
+
+export type EnrichmentSource = 'llm' | 'fallback' | 'user_correction';
+
+export interface EnrichedTransactionView extends TransactionView {
+  category: string | null;
+  merchantClean: string | null;
+  isDiscretionary: boolean | null;
+  isRecurring: boolean | null;
+  confidence: number | null;
+  enrichmentSource: EnrichmentSource | null;
+}
+
+// The API validates `category` against the canonical taxonomy
+// (apps/api/src/enrichment/categories.ts) — kept out of the shared package
+// since it's server-internal (default discretionary leans, fallback
+// mappings). This schema only enforces the request shape.
+export const categoryCorrectionSchema = z.object({
+  category: z.string().trim().min(1).max(64),
+  isDiscretionary: z.boolean().optional(),
+});
+export type CategoryCorrectionInput = z.infer<typeof categoryCorrectionSchema>;
+
+export type RecurringCadence = 'weekly' | 'biweekly' | 'monthly' | 'annual';
+
+export interface RecurringStreamView {
+  id: number;
+  accountId: number;
+  merchantClean: string;
+  cadence: RecurringCadence;
+  avgAmountCents: number;
+  lastAmountCents: number;
+  occurrences: number;
+  firstSeenDate: string;
+  lastSeenDate: string;
+  nextExpectedDate: string | null;
+  active: boolean;
+}
+
+export interface FeatureRollupView {
+  weekStart: string;
+  metric: string;
+  category: string;
+  valueCents: number | null;
+  valueRatio: number | null;
+}
