@@ -67,5 +67,10 @@ export function defaultDiscretionaryFor(categoryId: string): boolean {
   return BY_ID.get(categoryId)?.defaultDiscretionary ?? false;
 }
 
+/** Human-readable label for a category id, for briefs and UI. */
+export function labelFor(categoryId: string): string {
+  return BY_ID.get(categoryId)?.label ?? 'Other';
+}
+
 /** Categories that never count as spend in the feature store (movement, not spend). */
 export const NON_SPEND_CATEGORIES = new Set(['INCOME', 'TRANSFER', 'CREDIT_CARD_PAYMENT']);

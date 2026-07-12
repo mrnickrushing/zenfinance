@@ -4,6 +4,7 @@ import {
   date,
   index,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   real,
@@ -311,7 +312,7 @@ export const aiUsageEvents = pgTable(
     userId: integer('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    purpose: text('purpose').notNull(), // 'enrichment' (future: 'brief' | 'chat')
+    purpose: text('purpose').notNull(), // 'enrichment' | 'brief' (future: 'chat')
     model: text('model').notNull(),
     inputTokens: integer('input_tokens').notNull(),
     outputTokens: integer('output_tokens').notNull(),
@@ -321,5 +322,154 @@ export const aiUsageEvents = pgTable(
   (t) => [
     index('ai_usage_user_idx').on(t.userId),
     index('ai_usage_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
+// ---------- Phase 3: coaching engine ----------
+
+export const goalStatusEnum = pgEnum('goal_status', ['active', 'achieved', 'archived']);
+
+// User savings goals (PLAN §2 free tier: 1 active goal; premium: multiple with
+// priorities). `currentAmountCents` is what the user has set aside toward the
+// goal; pacing math (weekly target, projected completion) is derived
+// deterministically in code (coaching/goals.ts), never stored, so it always
+// reflects the latest target/progress.
+export const goals = pgTable(
+  'goals',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    targetAmountCents: bigint('target_amount_cents', { mode: 'number' }).notNull(),
+    currentAmountCents: bigint('current_amount_cents', { mode: 'number' }).notNull().default(0),
+    targetDate: date('target_date'), // null = open-ended (no deadline)
+    priority: integer('priority').notNull().default(1), // lower = higher priority
+    status: goalStatusEnum('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('goals_user_idx').on(t.userId), index('goals_user_status_idx').on(t.userId, t.status)],
+);
+
+export const insightKindEnum = pgEnum('insight_kind', ['first_look', 'weekly_brief']);
+export const insightSourceEnum = pgEnum('insight_source', ['llm', 'template']);
+export const feedbackRatingEnum = pgEnum('feedback_rating', ['up', 'down']);
+
+// Generated coaching artifacts (§4 Stage 4). Every insight names a dollar
+// amount and an action. `claims` is the provenance-checked list of verified
+// dollar figures, each citing a `source_aggregate_id` present in the inputs;
+// `actionEstimatedImpactCents` is a *model estimate*, labeled as such in the
+// UI, never a verified figure. `source` distinguishes a real model brief from
+// the deterministic template fallback. Feedback columns hold the thumbs
+// rating and the next-week "did you do it?" follow-through check.
+export const insights = pgTable(
+  'insights',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: insightKindEnum('kind').notNull(),
+    weekStart: date('week_start'), // the ISO week the brief covers; null for first_look
+    headline: text('headline').notNull(),
+    body: text('body').notNull(),
+    actionDescription: text('action_description').notNull(),
+    actionEstimatedImpactCents: bigint('action_estimated_impact_cents', { mode: 'number' }),
+    actionTimeframe: text('action_timeframe').notNull(),
+    // [{ amountCents, sourceAggregateId, label }] — verified figures only.
+    claims: jsonb('claims').notNull().default('[]'),
+    toneCheck: real('tone_check').notNull(),
+    source: insightSourceEnum('source').notNull(),
+    model: text('model'), // e.g. 'claude-sonnet-5' | null for template
+    feedbackRating: feedbackRatingEnum('feedback_rating'),
+    feedbackFollowedThrough: boolean('feedback_followed_through'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('insights_user_idx').on(t.userId),
+    index('insights_user_created_idx').on(t.userId, t.createdAt),
+    uniqueIndex('insights_user_kind_week_idx').on(t.userId, t.kind, t.weekStart),
+  ],
+);
+
+export const anomalyKindEnum = pgEnum('anomaly_kind', [
+  'duplicate_charge',
+  'unusual_amount',
+  'fee',
+  'new_recurring',
+]);
+export const anomalyStatusEnum = pgEnum('anomaly_status', ['open', 'acknowledged', 'dismissed']);
+
+// Rule-detected anomalies (§2 free tier: anomaly alerts build trust). Keyed by
+// a deterministic `dedupeKey` so re-running detection over the same
+// transactions never produces duplicate alerts.
+export const anomalies = pgTable(
+  'anomalies',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    transactionId: integer('transaction_id').references(() => transactions.id, { onDelete: 'cascade' }),
+    kind: anomalyKindEnum('kind').notNull(),
+    title: text('title').notNull(),
+    detail: text('detail').notNull(),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    dedupeKey: text('dedupe_key').notNull(),
+    status: anomalyStatusEnum('status').notNull().default('open'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('anomalies_user_dedupe_idx').on(t.userId, t.dedupeKey),
+    index('anomalies_user_status_idx').on(t.userId, t.status),
+  ],
+);
+
+export const moneyWinStatusEnum = pgEnum('money_win_status', ['estimated', 'verified']);
+export const moneyWinKindEnum = pgEnum('money_win_kind', [
+  'subscription_canceled',
+  'fee_refund',
+  'anomaly_caught',
+  'spend_reduction',
+]);
+
+// The Money Wins ledger (§2: "the single most important retention/renewal
+// screen"). Each win is `estimated` until the §4 Stage 5 verification bar is
+// met: for a canceled subscription, the expected charge must be absent for
+// `verifyCyclesRequired` consecutive billing cycles (tracked in
+// `cyclesObserved`) OR the user confirms the cancellation (`userConfirmed`).
+// `sourceRecurringStreamId` + `expectedChargeCents` let the verifier check the
+// charge's continued absence on later syncs.
+export const moneyWins = pgTable(
+  'money_wins',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    insightId: integer('insight_id').references(() => insights.id, { onDelete: 'set null' }),
+    kind: moneyWinKindEnum('kind').notNull(),
+    description: text('description').notNull(),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    status: moneyWinStatusEnum('status').notNull().default('estimated'),
+    dedupeKey: text('dedupe_key').notNull(),
+    sourceRecurringStreamId: integer('source_recurring_stream_id').references(() => recurringStreams.id, {
+      onDelete: 'set null',
+    }),
+    expectedChargeCents: bigint('expected_charge_cents', { mode: 'number' }),
+    cyclesObserved: integer('cycles_observed').notNull().default(0),
+    verifyCyclesRequired: integer('verify_cycles_required').notNull().default(2),
+    userConfirmed: boolean('user_confirmed').notNull().default(false),
+    lastCheckedDate: date('last_checked_date'),
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('money_wins_user_dedupe_idx').on(t.userId, t.dedupeKey),
+    index('money_wins_user_idx').on(t.userId),
+    index('money_wins_user_status_idx').on(t.userId, t.status),
   ],
 );

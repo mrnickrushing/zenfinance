@@ -1,7 +1,15 @@
 import * as Sentry from '@sentry/node';
 import { createApp } from './app.js';
 import { env } from './env.js';
-import { scheduleNightlyRollupJob, startEnrichWorker, startFeatureWorker, startSyncWorker } from './queue/index.js';
+import {
+  scheduleNightlyRollupJob,
+  scheduleWeeklyBriefJob,
+  startEnrichWorker,
+  startFeatureWorker,
+  startFirstLookWorker,
+  startSyncWorker,
+  startWeeklyBriefWorker,
+} from './queue/index.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -27,4 +35,11 @@ void startEnrichWorker().then(() => {
 void startFeatureWorker().then(() => {
   if (env.REDIS_URL) console.log('[api] feature-rollup worker started (BullMQ)');
 });
+void startFirstLookWorker().then(() => {
+  if (env.REDIS_URL) console.log('[api] first-look worker started (BullMQ)');
+});
+void startWeeklyBriefWorker().then(() => {
+  if (env.REDIS_URL) console.log('[api] weekly-brief worker started (BullMQ)');
+});
 void scheduleNightlyRollupJob();
+void scheduleWeeklyBriefJob();

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, eq, gte, isNull, lt } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, featureRollups, items, transactionEnrichments, transactions, users } from '../db/schema.js';
 import { NON_SPEND_CATEGORIES } from '../enrichment/categories.js';
@@ -135,6 +135,49 @@ export async function computeRollupsForWeek(db: Db, userId: number, weekStart: D
         target: [featureRollups.userId, featureRollups.weekStart, featureRollups.metric, featureRollups.category],
         set: { valueCents: r.valueCents, valueRatio: r.valueRatio, computedAt: new Date() },
       });
+  }
+}
+
+/**
+ * The user's recent average weekly net savings (income − total spend) over the
+ * last `weeks` weeks with data. Used for goal pacing/projection. 0 when there
+ * are no weeks or the user isn't net-saving on average.
+ */
+export async function getRecentWeeklyNetCents(db: Db, userId: number, weeks = 4): Promise<number> {
+  const rows = await db
+    .select({
+      weekStart: featureRollups.weekStart,
+      metric: featureRollups.metric,
+      valueCents: featureRollups.valueCents,
+    })
+    .from(featureRollups)
+    .where(
+      and(
+        eq(featureRollups.userId, userId),
+        eq(featureRollups.category, '_total'),
+        inArray(featureRollups.metric, ['income_total', 'total_spend']),
+      ),
+    );
+  const distinctWeeks = [...new Set(rows.map((r) => r.weekStart))].sort().reverse().slice(0, weeks);
+  if (distinctWeeks.length === 0) return 0;
+  let net = 0;
+  for (const w of distinctWeeks) {
+    const income = rows.find((r) => r.weekStart === w && r.metric === 'income_total')?.valueCents ?? 0;
+    const spend = rows.find((r) => r.weekStart === w && r.metric === 'total_spend')?.valueCents ?? 0;
+    net += income - spend;
+  }
+  return Math.round(net / distinctWeeks.length);
+}
+
+/**
+ * Compute rollups for the last `weeks` ISO weeks for one user. Used at link
+ * time so the first-look brief has category data to work from (the nightly
+ * job hasn't run yet). Idempotent.
+ */
+export async function computeRecentRollups(db: Db, userId: number, weeks = 12): Promise<void> {
+  const current = mondayOf(new Date());
+  for (let i = 0; i < weeks; i++) {
+    await computeRollupsForWeek(db, userId, new Date(current.getTime() - i * 7 * DAY_MS));
   }
 }
 

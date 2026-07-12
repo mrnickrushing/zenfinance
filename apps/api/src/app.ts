@@ -7,6 +7,8 @@ import helmet from 'helmet';
 import { env } from './env.js';
 import { createAdminRouter } from './routes/admin.js';
 import { createAuthRouter } from './routes/auth.js';
+import { createCoachingRouter } from './routes/coaching.js';
+import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
 import { createSupportRouter } from './routes/support.js';
@@ -37,6 +39,8 @@ export function createApp(): express.Express {
   app.use(createAuthRouter());
   app.use(createLinkRouter());
   app.use(createTransactionsRouter());
+  app.use(createGoalsRouter());
+  app.use(createCoachingRouter());
   app.use(createWebhooksRouter());
 
   // Serve the built site (marketing/support/admin pages) in production.

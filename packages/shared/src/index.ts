@@ -196,3 +196,152 @@ export interface FeatureRollupView {
   valueCents: number | null;
   valueRatio: number | null;
 }
+
+// ---------- Coaching engine (Phase 3) ----------
+
+export type InsightKind = 'first_look' | 'weekly_brief';
+export type InsightSource = 'llm' | 'template';
+
+export interface InsightClaim {
+  amountCents: number;
+  sourceAggregateId: string;
+  label: string;
+}
+
+export interface InsightView {
+  id: number;
+  kind: InsightKind;
+  weekStart: string | null;
+  headline: string;
+  body: string;
+  action: {
+    description: string;
+    // A model *estimate*, labeled as such in the UI — never a verified figure.
+    estimatedImpactCents: number | null;
+    timeframe: string;
+  };
+  claims: InsightClaim[];
+  toneCheck: number;
+  source: InsightSource;
+  feedbackRating: 'up' | 'down' | null;
+  feedbackFollowedThrough: boolean | null;
+  createdAt: string;
+}
+
+export const insightFeedbackSchema = z.object({
+  rating: z.enum(['up', 'down']).optional(),
+  followedThrough: z.boolean().optional(),
+});
+export type InsightFeedbackInput = z.infer<typeof insightFeedbackSchema>;
+
+export type GoalStatus = 'active' | 'achieved' | 'archived';
+export type PacingStatus = 'on_track' | 'behind' | 'ahead' | 'no_deadline' | 'unknown';
+
+export interface GoalView {
+  id: number;
+  name: string;
+  targetAmountCents: number;
+  currentAmountCents: number;
+  targetDate: string | null;
+  priority: number;
+  status: GoalStatus;
+  pacing: {
+    remainingAmountCents: number;
+    progressRatio: number;
+    weeksRemaining: number | null;
+    weeklyTargetCents: number | null;
+    projectedCompletionDate: string | null;
+    pacingStatus: PacingStatus;
+  };
+}
+
+export const createGoalSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  targetAmountCents: z.number().int().positive().max(1_000_000_00),
+  currentAmountCents: z.number().int().min(0).max(1_000_000_00).optional(),
+  targetDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'targetDate must be YYYY-MM-DD')
+    .optional(),
+  priority: z.number().int().min(1).max(100).optional(),
+});
+export type CreateGoalInput = z.infer<typeof createGoalSchema>;
+
+export const updateGoalSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  targetAmountCents: z.number().int().positive().max(1_000_000_00).optional(),
+  currentAmountCents: z.number().int().min(0).max(1_000_000_00).optional(),
+  targetDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'targetDate must be YYYY-MM-DD')
+    .nullable()
+    .optional(),
+  priority: z.number().int().min(1).max(100).optional(),
+  status: z.enum(['active', 'achieved', 'archived']).optional(),
+});
+export type UpdateGoalInput = z.infer<typeof updateGoalSchema>;
+
+export type AnomalyKind = 'duplicate_charge' | 'unusual_amount' | 'fee' | 'new_recurring';
+export type AnomalyStatus = 'open' | 'acknowledged' | 'dismissed';
+
+export interface AnomalyView {
+  id: number;
+  kind: AnomalyKind;
+  title: string;
+  detail: string;
+  amountCents: number;
+  status: AnomalyStatus;
+  createdAt: string;
+}
+
+export const anomalyUpdateSchema = z.object({
+  status: z.enum(['acknowledged', 'dismissed']),
+});
+export type AnomalyUpdateInput = z.infer<typeof anomalyUpdateSchema>;
+
+export interface SubscriptionAuditItemView {
+  recurringStreamId: number;
+  merchantClean: string;
+  cadence: RecurringCadence;
+  category: string | null;
+  avgAmountCents: number;
+  lastAmountCents: number;
+  monthlyEquivalentCents: number;
+  occurrences: number;
+  firstSeenDate: string;
+  lastSeenDate: string;
+  isCancelCandidate: boolean;
+  priceCreep: boolean;
+  priceCreepCents: number | null;
+  cancellationScript: string | null;
+}
+
+export interface SubscriptionAuditView {
+  items: SubscriptionAuditItemView[];
+  totalMonthlyCents: number;
+  cancelCandidateMonthlyCents: number;
+  cancelCandidateCount: number;
+}
+
+export type MoneyWinStatus = 'estimated' | 'verified';
+export type MoneyWinKind = 'subscription_canceled' | 'fee_refund' | 'anomaly_caught' | 'spend_reduction';
+
+export interface MoneyWinView {
+  id: number;
+  kind: MoneyWinKind;
+  description: string;
+  amountCents: number;
+  status: MoneyWinStatus;
+  createdAt: string;
+}
+
+export interface MoneyWinsSummaryView {
+  verifiedTotalCents: number;
+  estimatedTotalCents: number;
+  wins: MoneyWinView[];
+}
+
+export const cancelSubscriptionSchema = z.object({
+  recurringStreamId: z.number().int().positive(),
+});
+export type CancelSubscriptionInput = z.infer<typeof cancelSubscriptionSchema>;

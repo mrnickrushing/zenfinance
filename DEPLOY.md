@@ -31,8 +31,10 @@ One Railway service runs the Express API, which also serves the built site
 | `APPLE_BUNDLE_ID` | `com.rushingtechnologies.zenfinance` (Apple Sign-In verification) |
 | `REDIS_URL` | add a **Redis** service to the Railway project; sync/enrichment/rollup jobs run on BullMQ |
 | `ENRICHMENT_PROVIDER` | `anthropic` |
-| `ANTHROPIC_API_KEY` | from the Anthropic Console — powers transaction categorization (Haiku) |
+| `ANTHROPIC_API_KEY` | from the Anthropic Console — powers transaction categorization (Haiku) and coaching briefs (Sonnet) |
 | `ENRICHMENT_MODEL` | `claude-haiku-4-5` |
+| `INSIGHT_PROVIDER` | `anthropic` |
+| `INSIGHT_MODEL` | `claude-sonnet-5` — the coaching brief runs on Sonnet for reasoning quality |
 
 `PORT` and `DATABASE_URL` are provided by Railway automatically.
 
