@@ -1,4 +1,4 @@
-# Phase 6 Security Audit
+# Security Audit
 
 Last run: July 12, 2026
 
@@ -31,6 +31,8 @@ These are not in the production API request path. Recheck monthly and after new 
 - Express central error handling now captures exceptions in Sentry without leaking stack traces to clients.
 - Plaid item webhooks explicitly transition items through `active`, `login_required`, and `disconnected` states.
 - Account deletion revokes provider items where possible and writes a non-PII deletion audit event.
+- Referral premium credits are ledgered separately from RevenueCat entitlements, so promotional access does not overwrite App Store subscription state.
+- Public launch insight stats are aggregate-only and suppressed below the minimum linked-user sample size.
 
 ## Required Release Checks
 

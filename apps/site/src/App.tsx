@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { AdminPage } from './pages/Admin';
 import { LandingPage } from './pages/Landing';
+import { InsightsPage } from './pages/Insights';
 import { PrivacyPage } from './pages/Privacy';
 import { SupportPage } from './pages/Support';
 import { TermsPage } from './pages/Terms';
@@ -11,6 +12,7 @@ export default function App() {
     <Routes>
       <Route element={<Layout />}>
         <Route index element={<LandingPage />} />
+        <Route path="insights" element={<InsightsPage />} />
         <Route path="support" element={<SupportPage />} />
         <Route path="privacy" element={<PrivacyPage />} />
         <Route path="terms" element={<TermsPage />} />

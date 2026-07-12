@@ -9,7 +9,18 @@ import { count, desc, eq, gte, sql } from 'drizzle-orm';
 import { Router, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
-import { appEvents, insights, items, supportRequests, users, waitlistSignups } from '../db/schema.js';
+import {
+  appEvents,
+  billingEntitlements,
+  insights,
+  items,
+  moneyWins,
+  referralCredits,
+  referralRedemptions,
+  supportRequests,
+  users,
+  waitlistSignups,
+} from '../db/schema.js';
 import {
   issueAccessToken,
   issueRefreshToken,
@@ -127,12 +138,63 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       .from(users)
       .innerJoin(appEvents, eq(appEvents.userId, users.id))
       .where(sql`${users.createdAt} <= now() - interval '28 days' and ${appEvents.createdAt} >= ${users.createdAt} + interval '28 days'`);
+    const [active7] = await db
+      .select({ n: sql<number>`count(distinct ${appEvents.userId})` })
+      .from(appEvents)
+      .where(gte(appEvents.createdAt, new Date(now - 7 * day)));
+    const [active30] = await db
+      .select({ n: sql<number>`count(distinct ${appEvents.userId})` })
+      .from(appEvents)
+      .where(gte(appEvents.createdAt, new Date(now - 30 * day)));
+    const [premiumUsers] = await db
+      .select({ n: sql<number>`count(distinct ${users.id})` })
+      .from(users)
+      .leftJoin(billingEntitlements, eq(billingEntitlements.userId, users.id))
+      .leftJoin(referralCredits, eq(referralCredits.recipientUserId, users.id))
+      .where(sql`(
+        ${billingEntitlements.status} in ('trialing', 'active', 'grace_period')
+        and (${billingEntitlements.expiresAt} is null or ${billingEntitlements.expiresAt} > now())
+      ) or (
+        ${referralCredits.status} = 'applied'
+        and ${referralCredits.expiresAt} > now()
+      )`);
+    const [trialUsers] = await db
+      .select({ n: sql<number>`count(distinct ${billingEntitlements.userId})` })
+      .from(billingEntitlements)
+      .where(sql`${billingEntitlements.status} = 'trialing' and (${billingEntitlements.expiresAt} is null or ${billingEntitlements.expiresAt} > now())`);
+    const [paidUsers] = await db
+      .select({ n: sql<number>`count(distinct ${billingEntitlements.userId})` })
+      .from(billingEntitlements)
+      .where(sql`${billingEntitlements.status} = 'active' and ${billingEntitlements.plan} in ('monthly', 'annual') and (${billingEntitlements.expiresAt} is null or ${billingEntitlements.expiresAt} > now())`);
+    const [monthlyUsers] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(billingEntitlements)
+      .where(sql`${billingEntitlements.status} = 'active' and ${billingEntitlements.plan} = 'monthly' and (${billingEntitlements.expiresAt} is null or ${billingEntitlements.expiresAt} > now())`);
+    const [annualUsers] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(billingEntitlements)
+      .where(sql`${billingEntitlements.status} = 'active' and ${billingEntitlements.plan} = 'annual' and (${billingEntitlements.expiresAt} is null or ${billingEntitlements.expiresAt} > now())`);
+    const [churnedUsers] = await db
+      .select({ n: sql<number>`count(distinct ${billingEntitlements.userId})` })
+      .from(billingEntitlements)
+      .where(sql`${billingEntitlements.status} in ('expired', 'refunded')`);
+    const [everBilledUsers] = await db
+      .select({ n: sql<number>`count(distinct ${billingEntitlements.userId})` })
+      .from(billingEntitlements);
+    const [verifiedWins] = await db
+      .select({ amountCents: sql<number>`coalesce(sum(${moneyWins.amountCents}), 0)` })
+      .from(moneyWins)
+      .where(eq(moneyWins.status, 'verified'));
+    const [referralRedemptionCount] = await db.select({ n: sql<number>`count(*)` }).from(referralRedemptions);
+    const [referralCreditCount] = await db.select({ n: sql<number>`count(*)` }).from(referralCredits);
 
     const userCount = Number(registeredUsers!.n);
     const linkedUserCount = Number(linkedUsers!.n);
     const firstBriefUserCount = Number(firstBriefUsers!.n);
     const actedUserCount = Number(actedUsers!.n);
     const retainedWeek4UserCount = Number(retainedWeek4Users!.n);
+    const paidUserCount = Number(paidUsers!.n);
+    const everBilledUserCount = Number(everBilledUsers!.n);
 
     const metrics: AdminMetrics = {
       waitlist: {
@@ -155,6 +217,20 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         activationRate: userCount ? firstBriefUserCount / userCount : 0,
         actionRate: userCount ? actedUserCount / userCount : 0,
         week4RetentionRate: userCount ? retainedWeek4UserCount / userCount : 0,
+      },
+      launch: {
+        activeUsers7Days: Number(active7!.n),
+        activeUsers30Days: Number(active30!.n),
+        premiumUsers: Number(premiumUsers!.n),
+        trialUsers: Number(trialUsers!.n),
+        paidUsers: paidUserCount,
+        paidConversionRate: userCount ? paidUserCount / userCount : 0,
+        churnedUsers: Number(churnedUsers!.n),
+        churnRate: everBilledUserCount ? Number(churnedUsers!.n) / everBilledUserCount : 0,
+        mrrCents: Number(monthlyUsers!.n) * 799 + Math.round((Number(annualUsers!.n) * 5999) / 12),
+        verifiedMoneyWinsAvgCents: userCount ? Math.round(Number(verifiedWins!.amountCents) / userCount) : 0,
+        referralRedemptions: Number(referralRedemptionCount!.n),
+        referralCreditsAwarded: Number(referralCreditCount!.n),
       },
     };
     res.json(metrics);

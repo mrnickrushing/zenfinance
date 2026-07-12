@@ -645,3 +645,63 @@ export const pricingExperiments = pgTable(
   },
   (t) => [index('pricing_experiments_experiment_idx').on(t.experimentId, t.variant)],
 );
+
+// ---------- Phase 7: launch growth loop ----------
+
+export const referralCodes = pgTable(
+  'referral_codes',
+  {
+    userId: integer('user_id')
+      .primaryKey()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    code: text('code').notNull().unique(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('referral_codes_code_idx').on(t.code)],
+);
+
+export const referralRedemptions = pgTable(
+  'referral_redemptions',
+  {
+    id: serial('id').primaryKey(),
+    codeId: integer('code_id')
+      .notNull()
+      .references(() => referralCodes.userId, { onDelete: 'cascade' }),
+    referrerUserId: integer('referrer_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    referredUserId: integer('referred_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('referral_redemptions_referred_idx').on(t.referredUserId),
+    index('referral_redemptions_referrer_idx').on(t.referrerUserId),
+  ],
+);
+
+export const referralCredits = pgTable(
+  'referral_credits',
+  {
+    id: serial('id').primaryKey(),
+    redemptionId: integer('redemption_id')
+      .notNull()
+      .references(() => referralRedemptions.id, { onDelete: 'cascade' }),
+    recipientUserId: integer('recipient_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sourceUserId: integer('source_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    days: integer('days').notNull(),
+    status: text('status').notNull().default('applied'),
+    appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index('referral_credits_recipient_idx').on(t.recipientUserId, t.expiresAt),
+    index('referral_credits_redemption_idx').on(t.redemptionId),
+  ],
+);

@@ -8,7 +8,6 @@ import {
   type BillingRestoreInput,
   type BillingStatus,
   type BillingStatusView,
-  type EntitlementSource,
   type PaywallPackageView,
   type PricingExperimentView,
 } from '@zenfinance/shared';
@@ -22,6 +21,7 @@ import {
   users,
 } from '../db/schema.js';
 import { env } from '../env.js';
+import { getActiveReferralCreditExpiry } from '../referrals/service.js';
 
 export const PREMIUM_STATUSES = new Set<BillingStatus>(['trialing', 'active', 'grace_period']);
 export const FREE_LIMITS: BillingLimitsView = {
@@ -96,7 +96,7 @@ function dateToIso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-function planForProduct(productId: string | null | undefined): BillingPlan {
+function planForProduct(productId: string | null | undefined): Exclude<BillingPlan, 'referral'> {
   if (!productId) return 'unknown';
   if (productId === env.REVENUECAT_MONTHLY_PRODUCT_ID || productId === MONTHLY_PRODUCT_ID) return 'monthly';
   if (productId === env.REVENUECAT_ANNUAL_PRODUCT_ID || productId === ANNUAL_PRODUCT_ID) return 'annual';
@@ -250,21 +250,44 @@ function entitlementToView(row: typeof billingEntitlements.$inferSelect): Billin
 
 export async function getBillingStatus(db: Db, userId: number): Promise<BillingStatusView> {
   const appUserId = await getOrCreateBillingCustomer(db, userId);
-  const [entitlement] = await db
-    .select()
-    .from(billingEntitlements)
-    .where(and(eq(billingEntitlements.userId, userId), eq(billingEntitlements.entitlementId, env.REVENUECAT_ENTITLEMENT_ID)))
-    .limit(1);
+  const [[entitlement], referralExpiresAt] = await Promise.all([
+    db
+      .select()
+      .from(billingEntitlements)
+      .where(and(eq(billingEntitlements.userId, userId), eq(billingEntitlements.entitlementId, env.REVENUECAT_ENTITLEMENT_ID)))
+      .limit(1),
+    getActiveReferralCreditExpiry(db, userId),
+  ]);
   const status = entitlement?.status ?? 'free';
-  const premium = entitlement ? isPremium(status, entitlement.expiresAt) : false;
+  const storePremium = entitlement ? isPremium(status, entitlement.expiresAt) : false;
+  const referralPremium = Boolean(referralExpiresAt && referralExpiresAt.getTime() > Date.now());
+  const premium = storePremium || referralPremium;
+  const referralEntitlement: BillingEntitlementView | null = referralPremium
+    ? {
+        entitlementId: env.REVENUECAT_ENTITLEMENT_ID,
+        status: 'active',
+        plan: 'referral',
+        productId: null,
+        store: null,
+        environment: 'UNKNOWN',
+        willRenew: false,
+        expiresAt: dateToIso(referralExpiresAt),
+        latestPurchaseAt: null,
+        billingIssueAt: null,
+        cancellationAt: null,
+        managementUrl: null,
+        source: 'referral_credit',
+        updatedAt: new Date().toISOString(),
+      }
+    : null;
   return {
     appUserId,
     entitlementId: env.REVENUECAT_ENTITLEMENT_ID,
     isPremium: premium,
-    status: premium ? status : status === 'free' ? 'free' : status,
-    plan: entitlement?.plan ?? 'free',
+    status: storePremium ? status : referralPremium ? 'active' : status === 'free' ? 'free' : status,
+    plan: storePremium ? (entitlement?.plan ?? 'unknown') : referralPremium ? 'referral' : (entitlement?.plan ?? 'free'),
     limits: premium ? PREMIUM_LIMITS : FREE_LIMITS,
-    entitlement: entitlement ? entitlementToView(entitlement) : null,
+    entitlement: storePremium && entitlement ? entitlementToView(entitlement) : referralEntitlement ?? (entitlement ? entitlementToView(entitlement) : null),
     packages: paywallPackages(),
     pricingExperiment: await getOrCreatePricingExperiment(db, userId),
   };
@@ -295,7 +318,7 @@ export async function upsertEntitlement(
   input: {
     entitlementId: string;
     status: BillingStatus;
-    plan: BillingPlan;
+    plan: Exclude<BillingPlan, 'referral'>;
     productId: string | null;
     store: string | null;
     environment: string;
@@ -305,7 +328,7 @@ export async function upsertEntitlement(
     billingIssueAt: Date | null;
     cancellationAt: Date | null;
     managementUrl: string | null;
-    source: EntitlementSource;
+    source: 'revenuecat_webhook' | 'revenuecat_rest' | 'client_restore' | 'manual_test';
     sourceEventId: string | null;
     rawPayload: unknown;
   },

@@ -81,6 +81,20 @@ export interface AdminMetrics {
     actionRate: number;
     week4RetentionRate: number;
   };
+  launch: {
+    activeUsers7Days: number;
+    activeUsers30Days: number;
+    premiumUsers: number;
+    trialUsers: number;
+    paidUsers: number;
+    paidConversionRate: number;
+    churnedUsers: number;
+    churnRate: number;
+    mrrCents: number;
+    verifiedMoneyWinsAvgCents: number;
+    referralRedemptions: number;
+    referralCreditsAwarded: number;
+  };
 }
 
 export interface Paginated<T> {
@@ -387,8 +401,8 @@ export const MONTHLY_PRODUCT_ID = 'com.rushingtechnologies.zenfinance.coach.mont
 export const ANNUAL_PRODUCT_ID = 'com.rushingtechnologies.zenfinance.coach.annual' as const;
 
 export type BillingStatus = 'free' | 'trialing' | 'active' | 'grace_period' | 'billing_issue' | 'expired' | 'refunded';
-export type BillingPlan = 'free' | 'monthly' | 'annual' | 'lifetime' | 'unknown';
-export type EntitlementSource = 'revenuecat_webhook' | 'revenuecat_rest' | 'client_restore' | 'manual_test';
+export type BillingPlan = 'free' | 'monthly' | 'annual' | 'lifetime' | 'referral' | 'unknown';
+export type EntitlementSource = 'revenuecat_webhook' | 'revenuecat_rest' | 'client_restore' | 'manual_test' | 'referral_credit';
 
 export interface BillingEntitlementView {
   entitlementId: string;
@@ -458,6 +472,54 @@ export type BillingRestoreInput = z.infer<typeof billingRestoreSchema>;
 
 export interface PaywallEventView {
   ok: true;
+}
+
+// ---------- Launch growth loop (Phase 7) ----------
+
+export const referralRedeemSchema = z.object({
+  code: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{6,16}$/),
+});
+export type ReferralRedeemInput = z.infer<typeof referralRedeemSchema>;
+
+export interface ReferralCreditView {
+  id: number;
+  days: number;
+  status: 'applied';
+  appliedAt: string;
+  expiresAt: string;
+}
+
+export interface ReferralStatusView {
+  code: string;
+  shareText: string;
+  shareUrl: string;
+  referredUsers: number;
+  creditsAwarded: number;
+  premiumDaysAwarded: number;
+  activeCreditExpiresAt: string | null;
+  redeemedCode: string | null;
+  credits: ReferralCreditView[];
+}
+
+export interface ReferralRedeemView {
+  ok: true;
+  referral: ReferralStatusView;
+  billing: BillingStatusView;
+}
+
+export interface LaunchContentStatsView {
+  generatedAt: string;
+  sampleSize: number;
+  publishable: boolean;
+  minimumSampleSize: number;
+  metrics: {
+    linkedUsers: number;
+    premiumUsers: number;
+    avgRecurringStreamsPerLinkedUser: number;
+    avgRecurringMonthlyCentsPerLinkedUser: number;
+    avgVerifiedMoneyWinsCentsPerUser: number;
+    referralRedemptions: number;
+  };
 }
 
 // ---------- Mobile app product surface (Phase 4 + Phase 5) ----------

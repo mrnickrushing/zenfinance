@@ -10,11 +10,13 @@ import { createAdminRouter } from './routes/admin.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createBillingRouter } from './routes/billing.js';
 import { createCoachingRouter } from './routes/coaching.js';
+import { createContentRouter } from './routes/content.js';
 import { createGoalsRouter } from './routes/goals.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
 import { createMobileRouter } from './routes/mobile.js';
 import { createPrivacyRouter } from './routes/privacy.js';
+import { createReferralsRouter } from './routes/referrals.js';
 import { createSupportRouter } from './routes/support.js';
 import { createTransactionsRouter } from './routes/transactions.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
@@ -46,6 +48,7 @@ export function createApp(): express.Express {
   app.use(createHealthRouter());
   app.use(createWaitlistRouter());
   app.use(createSupportRouter());
+  app.use(createContentRouter());
   app.use(createAdminRouter());
   app.use(createAuthRouter());
   app.use(createBillingRouter());
@@ -55,6 +58,7 @@ export function createApp(): express.Express {
   app.use(createCoachingRouter());
   app.use(createMobileRouter());
   app.use(createPrivacyRouter());
+  app.use(createReferralsRouter());
   app.use(createWebhooksRouter());
 
   // Serve the built site (marketing/support/admin pages) in production.

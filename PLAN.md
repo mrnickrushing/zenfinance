@@ -289,6 +289,15 @@ sign-off, and live beta retention/Sentry observation windows.
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
 - **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
+**Implementation status in this repo:** Phase 7 repo-owned launch systems are
+implemented: authenticated referral codes and 30-day stackable premium credits
+for both referrer and referred user, billing gates that honor active referral
+credits without overwriting RevenueCat state, launch KPI metrics in the admin
+dashboard, a public sample-size-gated `/insights` aggregate-data page, a
+public `/api/content/launch-stats` endpoint, and launch/growth runbooks.
+External launch work remains App Store publication, Product Hunt/newsletter
+posting, waitlist emailing, and live 90-day KPI measurement.
+
 ---
 
 ## 9. Risks & Mitigations
@@ -317,4 +326,4 @@ sign-off, and live beta retention/Sentry observation windows.
 
 ---
 
-*Current status: Phases 0–6 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, and Phase 6 runbooks. Mock-provider paths and Phase 6 hardening tests pass. Real-world exit gates still require external credentials, approvals, and live operations outside this environment: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/TestFlight distribution, Sentry project observation, and beta retention data.*
+*Current status: Phases 0–7 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, and Phase 7 runbooks. Mock-provider paths and Phase 7 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*

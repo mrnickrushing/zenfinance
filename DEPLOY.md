@@ -78,6 +78,8 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] Plaid sandbox item webhooks update item state (`login_required`, `active`, `disconnected`)
 - [ ] `/api/me/export` returns an authenticated data export and `DELETE /api/me` records a non-PII deletion audit event
 - [ ] App Store privacy answers in `docs/APP_STORE_PRIVACY.md` match the final native build and App Store Connect entry
+- [ ] Referral redemption works: `/api/referrals/me`, `/api/referrals/redeem`, and billing status shows referral premium credit
+- [ ] `/insights` loads aggregate launch stats and suppresses public copy below the minimum sample size
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development

@@ -41,6 +41,18 @@ export function TermsPage() {
 
         <section>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Referral credits
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            Referral credits are promotional access to ZenFinance Coach. A valid referral
+            redemption grants the stated number of premium-access days to both accounts. Credits
+            are not cash, are not transferable, cannot be refunded, and may be limited or revoked
+            for abuse.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
             Linked accounts
           </h2>
           <p className="mt-3 text-sm leading-relaxed">
