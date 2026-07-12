@@ -1,32 +1,20 @@
-// React Native 0.81+ ships folly headers via a prebuilt ReactNativeDependencies
-// xcframework that doesn't vendor folly/coro, but folly/Portability.h
-// auto-detects FOLLY_HAS_COROUTINES=1 from compiler capabilities (clang +
-// -std=c++20) regardless of whether the coro headers are actually present.
-// That makes folly headers (Expected.h, and potentially others) both
-// #include the missing folly/coro/*.h files AND reference folly::coro::*
-// symbols that were never declared, breaking any pod that transitively pulls
-// in Fabric/folly headers (Sentry's Session Replay native code, in our case,
-// but this would eventually bite any other dependency that touches Fabric).
+// React Native 0.81+'s prebuilt ReactNativeDependencies xcframework doesn't
+// vendor folly/coro headers, but folly/Expected.h still checks
+// `#if FOLLY_HAS_COROUTINES` before including folly/coro/Coroutine.h and
+// auto-detects that as 1 from compiler capabilities. Folly's own
+// Portability.h treats FOLLY_CFG_NO_COROUTINES as the user-facing override
+// that suppresses that auto-detection — this is the flag the community has
+// confirmed actually works (see facebook/react-native#53575), and it needs
+// to go on GCC_PREPROCESSOR_DEFINITIONS (which CocoaPods/Xcode reliably
+// merges across every pod's own xcconfig) rather than OTHER_CPLUSPLUSFLAGS
+// (which some pods set directly in their own podspec, silently overriding
+// whatever a Podfile post_install hook sets there).
 //
-// Prior attempts and why each only solved half the problem:
-//  1. OTHER_CPLUSPLUSFLAGS=-DFOLLY_HAS_COROUTINES=0 via Podfile post_install
-//     build-settings — didn't reliably reach every pod target's actual
-//     compile invocation (some pods set that same setting directly in their
-//     own podspec, taking precedence).
-//  2. Guarding just folly/Expected.h's #include with __has_include — fixed
-//     "file not found" for that one include site, but FOLLY_HAS_COROUTINES
-//     was still 1 elsewhere, so folly::coro::* usages became undeclared
-//     identifiers instead.
-//  3. Forcing FOLLY_HAS_COROUTINES=0 in Portability.h alone (dropping the
-//     include-guard from attempt 2) — back to "file not found", because the
-//     unconditional #include in Expected.h isn't itself gated by that macro.
-//
-// This does both at once, and generalizes the include-guard to every folly
-// header (not just Expected.h) in case others have the same unconditional
-// include: force FOLLY_HAS_COROUTINES=0 in Portability.h, and wrap every
-// `#include <folly/coro/...>` line anywhere under the vendored folly headers
-// with an __has_include guard. Both are plain file edits done in Podfile
-// post_install, unaffected by build-setting precedence.
+// Earlier attempts got this wrong in two ways: used FOLLY_HAS_COROUTINES
+// instead of FOLLY_CFG_NO_COROUTINES, and used OTHER_CPLUSPLUSFLAGS instead
+// of GCC_PREPROCESSOR_DEFINITIONS. Expo apps regenerate ios/ on every
+// prebuild, so this has to be a config plugin rather than a one-off Podfile
+// edit.
 const { withPodfile } = require('expo/config-plugins');
 
 const MARKER = '__ZENFINANCE_FOLLY_CORO_FIX__';
@@ -40,25 +28,13 @@ module.exports = function withFollyCoroutineFix(config) {
 
     const injection = `
     # ${MARKER}
-    folly_headers_dir = File.join(installer.sandbox.root, 'Headers/Public/ReactNativeDependencies/folly')
-
-    folly_portability_header = File.join(folly_headers_dir, 'Portability.h')
-    if File.exist?(folly_portability_header)
-      portability_contents = File.read(folly_portability_header)
-      unless portability_contents.include?('ZENFINANCE_FOLLY_CORO_FIX')
-        File.write(folly_portability_header, "// ZENFINANCE_FOLLY_CORO_FIX\\n#undef FOLLY_HAS_COROUTINES\\n#define FOLLY_HAS_COROUTINES 0\\n" + portability_contents)
-      end
-    end
-
-    if File.directory?(folly_headers_dir)
-      Dir.glob(File.join(folly_headers_dir, '**', '*.h')).each do |header_path|
-        header_contents = File.read(header_path)
-        next unless header_contents.include?('#include <folly/coro/')
-        patched = header_contents.gsub(/^#include <(folly\\/coro\\/[^>]+)>$/) do
-          include_path = Regexp.last_match(1)
-          "#if __has_include(<#{include_path}>)\\n#include <#{include_path}>\\n#endif"
-        end
-        File.write(header_path, patched) if patched != header_contents
+    # https://github.com/facebook/react-native/issues/53575
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |build_config|
+        defs = build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+        defs = [defs] unless defs.is_a?(Array)
+        defs << 'FOLLY_CFG_NO_COROUTINES=1'
+        build_config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = defs
       end
     end
 `;
