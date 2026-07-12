@@ -6,6 +6,15 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   ADMIN_SECRET: z.string().min(32, 'ADMIN_SECRET must be at least 32 characters'),
+  TOKEN_ENC_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, 'TOKEN_ENC_KEY must be 64 hex chars (32 bytes)'),
+  TRANSACTION_PROVIDER: z.enum(['plaid', 'mock']).default('plaid'),
+  PLAID_CLIENT_ID: z.string().optional(),
+  PLAID_SECRET: z.string().optional(),
+  PLAID_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
+  APPLE_BUNDLE_ID: z.string().optional(),
+  REDIS_URL: z.string().optional(),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
   SUPPORT_EMAIL: z.string().email().default('support@rushingtechnologies.com'),

@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "ZenFinance",
+    "slug": "zenfinance",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/app-icon-master.png",
+    "scheme": "zenfinance",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "bundleIdentifier": "com.rushingtechnologies.zenfinance",
+      "supportsTablet": false
+    },
+    "plugins": ["expo-secure-store"],
+    "extra": {
+      "apiUrl": "http://localhost:3000"
+    }
+  }
+}

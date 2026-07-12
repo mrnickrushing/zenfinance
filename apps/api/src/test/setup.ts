@@ -1,7 +1,7 @@
 import { execSync } from 'node:child_process';
 import { sql } from 'drizzle-orm';
 import { db, pool } from '../db/client.js';
-import { adminRefreshTokens, supportRequests, waitlistSignups } from '../db/schema.js';
+import { adminRefreshTokens, supportRequests, users, waitlistSignups } from '../db/schema.js';
 
 let migrated = false;
 
@@ -20,6 +20,7 @@ export async function truncateAll(): Promise<void> {
   await db.delete(adminRefreshTokens);
   await db.delete(supportRequests);
   await db.delete(waitlistSignups);
+  await db.delete(users); // cascades refresh tokens, items, accounts, transactions
   await db.execute(sql`SELECT 1`);
 }
 

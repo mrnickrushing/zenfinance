@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/node';
 import { createApp } from './app.js';
 import { env } from './env.js';
+import { startSyncWorker } from './queue/index.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -15,4 +16,8 @@ const app = createApp();
 
 app.listen(env.PORT, () => {
   console.log(`[api] listening on :${env.PORT} (${env.NODE_ENV})`);
+});
+
+void startSyncWorker().then(() => {
+  if (env.REDIS_URL) console.log('[api] sync worker started (BullMQ)');
 });

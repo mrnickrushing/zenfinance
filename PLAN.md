@@ -296,4 +296,4 @@ Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 wee
 
 ---
 
-*Current status: the Phase 0 web presence (marketing + waitlist + support + admin + API) is built in this repo — see `apps/site`, `apps/api`, and `DEPLOY.md`. Next: deploy to Railway, then Phase 1 (data spine). The provider abstraction and the coaching-policy prompt remain the two artifacts worth the most care; everything else is replaceable.*
+*Current status: Phase 0 (web presence) and the Phase 1 data spine are built — user auth (email + Apple Sign-In verification, rotating refresh tokens), the provider abstraction (`apps/api/src/providers/`, Plaid + mock), encrypted token storage, webhook-driven cursor sync with dedupe/pending-reconciliation/transfer-pair detection, delete/disconnect flows, and the iOS link harness (`apps/ios`). Phase 1's exit gate (link a real account from the harness) needs Plaid sandbox keys + an Xcode dev build. Next: run the exit gate, then Phase 2 (AI enrichment). The coaching-policy prompt remains the artifact worth the most care.*
