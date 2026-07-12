@@ -57,7 +57,8 @@ Generated from available local capture:
   - Objective: waitlist signup conversion
   - Source screenshot: `docs/design/current-state/web/landing-desktop.png`
   - Lazyweb job id: `6dd1fdd7-1633-4dd8-af74-3efacc394d8b`
-  - Report URL: pending after repeated polls on 2026-07-12
+  - Report URL: `https://www.lazyweb.com/report/lazyweb/8c4eba95-f8f0-4c53-812e-314f4a94d63e/?source=create`
+  - Degraded: no
 
 ## Phase 0 Follow-Up Tickets
 
