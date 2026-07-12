@@ -26,8 +26,9 @@ Friday:
 2. Paywall framing: Money Wins ROI vs. unlimited coach access.
 3. First-brief prompt variants that increase action follow-through.
 4. Weekly brief notification timing.
-5. Freelancer Mode entry point from Settings vs. brief recommendations.
-6. Subscription-auditor entry point from Money Wins.
+5. Household Sharing entry point from Settings vs. shared-goal prompts.
+6. Freelancer Mode entry point from Settings vs. brief recommendations.
+7. Subscription-auditor entry point from Money Wins.
 
 ## Content Flywheel
 
@@ -35,11 +36,10 @@ The `/insights` page reads `GET /api/content/launch-stats` and publishes only an
 
 ## Feature Train
 
-Demand order after Phase 8:
+Demand order after Phase 9:
 
-1. Household sharing.
-2. Voice brief.
-3. Money Physical one-time report.
-4. Net-worth view.
+1. Voice brief.
+2. Money Physical one-time report.
+3. Net-worth view.
 
 A feature moves forward only when support tickets, user interviews, and usage data all point to the same demand.

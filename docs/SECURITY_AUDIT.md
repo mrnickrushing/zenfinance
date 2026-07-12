@@ -34,6 +34,7 @@ These are not in the production API request path. Recheck monthly and after new 
 - Referral premium credits are ledgered separately from RevenueCat entitlements, so promotional access does not overwrite App Store subscription state.
 - Public launch insight stats are aggregate-only and suppressed below the minimum linked-user sample size.
 - Freelancer Mode routes are premium-gated, store only user-owned settings, and delete profile rows through the user cascade.
+- Household Sharing routes expose only household metadata, shared goals, and contributions; linked accounts and transactions stay outside household responses.
 
 ## Required Release Checks
 

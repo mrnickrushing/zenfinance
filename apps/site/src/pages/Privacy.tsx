@@ -35,7 +35,8 @@ export function PrivacyPage() {
             requests you send us). If you use referrals, we store your referral code,
             redemption status, and premium-credit expiration dates. If you use Freelancer Mode, we
             store your enabled state, income target, estimated set-aside percentage, and runway
-            target.
+            target. If you use Household Sharing, we store household membership, invite status,
+            shared goals, and contribution history.
           </p>
         </section>
 
@@ -47,8 +48,8 @@ export function PrivacyPage() {
             We use your data to authenticate your account, sync read-only financial data, generate
             coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
             support, prevent abuse, run the referral program, calculate Freelancer Mode income and
-            runway summaries, publish minimum-sample aggregate launch insights, and understand
-            whether the beta or launch is working.
+            runway summaries, power Household Sharing and shared goals, publish minimum-sample
+            aggregate launch insights, and understand whether the beta or launch is working.
           </p>
         </section>
 
@@ -84,8 +85,8 @@ export function PrivacyPage() {
           </h2>
           <p className="mt-3 text-sm leading-relaxed">
             You can disconnect a bank, export your data, disable notification types, cancel your
-            subscription through the App Store, or delete your account from the app. Privacy
-            requests can also be sent to support@rushingtechnologies.com.
+            subscription through the App Store, leave a household, or delete your account from the
+            app. Privacy requests can also be sent to support@rushingtechnologies.com.
           </p>
         </section>
 

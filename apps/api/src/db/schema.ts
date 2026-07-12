@@ -719,3 +719,99 @@ export const freelancerProfiles = pgTable('freelancer_profiles', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Phase 9: household sharing ----------
+
+export const households = pgTable('households', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  seatLimit: integer('seat_limit').notNull().default(2),
+  createdByUserId: integer('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const householdMembers = pgTable(
+  'household_members',
+  {
+    id: serial('id').primaryKey(),
+    householdId: integer('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('member'),
+    privacyMode: text('privacy_mode').notNull().default('individual'),
+    joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('household_members_user_idx').on(t.userId),
+    uniqueIndex('household_members_household_user_idx').on(t.householdId, t.userId),
+    index('household_members_household_idx').on(t.householdId),
+  ],
+);
+
+export const householdInvites = pgTable(
+  'household_invites',
+  {
+    id: serial('id').primaryKey(),
+    householdId: integer('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    invitedByUserId: integer('invited_by_user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    status: text('status').notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedByUserId: integer('accepted_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('household_invites_household_idx').on(t.householdId, t.status),
+    index('household_invites_email_idx').on(t.email, t.status),
+  ],
+);
+
+export const householdGoals = pgTable(
+  'household_goals',
+  {
+    id: serial('id').primaryKey(),
+    householdId: integer('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    createdByUserId: integer('created_by_user_id').references(() => users.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    targetAmountCents: bigint('target_amount_cents', { mode: 'number' }).notNull(),
+    currentAmountCents: bigint('current_amount_cents', { mode: 'number' }).notNull().default(0),
+    targetDate: date('target_date'),
+    priority: integer('priority').notNull().default(1),
+    status: goalStatusEnum('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('household_goals_household_idx').on(t.householdId, t.status),
+    index('household_goals_created_by_idx').on(t.createdByUserId),
+  ],
+);
+
+export const householdGoalContributions = pgTable(
+  'household_goal_contributions',
+  {
+    id: serial('id').primaryKey(),
+    goalId: integer('goal_id')
+      .notNull()
+      .references(() => householdGoals.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    note: text('note'),
+    contributedAt: timestamp('contributed_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('household_goal_contributions_goal_idx').on(t.goalId), index('household_goal_contributions_user_idx').on(t.userId)],
+);
