@@ -27,6 +27,7 @@ const envSchema = z.object({
   RESEND_FROM_EMAIL: z.string().email().optional(),
   SUPPORT_EMAIL: z.string().email().default('support@rushingtechnologies.com'),
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
+  ADMIN_URL: z.string().url().default('http://localhost:5174'),
   SENTRY_DSN: z.string().optional(),
   REVENUECAT_IOS_API_KEY: z.string().optional(),
   REVENUECAT_SECRET_API_KEY: z.string().optional(),

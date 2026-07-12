@@ -6,6 +6,7 @@ import type {
   WaitlistEntry,
 } from '@zenfinance/shared';
 import { Badge, Button, Card, TextInput } from '../components/ui';
+import { API_BASE } from '../lib/api';
 import { adminFetch, useAdminStore } from '../store/admin';
 
 export function AdminPage() {
@@ -329,7 +330,8 @@ function WaitlistSection() {
 
   async function exportCsv() {
     const token = useAdminStore.getState().accessToken;
-    const res = await fetch('/api/admin/waitlist?format=csv', {
+    const res = await fetch(`${API_BASE}/api/admin/waitlist?format=csv`, {
+      credentials: 'include',
       headers: { Authorization: `Bearer ${token}` },
     });
     const blob = await res.blob();

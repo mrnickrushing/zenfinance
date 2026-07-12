@@ -8,9 +8,14 @@ export class ApiRequestError extends Error {
   }
 }
 
+// The site is deployed separately from the API (Cloudflare Workers vs.
+// Railway), so requests are cross-origin — VITE_API_URL points at the API
+// and cookies must be sent explicitly via credentials: 'include'.
+export const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(path, {
-    credentials: 'same-origin',
+  const res = await fetch(`${API_BASE}${path}`, {
+    credentials: 'include',
     ...init,
     headers: {
       'Content-Type': 'application/json',

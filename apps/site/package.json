@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build:marketing": "tsc -p tsconfig.json --noEmit && vite build --mode marketing",
+    "build:admin": "tsc -p tsconfig.json --noEmit && vite build --mode admin",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "preview": "vite preview"
   },

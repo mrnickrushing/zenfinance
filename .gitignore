@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-marketing/
+dist-admin/
 build/
 *.log
 .env

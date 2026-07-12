@@ -1,0 +1,12 @@
+{
+  "name": "zenfinance-site",
+  "account_id": "2e9f8521c5b27a3dede0ef667a6b8151",
+  "compatibility_date": "2026-01-01",
+  "assets": {
+    "directory": "./dist-marketing",
+    "not_found_handling": "single-page-application"
+  },
+  "routes": [
+    { "pattern": "zenfinance.rushingtechnologies.com", "custom_domain": true }
+  ]
+}

@@ -1,5 +1,3 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
@@ -26,8 +24,6 @@ import { createVoiceBriefsRouter } from './routes/voiceBriefs.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
 import { createWebhooksRouter } from './routes/webhooks.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 export function createApp(): express.Express {
   const app = express();
 
@@ -35,7 +31,7 @@ export function createApp(): express.Express {
   app.use(helmet());
   app.use(
     cors({
-      origin: env.NODE_ENV === 'production' ? env.FRONTEND_URL : true,
+      origin: env.NODE_ENV === 'production' ? [env.FRONTEND_URL, env.ADMIN_URL] : true,
       credentials: true,
     }),
   );
@@ -69,15 +65,9 @@ export function createApp(): express.Express {
   app.use(createReferralsRouter());
   app.use(createWebhooksRouter());
 
-  // Serve the built site (marketing/support/admin pages) in production.
-  const siteDist = path.resolve(__dirname, '../../site/dist');
-  app.use(express.static(siteDist));
-  app.get(/^\/(?!api\/).*/, (_req, res, next) => {
-    res.sendFile(path.join(siteDist, 'index.html'), (err) => {
-      if (err) next();
-    });
-  });
-
+  // The marketing site and admin console are static SPAs deployed to
+  // Cloudflare Workers (zenfinance.rushingtechnologies.com and
+  // admin.zenfinance.rushingtechnologies.com) — this API only serves /api/*.
   app.use((_req, res) => {
     res.status(404).json({ error: { code: 'not_found', message: 'Not found' } });
   });
