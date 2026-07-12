@@ -1,5 +1,6 @@
 import { billingRestoreSchema, appEventSchema, type AppEventInput, type BillingRestoreInput } from '@zenfinance/shared';
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import {
   applyClientRestore,
   getBillingStatus,
@@ -10,24 +11,39 @@ import {
 } from '../billing/service.js';
 import { db } from '../db/client.js';
 import { appEvents } from '../db/schema.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
 export function createBillingRouter(): ReturnType<typeof Router> {
   const router = Router();
+  const revenueCatWebhookLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
 
   router.get('/api/billing/status', requireUser, async (_req, res) => {
     const userId = res.locals.userId as number;
     res.json(await getBillingStatus(db, userId));
   });
 
-  router.post('/api/billing/refresh', requireUser, async (_req, res) => {
+  router.post('/api/billing/refresh', requireUser, userRateLimit('billing-refresh', {
+    windowMs: 60 * 1000,
+    limit: 6,
+    message: 'Too many billing refreshes. Try again shortly.',
+  }), async (_req, res) => {
     const userId = res.locals.userId as number;
     await syncFromRevenueCatRest(db, userId);
     res.json(await getBillingStatus(db, userId));
   });
 
-  router.post('/api/billing/restore', requireUser, validateBody(billingRestoreSchema), async (_req, res) => {
+  router.post('/api/billing/restore', requireUser, userRateLimit('billing-restore', {
+    windowMs: 15 * 60 * 1000,
+    limit: 6,
+    message: 'Too many billing restore attempts. Try again later.',
+  }), validateBody(billingRestoreSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     try {
       await applyClientRestore(db, userId, res.locals.body as BillingRestoreInput);
@@ -46,7 +62,7 @@ export function createBillingRouter(): ReturnType<typeof Router> {
     res.status(201).json({ ok: true });
   });
 
-  router.post('/api/webhooks/revenuecat', async (req, res) => {
+  router.post('/api/webhooks/revenuecat', revenueCatWebhookLimiter, async (req, res) => {
     const rawBody = Buffer.isBuffer((req as { rawBody?: unknown }).rawBody)
       ? ((req as unknown as { rawBody: Buffer }).rawBody)
       : Buffer.from(JSON.stringify(req.body));

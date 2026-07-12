@@ -45,4 +45,5 @@ export interface TransactionProvider {
   fetchAccounts(accessToken: string): Promise<ProviderAccount[]>;
   syncTransactions(accessToken: string, cursor: string | null): Promise<SyncPage>;
   removeItem(accessToken: string): Promise<void>;
+  verifyWebhook?(rawBody: Buffer, verificationHeader: string | undefined): Promise<boolean>;
 }

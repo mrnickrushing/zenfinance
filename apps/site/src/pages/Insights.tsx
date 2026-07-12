@@ -13,12 +13,21 @@ function usd(cents: number): string {
 
 export function InsightsPage() {
   const [stats, setStats] = useState<LaunchContentStatsView | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     apiFetch<LaunchContentStatsView>('/api/content/launch-stats')
-      .then(setStats)
-      .catch(() => setStats(null));
+      .then((value) => {
+        setStats(value);
+        setFailed(false);
+      })
+      .catch(() => {
+        setStats(null);
+        setFailed(true);
+      });
   }, []);
+
+  const metrics = stats?.publishable ? stats.metrics : null;
 
   return (
     <section className="mx-auto max-w-5xl px-6 py-16">
@@ -34,32 +43,36 @@ export function InsightsPage() {
       </p>
 
       <div className="mt-10 grid gap-5 md:grid-cols-3">
-        <MetricCard label="Linked users" value={stats ? String(stats.metrics.linkedUsers) : '...'} />
+        <MetricCard label="Linked users" value={metrics ? String(metrics.linkedUsers) : '...'} />
         <MetricCard
           label="Avg recurring charges"
-          value={stats ? stats.metrics.avgRecurringStreamsPerLinkedUser.toFixed(1) : '...'}
+          value={metrics ? metrics.avgRecurringStreamsPerLinkedUser.toFixed(1) : '...'}
         />
         <MetricCard
           label="Avg verified wins"
-          value={stats ? usd(stats.metrics.avgVerifiedMoneyWinsCentsPerUser) : '...'}
+          value={metrics ? usd(metrics.avgVerifiedMoneyWinsCentsPerUser) : '...'}
         />
       </div>
 
       <Card className="mt-8">
-        {stats?.publishable ? (
+        {metrics ? (
           <div className="grid gap-4 md:grid-cols-2">
             <p className="text-slate-600 dark:text-slate-300">
               The current linked cohort averages{' '}
-              <strong>{stats.metrics.avgRecurringStreamsPerLinkedUser.toFixed(1)}</strong> recurring
-              charges and <strong>{usd(stats.metrics.avgRecurringMonthlyCentsPerLinkedUser)}</strong>{' '}
+              <strong>{metrics.avgRecurringStreamsPerLinkedUser.toFixed(1)}</strong> recurring
+              charges and <strong>{usd(metrics.avgRecurringMonthlyCentsPerLinkedUser)}</strong>{' '}
               in recurring monthly spend.
             </p>
             <p className="text-slate-600 dark:text-slate-300">
-              Referral sharing has produced <strong>{stats.metrics.referralRedemptions}</strong>{' '}
-              redeemed invites so far, with <strong>{stats.metrics.premiumUsers}</strong> users
+              Referral sharing has produced <strong>{metrics.referralRedemptions}</strong>{' '}
+              redeemed invites so far, with <strong>{metrics.premiumUsers}</strong> users
               currently in a premium state.
             </p>
           </div>
+        ) : failed ? (
+          <p className="text-slate-600 dark:text-slate-300">
+            Public launch metrics are temporarily unavailable.
+          </p>
         ) : (
           <p className="text-slate-600 dark:text-slate-300">
             Public launch metrics unlock at {stats?.minimumSampleSize ?? 10} linked users. Current

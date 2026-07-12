@@ -3,6 +3,8 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
 import { items } from '../db/schema.js';
+import { env } from '../env.js';
+import { getProvider } from '../providers/index.js';
 import { enqueueItemSync } from '../queue/index.js';
 
 const SYNC_CODES = new Set(['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE', 'HISTORICAL_UPDATE']);
@@ -24,6 +26,18 @@ export function createWebhooksRouter(): ReturnType<typeof Router> {
   // whether an item exists would be an oracle.
   webhooksRouter.post('/api/webhooks/plaid', webhookLimiter, async (req, res) => {
     try {
+      const verificationHeader = req.headers['plaid-verification'];
+      const provider = getProvider();
+      const rawBody = (req as { rawBody?: Buffer }).rawBody;
+      const validWebhook =
+        provider.verifyWebhook && Buffer.isBuffer(rawBody) && typeof verificationHeader !== 'object'
+          ? await provider.verifyWebhook(rawBody, verificationHeader)
+          : env.NODE_ENV !== 'production';
+      if (!validWebhook) {
+        res.status(401).json({ error: { code: 'invalid_signature', message: 'Invalid Plaid webhook signature' } });
+        return;
+      }
+
       const body = req.body as {
         webhook_type?: string;
         webhook_code?: string;

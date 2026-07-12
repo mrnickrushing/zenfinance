@@ -103,11 +103,12 @@ export function createAuthRouter(): ReturnType<typeof Router> {
         return;
       }
 
-      // Apple only shares the email on first sign-in; the client passes it along.
-      const email = identity.email ?? input.email;
-      if (!email) {
+      // Apple only shares the email on first sign-in. Never trust a client-supplied
+      // email to attach an Apple subject to an existing account.
+      const email = identity.email;
+      if (!email || identity.emailVerified === false) {
         res.status(400).json({
-          error: { code: 'invalid_request', message: 'Email required on first Apple sign-in' },
+          error: { code: 'invalid_request', message: 'Verified Apple email required on first sign-in' },
         });
         return;
       }

@@ -416,7 +416,10 @@ export function createAdminRouter(): ReturnType<typeof Router> {
 
     if (req.query.format === 'csv') {
       const rows = await db.select().from(waitlistSignups).orderBy(desc(waitlistSignups.createdAt));
-      const esc = (v: string) => `"${v.replaceAll('"', '""')}"`;
+      const esc = (v: string) => {
+        const neutralized = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+        return `"${neutralized.replaceAll('"', '""')}"`;
+      };
       const csv = [
         'id,email,source,created_at',
         ...rows.map((r) =>

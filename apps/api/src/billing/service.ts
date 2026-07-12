@@ -12,7 +12,7 @@ import {
   type PaywallPackageView,
   type PricingExperimentView,
 } from '@zenfinance/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import {
   billingCustomers,
@@ -332,21 +332,28 @@ export async function upsertEntitlement(
     managementUrl: string | null;
     source: 'revenuecat_webhook' | 'revenuecat_rest' | 'client_restore' | 'manual_test';
     sourceEventId: string | null;
+    sourceEventAt?: Date | null;
     rawPayload: unknown;
   },
 ): Promise<void> {
   const now = new Date();
-  await db
+  const values = { userId, ...input, sourceEventAt: input.sourceEventAt ?? null, updatedAt: now };
+  const conflict = db
     .insert(billingEntitlements)
-    .values({ userId, ...input, updatedAt: now })
+    .values(values)
     .onConflictDoUpdate({
       target: [billingEntitlements.userId, billingEntitlements.entitlementId],
-      set: { ...input, updatedAt: now },
+      set: { ...input, sourceEventAt: input.sourceEventAt ?? null, updatedAt: now },
+      where:
+        input.source === 'revenuecat_webhook' && input.sourceEventAt
+          ? sql`${billingEntitlements.sourceEventAt} is null or ${billingEntitlements.sourceEventAt} <= ${input.sourceEventAt}`
+          : undefined,
     });
+  await conflict;
 }
 
 export function verifyRevenueCatSignature(rawBody: Buffer, signatureHeader: string | undefined): boolean {
-  if (!env.REVENUECAT_WEBHOOK_SIGNING_SECRET) return true;
+  if (!env.REVENUECAT_WEBHOOK_SIGNING_SECRET) return env.NODE_ENV !== 'production';
   if (!signatureHeader) return false;
   const parts = new Map(signatureHeader.split(',').map((part) => {
     const [key, value] = part.split('=');
@@ -374,81 +381,107 @@ export function verifyRevenueCatAuthorization(header: string | undefined): boole
   return header === env.REVENUECAT_WEBHOOK_AUTH || header === `Bearer ${env.REVENUECAT_WEBHOOK_AUTH}`;
 }
 
+function revenueCatAppUserIds(event: RevenueCatWebhookEvent): string[] {
+  return [...new Set([event.app_user_id, event.original_app_user_id, ...(event.aliases ?? [])].filter((value): value is string => Boolean(value)))];
+}
+
+async function resolveRevenueCatUser(db: Db, event: RevenueCatWebhookEvent): Promise<{ userId: number | null; appUserId: string }> {
+  const appUserIds = revenueCatAppUserIds(event);
+  if (appUserIds.length === 0) throw new Error('RevenueCat webhook missing app_user_id');
+
+  const customers = await db
+    .select({ userId: billingCustomers.userId, appUserId: billingCustomers.revenueCatAppUserId })
+    .from(billingCustomers)
+    .where(inArray(billingCustomers.revenueCatAppUserId, appUserIds));
+  const userIds = [...new Set(customers.map((customer) => customer.userId))];
+  if (userIds.length > 1) throw new Error('RevenueCat webhook aliases map to multiple users');
+  if (customers[0]) return { userId: customers[0].userId, appUserId: customers[0].appUserId };
+
+  const parsedUserId = appUserIds.map(userIdFromAppUserId).find((value): value is number => value !== null) ?? null;
+  if (parsedUserId) {
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, parsedUserId)).limit(1);
+    if (!user) throw new Error(`RevenueCat app_user_id does not map to an existing user: ${appUserIdFor(parsedUserId)}`);
+    const appUserId = await getOrCreateBillingCustomer(db, parsedUserId);
+    return { userId: parsedUserId, appUserId };
+  }
+
+  return { userId: null, appUserId: appUserIds[0]! };
+}
+
 export async function processRevenueCatWebhook(db: Db, body: RevenueCatWebhookBody): Promise<{ ok: true; duplicate: boolean; userId: number | null }> {
   const event = body.event;
   if (!event?.id || !event.type) throw new Error('RevenueCat webhook missing event.id or event.type');
-  const appUserId = event.app_user_id ?? event.original_app_user_id ?? event.aliases?.find((a) => userIdFromAppUserId(a));
-  if (!appUserId) throw new Error('RevenueCat webhook missing app_user_id');
-  const userId = userIdFromAppUserId(appUserId);
-  if (userId) {
-    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
-    if (!user) throw new Error(`RevenueCat app_user_id does not map to an existing user: ${appUserId}`);
-    await getOrCreateBillingCustomer(db, userId);
-  }
-
-  const [inserted] = await db
-    .insert(billingEvents)
-    .values({
-      revenueCatEventId: event.id,
-      userId,
-      appUserId,
-      type: event.type,
-      productId: event.new_product_id ?? event.product_id ?? null,
-      entitlementIds: event.entitlement_ids ?? (event.entitlement_id ? [event.entitlement_id] : []),
-      environment: event.environment ?? 'UNKNOWN',
-      eventTimestamp: dateFromMs(event.event_timestamp_ms ?? null),
-      rawPayload: body,
-    })
-    .onConflictDoNothing({ target: billingEvents.revenueCatEventId })
-    .returning({ id: billingEvents.id });
-  if (!inserted) return { ok: true, duplicate: true, userId };
-
-  const entitlementIds = event.entitlement_ids ?? (event.entitlement_id ? [event.entitlement_id] : []);
-  if (userId && entitlementIds.includes(env.REVENUECAT_ENTITLEMENT_ID)) {
+  const eventId = event.id;
+  const eventType = event.type;
+  return db.transaction(async (tx) => {
+    const txDb = tx as unknown as Db;
+    const { userId, appUserId } = await resolveRevenueCatUser(txDb, event);
+    const eventTime = dateFromMs(event.event_timestamp_ms ?? null) ?? new Date();
+    const entitlementIds = event.entitlement_ids ?? (event.entitlement_id ? [event.entitlement_id] : []);
     const productId = event.new_product_id ?? event.product_id ?? null;
-    const status = statusFromWebhook(event);
-    await upsertEntitlement(db, userId, {
-      entitlementId: env.REVENUECAT_ENTITLEMENT_ID,
-      status,
-      plan: status === 'expired' || status === 'refunded' ? 'free' : planForProduct(productId),
-      productId,
-      store: event.store ?? null,
-      environment: event.environment ?? 'UNKNOWN',
-      willRenew:
-        event.type === 'CANCELLATION' || event.type === 'EXPIRATION' || event.type === 'SUBSCRIPTION_PAUSED'
-          ? false
-          : status === 'active' || status === 'trialing' || status === 'grace_period'
-            ? true
-            : null,
-      expiresAt: dateFromMs(event.grace_period_expiration_at_ms ?? event.expiration_at_ms ?? null),
-      latestPurchaseAt: dateFromMs(event.purchased_at_ms ?? null),
-      billingIssueAt: event.type === 'BILLING_ISSUE' || event.cancel_reason === 'BILLING_ERROR' ? new Date() : null,
-      cancellationAt: event.type === 'CANCELLATION' ? new Date() : null,
-      managementUrl: null,
-      source: 'revenuecat_webhook',
-      sourceEventId: event.id,
-      rawPayload: body,
-    });
-  }
-  const productId = event.new_product_id ?? event.product_id ?? null;
-  if (userId && productId === MONEY_PHYSICAL_PRODUCT_ID) {
-    await recordMoneyPhysicalPurchase(
-      db,
-      userId,
-      {
+
+    const [inserted] = await tx
+      .insert(billingEvents)
+      .values({
+        revenueCatEventId: eventId,
+        userId,
+        appUserId,
+        type: eventType,
         productId,
-        transactionId: event.transaction_id ?? event.original_transaction_id ?? event.id,
+        entitlementIds,
+        environment: event.environment ?? 'UNKNOWN',
+        eventTimestamp: eventTime,
+        rawPayload: body,
+      })
+      .onConflictDoNothing({ target: billingEvents.revenueCatEventId })
+      .returning({ id: billingEvents.id });
+    if (!inserted) return { ok: true, duplicate: true, userId };
+
+    if (userId && entitlementIds.includes(env.REVENUECAT_ENTITLEMENT_ID)) {
+      const status = statusFromWebhook(event);
+      await upsertEntitlement(txDb, userId, {
+        entitlementId: env.REVENUECAT_ENTITLEMENT_ID,
+        status,
+        plan: status === 'expired' || status === 'refunded' ? 'free' : planForProduct(productId),
+        productId,
         store: event.store ?? null,
         environment: event.environment ?? 'UNKNOWN',
-        purchasedAt: dateFromMs(event.purchased_at_ms ?? event.event_timestamp_ms ?? null) ?? new Date(),
-        purchaseSource: 'revenuecat_webhook',
+        willRenew:
+          event.type === 'CANCELLATION' || event.type === 'EXPIRATION' || event.type === 'SUBSCRIPTION_PAUSED'
+            ? false
+            : status === 'active' || status === 'trialing' || status === 'grace_period'
+              ? true
+              : null,
+        expiresAt: dateFromMs(event.grace_period_expiration_at_ms ?? event.expiration_at_ms ?? null),
+        latestPurchaseAt: dateFromMs(event.purchased_at_ms ?? null),
+        billingIssueAt: event.type === 'BILLING_ISSUE' || event.cancel_reason === 'BILLING_ERROR' ? eventTime : null,
+        cancellationAt: event.type === 'CANCELLATION' ? eventTime : null,
+        managementUrl: null,
+        source: 'revenuecat_webhook',
+        sourceEventId: eventId,
+        sourceEventAt: eventTime,
         rawPayload: body,
-      },
-      'revenuecat_webhook',
-      body,
-    );
-  }
-  return { ok: true, duplicate: false, userId };
+      });
+    }
+    if (userId && productId === MONEY_PHYSICAL_PRODUCT_ID) {
+      await recordMoneyPhysicalPurchase(
+        txDb,
+        userId,
+        {
+          productId,
+          transactionId: event.transaction_id ?? event.original_transaction_id ?? eventId,
+          store: event.store ?? null,
+          environment: event.environment ?? 'UNKNOWN',
+          purchasedAt: dateFromMs(event.purchased_at_ms ?? event.event_timestamp_ms ?? null) ?? new Date(),
+          purchaseSource: 'revenuecat_webhook',
+          rawPayload: body,
+        },
+        'revenuecat_webhook',
+        body,
+      );
+    }
+    return { ok: true, duplicate: false, userId };
+  });
 }
 
 export async function syncFromRevenueCatRest(db: Db, userId: number): Promise<void> {

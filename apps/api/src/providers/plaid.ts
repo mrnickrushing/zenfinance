@@ -1,6 +1,9 @@
+import crypto from 'node:crypto';
+import { decodeProtectedHeader, importJWK, jwtVerify, type JWK } from 'jose';
 import {
   Configuration,
   CountryCode,
+  type JWKPublicKey,
   PlaidApi,
   PlaidEnvironments,
   Products,
@@ -37,6 +40,7 @@ function mapTxn(t: PlaidTransaction): ProviderTransaction {
 export class PlaidProvider implements TransactionProvider {
   readonly name = 'plaid';
   private client: PlaidApi;
+  private webhookKeys = new Map<string, JWKPublicKey>();
 
   constructor() {
     if (!env.PLAID_CLIENT_ID || !env.PLAID_SECRET) {
@@ -105,5 +109,44 @@ export class PlaidProvider implements TransactionProvider {
 
   async removeItem(accessToken: string): Promise<void> {
     await this.client.itemRemove({ access_token: accessToken });
+  }
+
+  async verifyWebhook(rawBody: Buffer, verificationHeader: string | undefined): Promise<boolean> {
+    if (!verificationHeader) return false;
+    let kid: string;
+    try {
+      const header = decodeProtectedHeader(verificationHeader);
+      if (header.alg !== 'ES256' || typeof header.kid !== 'string') return false;
+      kid = header.kid;
+    } catch {
+      return false;
+    }
+
+    const key = await this.webhookVerificationKey(kid);
+    if (!key || (key.expired_at !== null && key.expired_at <= Math.floor(Date.now() / 1000))) {
+      return false;
+    }
+
+    try {
+      const publicKey = await importJWK(key as JWK, 'ES256');
+      const { payload } = await jwtVerify(verificationHeader, publicKey, { algorithms: ['ES256'] });
+      if (typeof payload.iat !== 'number' || Math.abs(Date.now() / 1000 - payload.iat) > 300) {
+        return false;
+      }
+      const expectedHash = crypto.createHash('sha256').update(rawBody).digest('hex');
+      return payload.request_body_sha256 === expectedHash;
+    } catch {
+      return false;
+    }
+  }
+
+  private async webhookVerificationKey(kid: string): Promise<JWKPublicKey | null> {
+    const cached = this.webhookKeys.get(kid);
+    if (cached) return cached;
+    const res = await this.client.webhookVerificationKeyGet({ key_id: kid });
+    const key = res.data.key;
+    if (key.kid !== kid) return null;
+    this.webhookKeys.set(kid, key);
+    return key;
   }
 }

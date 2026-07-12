@@ -3,12 +3,13 @@ import {
   type LinkExchangeInput,
   type LinkedItem,
 } from '@zenfinance/shared';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
+import { FREE_LIMITS, userHasPremium } from '../billing/service.js';
 import { db } from '../db/client.js';
 import { accounts, items } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
-import { enforceItemLimit } from '../middleware/billing.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 import { deleteUserAccount } from '../privacy/service.js';
@@ -18,7 +19,11 @@ import { enqueueItemSync } from '../queue/index.js';
 export function createLinkRouter(): ReturnType<typeof Router> {
   const linkRouter = Router();
 
-  linkRouter.post('/api/link/token', requireUser, async (_req, res) => {
+  linkRouter.post('/api/link/token', requireUser, userRateLimit('link-token', {
+    windowMs: 60 * 1000,
+    limit: 10,
+    message: 'Too many link token requests. Try again shortly.',
+  }), async (_req, res) => {
     const { linkToken } = await getProvider().createLinkToken(res.locals.userId as number);
     res.json({ linkToken });
   });
@@ -26,50 +31,72 @@ export function createLinkRouter(): ReturnType<typeof Router> {
   linkRouter.post(
     '/api/link/exchange',
     requireUser,
+    userRateLimit('link-exchange', {
+      windowMs: 15 * 60 * 1000,
+      limit: 6,
+      message: 'Too many account link attempts. Try again later.',
+    }),
     validateBody(linkExchangeSchema),
     async (_req, res) => {
       const userId = res.locals.userId as number;
       const input = res.locals.body as LinkExchangeInput;
       const provider = getProvider();
-      const gate = await enforceItemLimit(userId);
-      if (!gate.ok) {
+      const exchanged = await provider.exchangePublicToken(input.publicToken);
+      const providerAccounts = await provider.fetchAccounts(exchanged.accessToken);
+
+      const result = await db.transaction(async (tx) => {
+        await tx.execute(sql`select pg_advisory_xact_lock(${userId}, 1001)`);
+        if (!(await userHasPremium(tx as unknown as typeof db, userId))) {
+          const [row] = await tx.select({ n: count() }).from(items).where(eq(items.userId, userId));
+          const max = FREE_LIMITS.maxLinkedItems ?? Number.POSITIVE_INFINITY;
+          if ((row?.n ?? 0) >= max) {
+            return { status: 'limit' as const, max };
+          }
+        }
+
+        const [item] = await tx
+          .insert(items)
+          .values({
+            userId,
+            provider: provider.name,
+            providerItemId: exchanged.providerItemId,
+            encryptedAccessToken: encryptToken(exchanged.accessToken),
+            institutionName: input.institutionName ?? null,
+          })
+          .onConflictDoNothing({ target: items.providerItemId })
+          .returning();
+        if (!item) return { status: 'conflict' as const };
+
+        for (const a of providerAccounts) {
+          await tx
+            .insert(accounts)
+            .values({ itemId: item.id, ...a })
+            .onConflictDoNothing({ target: [accounts.itemId, accounts.providerAccountId] });
+        }
+        return { status: 'created' as const, itemId: item.id };
+      });
+
+      if (result.status === 'limit') {
         res.status(402).json({
-          error: { code: 'premium_required', message: gate.message, details: { feature: 'unlimited_accounts' } },
+          error: {
+            code: 'premium_required',
+            message: `Free accounts can link up to ${result.max} bank connections. Upgrade to ZenFinance Coach for unlimited accounts.`,
+            details: { feature: 'unlimited_accounts' },
+          },
         });
         return;
       }
-
-      const exchanged = await provider.exchangePublicToken(input.publicToken);
-      const [item] = await db
-        .insert(items)
-        .values({
-          userId,
-          provider: provider.name,
-          providerItemId: exchanged.providerItemId,
-          encryptedAccessToken: encryptToken(exchanged.accessToken),
-          institutionName: input.institutionName ?? null,
-        })
-        .onConflictDoNothing({ target: items.providerItemId })
-        .returning();
-      if (!item) {
+      if (result.status === 'conflict') {
         res.status(409).json({
           error: { code: 'conflict', message: 'This account connection already exists' },
         });
         return;
       }
 
-      const providerAccounts = await provider.fetchAccounts(exchanged.accessToken);
-      for (const a of providerAccounts) {
-        await db
-          .insert(accounts)
-          .values({ itemId: item.id, ...a })
-          .onConflictDoNothing({ target: [accounts.itemId, accounts.providerAccountId] });
-      }
-
       // 90-day backfill starts immediately — first insight within a minute of linking.
-      await enqueueItemSync(item.id);
+      await enqueueItemSync(result.itemId);
 
-      res.status(201).json(await itemView(item.id));
+      res.status(201).json(await itemView(result.itemId));
     },
   );
 

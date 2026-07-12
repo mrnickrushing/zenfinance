@@ -175,8 +175,6 @@ describe('Phase 7 launch and growth loop', () => {
     expect(stats.status).toBe(200);
     expect(stats.body.sampleSize).toBe(1);
     expect(stats.body.publishable).toBe(false);
-    expect(stats.body.metrics.linkedUsers).toBe(1);
-    expect(stats.body.metrics.avgRecurringStreamsPerLinkedUser).toBeGreaterThanOrEqual(1);
-    expect(stats.body.metrics.avgRecurringMonthlyCentsPerLinkedUser).toBeGreaterThanOrEqual(1699);
+    expect(stats.body.metrics).toBeNull();
   });
 });

@@ -24,6 +24,7 @@ module.exports = {
       ],
       '@sentry/react-native',
       './withFollyCoroutineFix',
+      './withSentryHermesProfilerFix',
     ],
     runtimeVersion: {
       policy: 'fingerprint',

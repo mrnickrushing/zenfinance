@@ -1,0 +1,1 @@
+ALTER TABLE "billing_entitlements" ADD COLUMN "source_event_at" timestamp with time zone;

@@ -1,4 +1,26 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { z } from 'zod';
+
+function loadLocalEnv(): void {
+  for (const candidate of [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(process.cwd(), '../.env'),
+    path.resolve(process.cwd(), '../../.env'),
+  ]) {
+    if (!existsSync(candidate)) continue;
+    for (const line of readFileSync(candidate, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const [key, ...rest] = trimmed.split('=');
+      if (!key || process.env[key] !== undefined) continue;
+      process.env[key] = rest.join('=').replace(/^['"]|['"]$/g, '');
+    }
+    return;
+  }
+}
+
+loadLocalEnv();
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -36,6 +58,40 @@ const envSchema = z.object({
   REVENUECAT_ENTITLEMENT_ID: z.string().default('zen_coach'),
   REVENUECAT_MONTHLY_PRODUCT_ID: z.string().default('com.rushingtechnologies.zenfinance.coach.monthly'),
   REVENUECAT_ANNUAL_PRODUCT_ID: z.string().default('com.rushingtechnologies.zenfinance.coach.annual'),
+}).superRefine((value, ctx) => {
+  const requireProduction = (key: keyof typeof value, message: string) => {
+    if (value.NODE_ENV === 'production' && !value[key]) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message });
+    }
+  };
+
+  requireProduction('REDIS_URL', 'REDIS_URL is required in production');
+  requireProduction('REVENUECAT_WEBHOOK_AUTH', 'REVENUECAT_WEBHOOK_AUTH is required in production');
+  requireProduction('REVENUECAT_WEBHOOK_SIGNING_SECRET', 'REVENUECAT_WEBHOOK_SIGNING_SECRET is required in production');
+
+  if (value.NODE_ENV === 'production' && value.FRONTEND_URL.includes('localhost')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['FRONTEND_URL'], message: 'FRONTEND_URL must not default to localhost in production' });
+  }
+  if (value.NODE_ENV === 'production' && value.ADMIN_URL.includes('localhost')) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ADMIN_URL'], message: 'ADMIN_URL must not default to localhost in production' });
+  }
+
+  if (value.NODE_ENV === 'production' && value.TRANSACTION_PROVIDER === 'plaid') {
+    if (!value.PLAID_CLIENT_ID) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PLAID_CLIENT_ID'], message: 'PLAID_CLIENT_ID is required when TRANSACTION_PROVIDER=plaid' });
+    }
+    if (!value.PLAID_SECRET) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PLAID_SECRET'], message: 'PLAID_SECRET is required when TRANSACTION_PROVIDER=plaid' });
+    }
+  }
+
+  if (
+    value.NODE_ENV === 'production' &&
+    (value.ENRICHMENT_PROVIDER === 'anthropic' || value.INSIGHT_PROVIDER === 'anthropic') &&
+    !value.ANTHROPIC_API_KEY
+  ) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ANTHROPIC_API_KEY'], message: 'ANTHROPIC_API_KEY is required when an Anthropic provider is enabled' });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

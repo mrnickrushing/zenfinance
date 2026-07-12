@@ -13,6 +13,7 @@ function appleJwks(): JWTVerifyGetKey {
 export interface AppleIdentity {
   sub: string;
   email?: string;
+  emailVerified?: boolean;
 }
 
 /**
@@ -41,5 +42,11 @@ export async function verifyAppleIdentityToken(
   return {
     sub: payload.sub,
     email: typeof payload.email === 'string' ? payload.email : undefined,
+    emailVerified:
+      payload.email_verified === true || payload.email_verified === 'true'
+        ? true
+        : payload.email_verified === false || payload.email_verified === 'false'
+          ? false
+          : undefined,
   };
 }
