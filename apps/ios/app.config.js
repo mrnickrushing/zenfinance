@@ -22,7 +22,7 @@ module.exports = {
           sounds: [],
         },
       ],
-      '@sentry/react-native/expo',
+      '@sentry/react-native',
     ],
     runtimeVersion: {
       policy: 'fingerprint',
