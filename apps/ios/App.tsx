@@ -85,7 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'iOS Lazyweb auth demo · 2026-07-12.3';
+const OTA_DIAGNOSTIC_LABEL = 'iOS Lazyweb full UI pass · 2026-07-12.4';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -369,7 +369,8 @@ function moneyPhysicalPayloadFromCustomerInfo(
 }
 
 function useTheme() {
-  return useColorScheme() === 'dark' ? dark : light;
+  useColorScheme();
+  return dark;
 }
 
 type IconComponent = typeof Sparkles;
@@ -597,8 +598,13 @@ function ProductShell() {
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
       <StatusBar style={theme === dark ? 'light' : 'dark'} />
       <View style={styles.topBar}>
-        <View>
-          <Text style={[styles.appTitle, { color: theme.ink }]}>Today</Text>
+        <View style={styles.flexShrink}>
+          <View style={styles.appTitleRow}>
+            <View style={[styles.tinyLogo, { backgroundColor: theme.accentSoft }]}>
+              <Sparkles color={theme.accent} size={16} />
+            </View>
+            <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance Coach</Text>
+          </View>
           <Text style={[styles.appSub, { color: theme.muted }]}>
             {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
           </Text>
@@ -661,16 +667,28 @@ function LinkingScreen({ onLinked }: { onLinked: () => void }) {
   }
 
   return (
-    <View style={styles.emptyState}>
-      <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
-        <Landmark color={theme.accent} size={38} />
-      </View>
-      <Text style={[styles.emptyTitle, { color: theme.ink }]}>Link your first account</Text>
-      <Text style={[styles.emptyCopy, { color: theme.muted }]}>
-        Plaid connects read-only bank data. Tokens stay on the server, and you can disconnect or delete everything from settings.
-      </Text>
-      <PrimaryButton label={busy ? 'Opening Plaid...' : 'Link a bank'} icon={Landmark} disabled={busy} onPress={linkBank} />
-    </View>
+    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <SectionBand>
+        <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+          <Landmark color={theme.accent} size={38} />
+        </View>
+        <Text style={[styles.panelKicker, { color: theme.accent }]}>Read-only setup</Text>
+        <Text style={[styles.panelTitle, { color: theme.ink }]}>Link your first account so the coach can read the room.</Text>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>
+          Plaid connects read-only bank data. Tokens stay on the server, and you can disconnect or delete everything from settings.
+        </Text>
+        <PrimaryButton label={busy ? 'Opening Plaid...' : 'Link a bank'} icon={Landmark} disabled={busy} onPress={linkBank} />
+      </SectionBand>
+      <StatusRail>
+        <MoneyMetric label="Access" value="Read-only" icon={ShieldCheck} />
+        <MoneyMetric label="Coach" value="Briefs" icon={Sparkles} />
+        <MoneyMetric label="Control" value="Delete" icon={Trash2} />
+      </StatusRail>
+      <SectionHeader title="What unlocks next" />
+      <ActionRow icon={Sparkles} title="First look brief" detail="A concise read on your actual recent spending." />
+      <ActionRow icon={Target} title="Goal pacing" detail="A weekly action tied to a savings target." />
+      <ActionRow icon={CreditCard} title="Recurring audit" detail="A calm list of charges worth reviewing." />
+    </ScrollView>
   );
 }
 
@@ -2518,6 +2536,8 @@ const styles = StyleSheet.create({
   authProofTitle: { color: '#fff', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
   authProofBody: { color: '#cbd5da', fontSize: 12, lineHeight: 17, marginTop: 6 },
   topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  tinyLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
   iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
