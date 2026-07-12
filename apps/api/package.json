@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.111.0",
     "@sentry/node": "^8.47.0",
     "@zenfinance/shared": "*",
     "bcryptjs": "^2.4.3",

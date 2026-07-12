@@ -3,10 +3,10 @@ import {
   type LinkExchangeInput,
   type LinkedItem,
 } from '@zenfinance/shared';
-import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
 import { db } from '../db/client.js';
-import { accounts, items, transactions, users } from '../db/schema.js';
+import { accounts, items, users } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
@@ -72,54 +72,6 @@ export function createLinkRouter(): ReturnType<typeof Router> {
       .where(eq(items.userId, userId))
       .orderBy(desc(items.createdAt));
     res.json({ items: await Promise.all(rows.map((r) => itemView(r.id))) });
-  });
-
-  linkRouter.get('/api/transactions', requireUser, async (req, res) => {
-    const userId = res.locals.userId as number;
-    const page = Math.max(1, Number(req.query.page) || 1);
-    const pageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 50));
-
-    const accountRows = await db
-      .select({ id: accounts.id })
-      .from(accounts)
-      .innerJoin(items, eq(accounts.itemId, items.id))
-      .where(eq(items.userId, userId));
-    const accountIds = accountRows.map((a) => a.id);
-    if (accountIds.length === 0) {
-      res.json({ items: [], total: 0, page, pageSize });
-      return;
-    }
-
-    const visible = and(
-      inArray(transactions.accountId, accountIds),
-      isNull(transactions.removedAt),
-      isNull(transactions.supersededAt),
-    );
-    const [total] = await db.select({ n: count() }).from(transactions).where(visible);
-    const rows = await db
-      .select()
-      .from(transactions)
-      .where(visible)
-      .orderBy(desc(transactions.postedDate), desc(transactions.id))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    res.json({
-      items: rows.map((t) => ({
-        id: t.id,
-        accountId: t.accountId,
-        amountCents: t.amountCents,
-        isoCurrency: t.isoCurrency,
-        postedDate: t.postedDate,
-        name: t.name,
-        merchantName: t.merchantName,
-        pending: t.pending,
-        transferPairId: t.transferPairId,
-      })),
-      total: total!.n,
-      page,
-      pageSize,
-    });
   });
 
   // One-tap disconnect: revoke at the provider, then hard-delete the item —

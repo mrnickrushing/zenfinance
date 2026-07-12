@@ -10,6 +10,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createHealthRouter } from './routes/health.js';
 import { createLinkRouter } from './routes/link.js';
 import { createSupportRouter } from './routes/support.js';
+import { createTransactionsRouter } from './routes/transactions.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
 import { createWebhooksRouter } from './routes/webhooks.js';
 
@@ -35,6 +36,7 @@ export function createApp(): express.Express {
   app.use(createAdminRouter());
   app.use(createAuthRouter());
   app.use(createLinkRouter());
+  app.use(createTransactionsRouter());
   app.use(createWebhooksRouter());
 
   // Serve the built site (marketing/support/admin pages) in production.

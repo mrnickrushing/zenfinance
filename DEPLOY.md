@@ -29,7 +29,10 @@ One Railway service runs the Express API, which also serves the built site
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | from the Plaid dashboard (sandbox keys until production access is approved) |
 | `PLAID_ENV` | `sandbox` → `production` after Plaid approves the app |
 | `APPLE_BUNDLE_ID` | `com.rushingtechnologies.zenfinance` (Apple Sign-In verification) |
-| `REDIS_URL` | add a **Redis** service to the Railway project; sync jobs run on BullMQ |
+| `REDIS_URL` | add a **Redis** service to the Railway project; sync/enrichment/rollup jobs run on BullMQ |
+| `ENRICHMENT_PROVIDER` | `anthropic` |
+| `ANTHROPIC_API_KEY` | from the Anthropic Console — powers transaction categorization (Haiku) |
+| `ENRICHMENT_MODEL` | `claude-haiku-4-5` |
 
 `PORT` and `DATABASE_URL` are provided by Railway automatically.
 
