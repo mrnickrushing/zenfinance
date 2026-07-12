@@ -76,6 +76,18 @@ export function TermsPage() {
 
         <section>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Voice Briefs
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            Voice Briefs are spoken versions of existing coaching briefs. The app uses on-device
+            text-to-speech playback and does not create an account-transfer, payment, or advisory
+            service. Treat spoken guidance the same as written ZenFinance coaching: educational
+            information, not professional advice.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
             Beta availability
           </h2>
           <p className="mt-3 text-sm leading-relaxed">

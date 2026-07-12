@@ -27,6 +27,7 @@ import {
   transactionEnrichments,
   transactions,
   users,
+  voiceBriefs,
   waitlistSignups,
 } from '../db/schema.js';
 import { issueAccessToken, issueRefreshToken, revokeRefreshToken, rotateRefreshToken, verifyAdminSecret } from '../lib/tokens.js';
@@ -232,6 +233,14 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       .from(householdInvites)
       .where(sql`${householdInvites.status} = 'pending' and ${householdInvites.expiresAt} > now()`);
     const [householdGoalCount] = await db.select({ n: sql<number>`count(*)` }).from(householdGoals);
+    const [voiceBriefCount] = await db.select({ n: sql<number>`count(*)` }).from(voiceBriefs);
+    const [voiceBriefCompletedCount] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(voiceBriefs)
+      .where(sql`${voiceBriefs.completedAt} is not null`);
+    const [voiceBriefAvgDuration] = await db
+      .select({ seconds: sql<number | null>`avg(${voiceBriefs.durationSeconds})` })
+      .from(voiceBriefs);
     const freelancerProfileRows = await db
       .select({
         userId: freelancerProfiles.userId,
@@ -380,6 +389,11 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         activeMembers: Number(householdMemberCount!.n),
         pendingInvites: Number(householdInviteCount!.n),
         sharedGoals: Number(householdGoalCount!.n),
+      },
+      voice: {
+        generatedBriefs: Number(voiceBriefCount!.n),
+        completedBriefs: Number(voiceBriefCompletedCount!.n),
+        avgDurationSeconds: voiceBriefAvgDuration?.seconds === null ? null : Math.round(Number(voiceBriefAvgDuration!.seconds)),
       },
     };
     res.json(metrics);

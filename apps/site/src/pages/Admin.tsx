@@ -174,6 +174,21 @@ function Dashboard() {
             <StatTile label="Shared goals" value={metrics.household.sharedGoals} />
           </section>
 
+          <section aria-label="Voice brief metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Voice briefs" value={metrics.voice.generatedBriefs} />
+            <StatTile label="Voice completions" value={metrics.voice.completedBriefs} />
+            <StatTile
+              label="Avg voice length"
+              value={metrics.voice.avgDurationSeconds === null ? 'N/A' : metrics.voice.avgDurationSeconds}
+              sub="seconds"
+            />
+            <StatTile
+              label="Completion rate"
+              value={metrics.voice.generatedBriefs ? Math.round((metrics.voice.completedBriefs / metrics.voice.generatedBriefs) * 100) : 0}
+              sub="percent"
+            />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days

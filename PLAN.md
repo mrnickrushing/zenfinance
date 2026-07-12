@@ -285,7 +285,7 @@ sign-off, and live beta retention/Sentry observation windows.
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
 - Referral mechanic: "give a month, get a month" (finance advice spreads by word of mouth)
 - Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links; published on the marketing site
-- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8 and household sharing is built in Phase 9; next demand-ordered items are voice briefs → Money Physical one-time report → net-worth view
+- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8, household sharing is built in Phase 9, and voice briefs are built in Phase 10; next demand-ordered items are Money Physical one-time report → net-worth view
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
 - **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
@@ -333,6 +333,22 @@ routes. The iOS app exposes Household Sharing in Settings. Docs are updated in
 `docs/HOUSEHOLD_SHARING.md`, README, deploy checklist, privacy inventory,
 public privacy/terms pages, growth loop, and security notes.
 
+### Phase 10 — Voice Briefs *(Post-launch feature train item 3)*
+- Premium-gated voice script generation from the latest weekly brief, with first-look fallback
+- Persisted `voice_briefs` table with source insight, deterministic script, intro/summary/action/closing segments, estimated duration, play count, and completion timestamp
+- iOS Brief tab playback through native `expo-speech`; no generated audio files or external TTS provider
+- Playback event endpoint for started/completed listens and app-event analytics
+- Admin metrics for generated voice briefs, completed listens, and average duration
+- Data export includes generated voice brief scripts and playback metadata
+- **Exit gate:** premium gate, idempotent script generation, 90-second duration target, playback events, export, and admin metrics are covered by `apps/api/src/test/phase10.test.ts`.
+
+**Implementation status in this repo:** Phase 10 is implemented behind the
+existing `zen_coach` entitlement. The API owns the `voice_briefs` table and
+`/api/voice-brief/*` routes. The iOS app uses Expo Speech for on-device
+playback from the Brief tab. Docs are updated in `docs/VOICE_BRIEFS.md`,
+README, deploy checklist, privacy inventory, App Store privacy inventory,
+growth loop, and security notes.
+
 ---
 
 ## 9. Risks & Mitigations
@@ -361,4 +377,4 @@ public privacy/terms pages, growth loop, and security notes.
 
 ---
 
-*Current status: Phases 0–9 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, Phase 8 Freelancer Mode for variable-income users, and Phase 9 Household Sharing with shared goals and individual privacy zones. Mock-provider paths and Phase 9 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*
+*Current status: Phases 0–10 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, Voice Brief playback, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, Phase 8 Freelancer Mode for variable-income users, Phase 9 Household Sharing with shared goals and individual privacy zones, and Phase 10 Voice Briefs. Mock-provider paths and Phase 10 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*

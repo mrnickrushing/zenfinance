@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
+import * as Speech from 'expo-speech';
 import { StatusBar } from 'expo-status-bar';
 import {
   Bell,
@@ -25,10 +26,12 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Square,
   Target,
   Trash2,
   UserPlus,
   Users,
+  Volume2,
   WalletCards,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -72,6 +75,7 @@ import type {
   ReferralStatusView,
   SubscriptionAuditView,
   UserDataExportView,
+  VoiceBriefView,
   WhatIfResultView,
 } from '@zenfinance/shared';
 
@@ -522,6 +526,61 @@ function BriefScreen({
 }) {
   const theme = useTheme();
   const brief = home.weeklyBrief ?? home.firstLook;
+  const [voiceBrief, setVoiceBrief] = useState<VoiceBriefView | null>(null);
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+
+  const loadVoiceBrief = useCallback(async () => {
+    if (!brief || !home.billing.isPremium) {
+      setVoiceBrief(null);
+      return;
+    }
+    setVoiceBusy(true);
+    try {
+      setVoiceBrief(await requestApi<VoiceBriefView>('/api/voice-brief/latest'));
+    } catch {
+      setVoiceBrief(null);
+    } finally {
+      setVoiceBusy(false);
+    }
+  }, [brief?.id, home.billing.isPremium]);
+
+  useEffect(() => {
+    void loadVoiceBrief();
+    return () => {
+      void Speech.stop();
+    };
+  }, [loadVoiceBrief]);
+
+  async function playVoiceBrief() {
+    if (!voiceBrief) return;
+    await Speech.stop();
+    setSpeaking(true);
+    await requestApi(`/api/voice-briefs/${voiceBrief.id}/events`, {
+      method: 'POST',
+      body: JSON.stringify({ event: 'started' }),
+    }).catch(() => {});
+    Speech.speak(voiceBrief.script, {
+      language: 'en-US',
+      rate: 0.92,
+      pitch: 1,
+      onDone: () => {
+        setSpeaking(false);
+        void requestApi(`/api/voice-briefs/${voiceBrief.id}/events`, {
+          method: 'POST',
+          body: JSON.stringify({ event: 'completed', positionSeconds: voiceBrief.durationSeconds }),
+        }).catch(() => {});
+      },
+      onStopped: () => setSpeaking(false),
+      onError: () => setSpeaking(false),
+    });
+  }
+
+  async function stopVoiceBrief() {
+    await Speech.stop();
+    setSpeaking(false);
+  }
+
   return (
     <ScrollView
       contentContainerStyle={styles.scrollContent}
@@ -530,6 +589,33 @@ function BriefScreen({
     >
       <MetricStrip home={home} />
       {brief ? <InsightPanel insight={brief} /> : <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />}
+      {brief ? (
+        <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <View style={styles.panelHeader}>
+            <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={20} />
+            <Text style={[styles.panelKicker, { color: home.billing.isPremium ? theme.accent : theme.muted }]}>Voice brief</Text>
+          </View>
+          {home.billing.isPremium ? (
+            <>
+              <Text style={[styles.panelBody, { color: theme.muted }]}>
+                {voiceBrief ? `${Math.round(voiceBrief.durationSeconds / 6) / 10} min · ${voiceBrief.headline}` : 'Preparing audio summary...'}
+              </Text>
+              <View style={styles.inlineButtons}>
+                <SecondaryButton
+                  label={speaking ? 'Playing' : voiceBusy ? 'Loading...' : 'Play'}
+                  icon={Volume2}
+                  compact
+                  disabled={voiceBusy || !voiceBrief || speaking}
+                  onPress={playVoiceBrief}
+                />
+                <SecondaryButton label="Stop" icon={Square} compact disabled={!speaking} onPress={stopVoiceBrief} />
+              </View>
+            </>
+          ) : (
+            <Text style={[styles.panelBody, { color: theme.muted }]}>Available with ZenFinance Coach.</Text>
+          )}
+        </View>
+      ) : null}
       <SectionHeader title="Next Actions" />
       <ActionRow
         icon={Target}

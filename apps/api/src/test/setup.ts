@@ -20,6 +20,7 @@ import {
   referralRedemptions,
   supportRequests,
   users,
+  voiceBriefs,
   waitlistSignups,
 } from '../db/schema.js';
 
@@ -38,6 +39,7 @@ export async function migrateOnce(): Promise<void> {
 
 export async function truncateAll(): Promise<void> {
   await db.delete(adminRefreshTokens);
+  await db.delete(voiceBriefs);
   await db.delete(referralCredits);
   await db.delete(referralRedemptions);
   await db.delete(referralCodes);

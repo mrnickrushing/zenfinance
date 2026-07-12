@@ -36,7 +36,8 @@ export function PrivacyPage() {
             redemption status, and premium-credit expiration dates. If you use Freelancer Mode, we
             store your enabled state, income target, estimated set-aside percentage, and runway
             target. If you use Household Sharing, we store household membership, invite status,
-            shared goals, and contribution history.
+            shared goals, and contribution history. If you use Voice Briefs, we store the generated
+            voice script and playback metadata.
           </p>
         </section>
 
@@ -48,8 +49,9 @@ export function PrivacyPage() {
             We use your data to authenticate your account, sync read-only financial data, generate
             coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
             support, prevent abuse, run the referral program, calculate Freelancer Mode income and
-            runway summaries, power Household Sharing and shared goals, publish minimum-sample
-            aggregate launch insights, and understand whether the beta or launch is working.
+            runway summaries, power Household Sharing and shared goals, generate Voice Brief
+            scripts from your existing coaching briefs, publish minimum-sample aggregate launch
+            insights, and understand whether the beta or launch is working.
           </p>
         </section>
 
