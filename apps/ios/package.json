@@ -7,7 +7,8 @@
     "start": "expo start --dev-client",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild --platform ios",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "eas-build-post-install": "npm run build -w @zenfinance/shared"
   },
   "dependencies": {
     "@sentry/react-native": "~7.11.0",
