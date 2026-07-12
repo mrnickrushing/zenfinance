@@ -1,7 +1,17 @@
 import { execSync } from 'node:child_process';
 import { sql } from 'drizzle-orm';
 import { db, pool } from '../db/client.js';
-import { adminRefreshTokens, supportRequests, users, waitlistSignups } from '../db/schema.js';
+import {
+  adminRefreshTokens,
+  appEvents,
+  billingCustomers,
+  billingEntitlements,
+  billingEvents,
+  pricingExperiments,
+  supportRequests,
+  users,
+  waitlistSignups,
+} from '../db/schema.js';
 
 let migrated = false;
 
@@ -18,6 +28,11 @@ export async function migrateOnce(): Promise<void> {
 
 export async function truncateAll(): Promise<void> {
   await db.delete(adminRefreshTokens);
+  await db.delete(billingEvents);
+  await db.delete(appEvents);
+  await db.delete(billingEntitlements);
+  await db.delete(pricingExperiments);
+  await db.delete(billingCustomers);
   await db.delete(supportRequests);
   await db.delete(waitlistSignups);
   await db.delete(users); // cascades refresh tokens, items, accounts, transactions

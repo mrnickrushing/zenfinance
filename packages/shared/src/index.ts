@@ -346,9 +346,90 @@ export const cancelSubscriptionSchema = z.object({
 });
 export type CancelSubscriptionInput = z.infer<typeof cancelSubscriptionSchema>;
 
-// ---------- Mobile app product surface (Phase 4) ----------
+// ---------- Billing / monetization (Phase 5) ----------
+
+export const PREMIUM_ENTITLEMENT_ID = 'zen_coach' as const;
+export const MONTHLY_PRODUCT_ID = 'com.rushingtechnologies.zenfinance.coach.monthly' as const;
+export const ANNUAL_PRODUCT_ID = 'com.rushingtechnologies.zenfinance.coach.annual' as const;
+
+export type BillingStatus = 'free' | 'trialing' | 'active' | 'grace_period' | 'billing_issue' | 'expired' | 'refunded';
+export type BillingPlan = 'free' | 'monthly' | 'annual' | 'lifetime' | 'unknown';
+export type EntitlementSource = 'revenuecat_webhook' | 'revenuecat_rest' | 'client_restore' | 'manual_test';
+
+export interface BillingEntitlementView {
+  entitlementId: string;
+  status: BillingStatus;
+  plan: BillingPlan;
+  productId: string | null;
+  store: string | null;
+  environment: 'SANDBOX' | 'PRODUCTION' | 'UNKNOWN';
+  willRenew: boolean | null;
+  expiresAt: string | null;
+  latestPurchaseAt: string | null;
+  billingIssueAt: string | null;
+  cancellationAt: string | null;
+  managementUrl: string | null;
+  source: EntitlementSource | null;
+  updatedAt: string;
+}
+
+export interface BillingLimitsView {
+  maxLinkedItems: number | null;
+  maxActiveGoals: number | null;
+  weeklyBriefsOnly: boolean;
+  premiumFeatures: boolean;
+}
+
+export interface PaywallPackageView {
+  identifier: 'monthly' | 'annual';
+  productId: string;
+  priceLabel: string;
+  introTrialDays: number;
+  savingsLabel: string | null;
+}
+
+export interface PricingExperimentView {
+  experimentId: string;
+  variant: 'control' | 'money_wins';
+  paywallHeadline: string;
+  paywallBody: string;
+  assignedAt: string;
+}
+
+export interface BillingStatusView {
+  appUserId: string;
+  entitlementId: string;
+  isPremium: boolean;
+  status: BillingStatus;
+  plan: BillingPlan;
+  limits: BillingLimitsView;
+  entitlement: BillingEntitlementView | null;
+  packages: PaywallPackageView[];
+  pricingExperiment: PricingExperimentView;
+}
+
+export const billingRestoreSchema = z.object({
+  appUserId: z.string().trim().min(1).max(200),
+  entitlementId: z.string().trim().min(1).max(120).default(PREMIUM_ENTITLEMENT_ID),
+  productId: z.string().trim().min(1).max(200).optional(),
+  active: z.boolean(),
+  expirationDate: z.string().datetime().nullable().optional(),
+  latestPurchaseDate: z.string().datetime().nullable().optional(),
+  willRenew: z.boolean().nullable().optional(),
+  managementUrl: z.string().url().nullable().optional(),
+  store: z.string().trim().max(80).optional(),
+  environment: z.enum(['SANDBOX', 'PRODUCTION', 'UNKNOWN']).default('UNKNOWN'),
+});
+export type BillingRestoreInput = z.infer<typeof billingRestoreSchema>;
+
+export interface PaywallEventView {
+  ok: true;
+}
+
+// ---------- Mobile app product surface (Phase 4 + Phase 5) ----------
 
 export interface MobileHomeSummaryView {
+  billing: BillingStatusView;
   items: LinkedItem[];
   transactionCount: number;
   firstLook: InsightView | null;

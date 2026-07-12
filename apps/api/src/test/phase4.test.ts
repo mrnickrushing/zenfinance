@@ -1,8 +1,11 @@
+import { eq } from 'drizzle-orm';
 import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
+import { db } from '../db/client.js';
+import { billingEntitlements, users } from '../db/schema.js';
 
 let app: Express;
 
@@ -31,9 +34,23 @@ async function registerAndLink(email: string): Promise<{ access: string }> {
   return { access };
 }
 
+async function grantPremium(email: string): Promise<void> {
+  const [user] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+  await db.insert(billingEntitlements).values({
+    userId: user!.id,
+    entitlementId: 'zen_coach',
+    status: 'active',
+    plan: 'monthly',
+    productId: 'com.rushingtechnologies.zenfinance.coach.monthly',
+    environment: 'SANDBOX',
+    source: 'manual_test',
+  });
+}
+
 describe('Phase 4 mobile product API', () => {
   it('returns a complete mobile home summary', async () => {
     const { access } = await registerAndLink('mobile-home@example.com');
+    await grantPremium('mobile-home@example.com');
     const res = await request(app).get('/api/mobile/home').set('Authorization', `Bearer ${access}`);
 
     expect(res.status).toBe(200);
@@ -47,6 +64,7 @@ describe('Phase 4 mobile product API', () => {
 
   it('answers chat questions using scoped transaction data', async () => {
     const { access } = await registerAndLink('chat@example.com');
+    await grantPremium('chat@example.com');
     const res = await request(app)
       .post('/api/chat')
       .set('Authorization', `Bearer ${access}`)
@@ -60,6 +78,7 @@ describe('Phase 4 mobile product API', () => {
 
   it('streams chat answers over server-sent events', async () => {
     const { access } = await registerAndLink('chat-stream@example.com');
+    await grantPremium('chat-stream@example.com');
     const res = await request(app)
       .post('/api/chat/stream')
       .set('Authorization', `Bearer ${access}`)
@@ -72,6 +91,7 @@ describe('Phase 4 mobile product API', () => {
 
   it('runs deterministic what-if simulations without model arithmetic', async () => {
     const { access } = await registerAndLink('whatif@example.com');
+    await grantPremium('whatif@example.com');
     const goal = await request(app)
       .post('/api/goals')
       .set('Authorization', `Bearer ${access}`)

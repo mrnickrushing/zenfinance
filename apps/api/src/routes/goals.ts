@@ -11,6 +11,7 @@ import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { db } from '../db/client.js';
 import { goals } from '../db/schema.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
+import { enforceActiveGoalLimit } from '../middleware/billing.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
@@ -50,6 +51,13 @@ export function createGoalsRouter(): ReturnType<typeof Router> {
   router.post('/api/goals', requireUser, validateBody(createGoalSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const input = res.locals.body as CreateGoalInput;
+    const gate = await enforceActiveGoalLimit(userId);
+    if (!gate.ok) {
+      res.status(402).json({
+        error: { code: 'premium_required', message: gate.message, details: { feature: 'multiple_goals' } },
+      });
+      return;
+    }
     const [goal] = await db
       .insert(goals)
       .values({
@@ -77,6 +85,14 @@ export function createGoalsRouter(): ReturnType<typeof Router> {
       .limit(1);
     if (!existing) {
       res.status(404).json({ error: { code: 'not_found', message: 'Goal not found' } });
+      return;
+    }
+    const nextStatus = input.status ?? existing.status;
+    const gate = await enforceActiveGoalLimit(userId, { existingGoalId: existing.id, nextStatus });
+    if (!gate.ok) {
+      res.status(402).json({
+        error: { code: 'premium_required', message: gate.message, details: { feature: 'multiple_goals' } },
+      });
       return;
     }
 

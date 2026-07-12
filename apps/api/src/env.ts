@@ -28,6 +28,13 @@ const envSchema = z.object({
   SUPPORT_EMAIL: z.string().email().default('support@rushingtechnologies.com'),
   FRONTEND_URL: z.string().url().default('http://localhost:5173'),
   SENTRY_DSN: z.string().optional(),
+  REVENUECAT_IOS_API_KEY: z.string().optional(),
+  REVENUECAT_SECRET_API_KEY: z.string().optional(),
+  REVENUECAT_WEBHOOK_AUTH: z.string().optional(),
+  REVENUECAT_WEBHOOK_SIGNING_SECRET: z.string().optional(),
+  REVENUECAT_ENTITLEMENT_ID: z.string().default('zen_coach'),
+  REVENUECAT_MONTHLY_PRODUCT_ID: z.string().default('com.rushingtechnologies.zenfinance.coach.monthly'),
+  REVENUECAT_ANNUAL_PRODUCT_ID: z.string().default('com.rushingtechnologies.zenfinance.coach.annual'),
 });
 
 export type Env = z.infer<typeof envSchema>;
