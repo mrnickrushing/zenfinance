@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # release/** and release-* are included so the security-scan job's triaged
+    # gate (which keys off github.ref) actually runs on release-branch pushes —
+    # the push trigger is evaluated before any job/env expression.
+    branches: [main, 'release/**', 'release-*']
   pull_request:
 
 jobs:
