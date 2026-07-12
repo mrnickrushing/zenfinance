@@ -1,4 +1,5 @@
 import { and, eq, gte, isNull, lte, sql } from 'drizzle-orm';
+import type { MoneyWinsSummaryView } from '@zenfinance/shared';
 import type { Db } from '../db/client.js';
 import {
   accounts,
@@ -272,21 +273,8 @@ export async function verifyMoneyWins(db: Db, userId: number): Promise<void> {
   }
 }
 
-export interface MoneyWinsSummary {
-  verifiedTotalCents: number;
-  estimatedTotalCents: number;
-  wins: Array<{
-    id: number;
-    kind: string;
-    description: string;
-    amountCents: number;
-    status: string;
-    createdAt: string;
-  }>;
-}
-
 /** The Money Wins ledger screen (§2): verified vs estimated tally + the list. */
-export async function getMoneyWinsSummary(db: Db, userId: number): Promise<MoneyWinsSummary> {
+export async function getMoneyWinsSummary(db: Db, userId: number): Promise<MoneyWinsSummaryView> {
   const rows = await db
     .select()
     .from(moneyWins)

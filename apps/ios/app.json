@@ -11,9 +11,19 @@
       "bundleIdentifier": "com.rushingtechnologies.zenfinance",
       "supportsTablet": false
     },
-    "plugins": ["expo-secure-store"],
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
+      ],
+      "@sentry/react-native/expo"
+    ],
     "extra": {
-      "apiUrl": "http://localhost:3000"
+      "apiUrl": "http://localhost:3000",
+      "sentryDsn": ""
     }
   }
 }

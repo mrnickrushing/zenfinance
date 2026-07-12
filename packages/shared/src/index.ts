@@ -345,3 +345,97 @@ export const cancelSubscriptionSchema = z.object({
   recurringStreamId: z.number().int().positive(),
 });
 export type CancelSubscriptionInput = z.infer<typeof cancelSubscriptionSchema>;
+
+// ---------- Mobile app product surface (Phase 4) ----------
+
+export interface MobileHomeSummaryView {
+  items: LinkedItem[];
+  transactionCount: number;
+  firstLook: InsightView | null;
+  weeklyBrief: InsightView | null;
+  goals: GoalView[];
+  subscriptionAudit: SubscriptionAuditView;
+  moneyWins: MoneyWinsSummaryView;
+  openAnomalies: AnomalyView[];
+  recentTransactions: EnrichedTransactionView[];
+}
+
+export const chatQuestionSchema = z.object({
+  question: z.string().trim().min(3).max(500),
+});
+export type ChatQuestionInput = z.infer<typeof chatQuestionSchema>;
+
+export interface ChatFactView {
+  label: string;
+  amountCents: number | null;
+  source: 'transaction_query' | 'feature_rollup' | 'goal' | 'subscription_audit' | 'money_wins';
+}
+
+export interface ChatAnswerView {
+  id: string;
+  answer: string;
+  facts: ChatFactView[];
+  actions: string[];
+  createdAt: string;
+}
+
+export const whatIfSchema = z
+  .object({
+    goalId: z.number().int().positive().optional(),
+    monthlySpendReductionCents: z.number().int().min(0).max(100_000_00).default(0),
+    oneTimeSavingsCents: z.number().int().min(0).max(100_000_00).default(0),
+    monthlyIncomeChangeCents: z.number().int().min(-100_000_00).max(100_000_00).default(0),
+  })
+  .refine(
+    (v) => v.monthlySpendReductionCents > 0 || v.oneTimeSavingsCents > 0 || v.monthlyIncomeChangeCents !== 0,
+    'At least one what-if input must be non-zero',
+  );
+export type WhatIfInput = z.infer<typeof whatIfSchema>;
+
+export interface WhatIfGoalProjectionView {
+  goalId: number;
+  name: string;
+  currentProjectedCompletionDate: string | null;
+  simulatedProjectedCompletionDate: string | null;
+  weeksFaster: number | null;
+  remainingAmountCents: number;
+}
+
+export interface WhatIfResultView {
+  weeklyNetChangeCents: number;
+  oneTimeSavingsCents: number;
+  monthlySpendReductionCents: number;
+  monthlyIncomeChangeCents: number;
+  projections: WhatIfGoalProjectionView[];
+  narration: string;
+}
+
+export const pushTokenSchema = z.object({
+  token: z.string().trim().min(10).max(512),
+  platform: z.enum(['ios', 'android', 'web']).default('ios'),
+});
+export type PushTokenInput = z.infer<typeof pushTokenSchema>;
+
+export const notificationPreferencesSchema = z.object({
+  weeklyBrief: z.boolean(),
+  anomalies: z.boolean(),
+  goalPacing: z.boolean(),
+  marketing: z.boolean(),
+});
+export type NotificationPreferencesInput = z.infer<typeof notificationPreferencesSchema>;
+
+export interface NotificationPreferencesView extends NotificationPreferencesInput {
+  pushEnabled: boolean;
+  updatedAt: string;
+}
+
+export const appEventSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(80)
+    .regex(/^[a-z0-9_:-]+$/i),
+  properties: z.record(z.unknown()).default({}),
+});
+export type AppEventInput = z.infer<typeof appEventSchema>;
