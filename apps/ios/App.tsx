@@ -85,7 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'iOS Lazyweb full UI pass · 2026-07-12.4';
+const OTA_DIAGNOSTIC_LABEL = 'iOS tab access restore · 2026-07-12.5';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -475,6 +475,29 @@ function AuthScreen() {
           ZenFinance links your accounts, understands your spending, and tells you the one thing worth doing this week - in plain English.
         </Text>
 
+        <View style={[styles.authPanelV2, { borderColor: dark.border }]}>
+          <TextInput
+            style={styles.authInputV2}
+            placeholder="Email"
+            placeholderTextColor={dark.muted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.authInputV2}
+            placeholder="Password"
+            placeholderTextColor={dark.muted}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
+          <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
+          <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
+        </View>
+
         <View style={styles.demoPanel}>
           <Text style={styles.demoLabel}>Try it: paste a transaction</Text>
           <TextInput
@@ -512,29 +535,6 @@ function AuthScreen() {
             <Text style={styles.authProofTitle}>Subscription got pricier</Text>
             <Text style={styles.authProofBody}>A recurring charge moved from $11.99 to $16.99. The coach flags it before it becomes normal.</Text>
           </View>
-        </View>
-
-        <View style={[styles.authPanelV2, { borderColor: dark.border }]}>
-          <TextInput
-            style={styles.authInputV2}
-            placeholder="Email"
-            placeholderTextColor={dark.muted}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.authInputV2}
-            placeholder="Password"
-            placeholderTextColor={dark.muted}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
-          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
-          <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
-          <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -578,10 +578,10 @@ function ProductShell() {
         </View>
       );
     }
-    if (home.items.length === 0) {
-      return <LinkingScreen onLinked={refresh} />;
+    const hasLinkedItems = home.items.length > 0;
+    if (tab === 'brief') {
+      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} /> : <LinkingScreen onLinked={refresh} />;
     }
-    if (tab === 'brief') return <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} />;
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
@@ -613,7 +613,7 @@ function ProductShell() {
           {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
         </Pressable>
       </View>
-      {home && home.items.length > 0 ? (
+      {home ? (
         <View style={styles.shellRail}>
           <StatusRail>
             <MoneyMetric label="Banks" value={String(home.items.length)} icon={Landmark} />
@@ -628,7 +628,7 @@ function ProductShell() {
         </View>
       ) : null}
       <View style={styles.content}>{content}</View>
-      {home && home.items.length > 0 ? <TabBar active={tab} onChange={setTab} /> : null}
+      {home ? <TabBar active={tab} onChange={setTab} /> : null}
     </SafeAreaView>
   );
 }
