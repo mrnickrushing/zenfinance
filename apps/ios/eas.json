@@ -11,7 +11,8 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+        "EXPO_PUBLIC_API_URL": "http://localhost:3000",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "preview": {
@@ -22,7 +23,8 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.zenfinance.rushingtechnologies.com"
+        "EXPO_PUBLIC_API_URL": "https://api.zenfinance.rushingtechnologies.com",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
@@ -32,7 +34,8 @@
         "resourceClass": "m-medium"
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.zenfinance.rushingtechnologies.com"
+        "EXPO_PUBLIC_API_URL": "https://api.zenfinance.rushingtechnologies.com",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
