@@ -37,7 +37,8 @@ export function PrivacyPage() {
             store your enabled state, income target, estimated set-aside percentage, and runway
             target. If you use Household Sharing, we store household membership, invite status,
             shared goals, and contribution history. If you use Voice Briefs, we store the generated
-            voice script and playback metadata.
+            voice script and playback metadata. If you buy Money Physical, we store the App Store
+            non-subscription transaction id and generated report.
           </p>
         </section>
 
@@ -50,8 +51,9 @@ export function PrivacyPage() {
             coaching, detect anomalies, manage subscriptions, send notifications you enable, handle
             support, prevent abuse, run the referral program, calculate Freelancer Mode income and
             runway summaries, power Household Sharing and shared goals, generate Voice Brief
-            scripts from your existing coaching briefs, publish minimum-sample aggregate launch
-            insights, and understand whether the beta or launch is working.
+            scripts from your existing coaching briefs, generate Money Physical reports from your
+            existing financial data, publish minimum-sample aggregate launch insights, and
+            understand whether the beta or launch is working.
           </p>
         </section>
 
@@ -61,10 +63,11 @@ export function PrivacyPage() {
           </h2>
           <p className="mt-3 text-sm leading-relaxed">
             ZenFinance uses Plaid for read-only account linking, RevenueCat for App Store
-            subscription entitlements, Anthropic for optional AI enrichment/coaching, Sentry for
-            diagnostics, Expo/APNs for push notifications, Railway/Postgres for hosting, and Resend
-            for support email. We configure diagnostics to avoid default PII collection and scrub
-            common secrets before error events leave the server.
+            subscription entitlements and one-time purchases, Anthropic for optional AI
+            enrichment/coaching, Sentry for diagnostics, Expo/APNs for push notifications,
+            Railway/Postgres for hosting, and Resend for support email. We configure diagnostics
+            to avoid default PII collection and scrub common secrets before error events leave the
+            server.
           </p>
         </section>
 

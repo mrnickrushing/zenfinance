@@ -41,6 +41,7 @@ import { env } from '../env.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
 import { decryptToken } from '../lib/crypto.js';
 import { getProvider } from '../providers/index.js';
+import { moneyPhysicalReportsForExport } from '../moneyPhysical/service.js';
 
 function toIso(value: Date | null | undefined): string | null {
   return value ? value.toISOString() : null;
@@ -366,7 +367,7 @@ async function voiceBriefViews(db: Db, userId: number): Promise<VoiceBriefView[]
 export async function buildUserDataExport(db: Db, userId: number): Promise<UserDataExportView | null> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
-  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList] = await Promise.all([
+  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList, moneyPhysicalReports] = await Promise.all([
     itemViews(db, userId),
     transactionViews(db, userId),
     goalViews(db, userId),
@@ -377,6 +378,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     notificationPrefs(db, userId),
     householdExport(db, userId),
     voiceBriefViews(db, userId),
+    moneyPhysicalReportsForExport(db, userId),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -396,6 +398,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     notificationPreferences: prefs,
     household,
     voiceBriefs: voiceBriefsList,
+    moneyPhysicalReports,
   };
 }
 

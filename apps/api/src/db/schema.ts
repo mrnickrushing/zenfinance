@@ -420,6 +420,38 @@ export const voiceBriefs = pgTable(
   ],
 );
 
+// ---------- Phase 11: Money Physical one-time report ----------
+
+export const moneyPhysicalReports = pgTable(
+  'money_physical_reports',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    productId: text('product_id').notNull(),
+    transactionId: text('transaction_id').notNull(),
+    store: text('store'),
+    environment: text('environment').notNull().default('UNKNOWN'),
+    purchaseSource: text('purchase_source').notNull(),
+    purchasedAt: timestamp('purchased_at', { withTimezone: true }).notNull(),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    score: integer('score').notNull(),
+    headline: text('headline').notNull(),
+    summary: text('summary').notNull(),
+    sections: jsonb('sections').notNull().default('{}'),
+    actions: jsonb('actions').notNull().default('[]'),
+    rawPayload: jsonb('raw_payload').notNull().default('{}'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('money_physical_reports_transaction_idx').on(t.transactionId),
+    index('money_physical_reports_user_created_idx').on(t.userId, t.createdAt),
+  ],
+);
+
 export const anomalyKindEnum = pgEnum('anomaly_kind', [
   'duplicate_charge',
   'unusual_amount',

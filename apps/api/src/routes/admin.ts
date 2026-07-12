@@ -21,6 +21,7 @@ import {
   insights,
   items,
   moneyWins,
+  moneyPhysicalReports,
   referralCredits,
   referralRedemptions,
   supportRequests,
@@ -241,6 +242,10 @@ export function createAdminRouter(): ReturnType<typeof Router> {
     const [voiceBriefAvgDuration] = await db
       .select({ seconds: sql<number | null>`avg(${voiceBriefs.durationSeconds})` })
       .from(voiceBriefs);
+    const [moneyPhysicalCount] = await db.select({ n: sql<number>`count(*)` }).from(moneyPhysicalReports);
+    const [moneyPhysicalAvgScore] = await db
+      .select({ score: sql<number | null>`avg(${moneyPhysicalReports.score})` })
+      .from(moneyPhysicalReports);
     const freelancerProfileRows = await db
       .select({
         userId: freelancerProfiles.userId,
@@ -394,6 +399,12 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         generatedBriefs: Number(voiceBriefCount!.n),
         completedBriefs: Number(voiceBriefCompletedCount!.n),
         avgDurationSeconds: voiceBriefAvgDuration?.seconds === null ? null : Math.round(Number(voiceBriefAvgDuration!.seconds)),
+      },
+      moneyPhysical: {
+        purchasedReports: Number(moneyPhysicalCount!.n),
+        generatedReports: Number(moneyPhysicalCount!.n),
+        avgScore: moneyPhysicalAvgScore?.score === null ? null : Math.round(Number(moneyPhysicalAvgScore!.score)),
+        revenueCents: Number(moneyPhysicalCount!.n) * 1499,
       },
     };
     res.json(metrics);

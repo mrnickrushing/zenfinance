@@ -112,6 +112,12 @@ export interface AdminMetrics {
     completedBriefs: number;
     avgDurationSeconds: number | null;
   };
+  moneyPhysical: {
+    purchasedReports: number;
+    generatedReports: number;
+    avgScore: number | null;
+    revenueCents: number;
+  };
 }
 
 export interface Paginated<T> {
@@ -209,6 +215,7 @@ export interface UserDataExportView {
   notificationPreferences: NotificationPreferencesView | null;
   household?: HouseholdStatusView;
   voiceBriefs?: VoiceBriefView[];
+  moneyPhysicalReports?: MoneyPhysicalReportView[];
 }
 
 export interface PrivacyDeletionEventView {
@@ -328,6 +335,86 @@ export const voiceBriefEventSchema = z.object({
   positionSeconds: z.number().int().min(0).max(600).optional(),
 });
 export type VoiceBriefEventInput = z.infer<typeof voiceBriefEventSchema>;
+
+// ---------- Money Physical (Phase 11) ----------
+
+export const MONEY_PHYSICAL_PRODUCT_ID = 'com.rushingtechnologies.zenfinance.money_physical' as const;
+
+export interface MoneyPhysicalCategoryBreakdown {
+  category: string;
+  amountCents: number;
+  transactionCount: number;
+  shareOfSpend: number;
+}
+
+export interface MoneyPhysicalActionView {
+  title: string;
+  detail: string;
+  estimatedImpactCents: number | null;
+}
+
+export interface MoneyPhysicalReportSectionsView {
+  cashFlow: {
+    incomeCents: number;
+    spendingCents: number;
+    netCashFlowCents: number;
+    savingsRate: number | null;
+  };
+  spending: {
+    topCategories: MoneyPhysicalCategoryBreakdown[];
+    largestTransactionCents: number | null;
+  };
+  goals: {
+    activeGoals: number;
+    behindGoals: number;
+    remainingCents: number;
+  };
+  recurring: {
+    totalMonthlyCents: number;
+    cancelCandidateMonthlyCents: number;
+    cancelCandidateCount: number;
+  };
+  wins: {
+    verifiedTotalCents: number;
+    estimatedTotalCents: number;
+  };
+}
+
+export interface MoneyPhysicalReportView {
+  id: number;
+  productId: string;
+  transactionId: string;
+  store: string | null;
+  environment: 'SANDBOX' | 'PRODUCTION' | 'UNKNOWN';
+  purchasedAt: string;
+  periodStart: string;
+  periodEnd: string;
+  score: number;
+  headline: string;
+  summary: string;
+  sections: MoneyPhysicalReportSectionsView;
+  actions: MoneyPhysicalActionView[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MoneyPhysicalStatusView {
+  productId: typeof MONEY_PHYSICAL_PRODUCT_ID;
+  priceLabel: '$14.99';
+  purchased: boolean;
+  latestPurchaseAt: string | null;
+  latestReport: MoneyPhysicalReportView | null;
+}
+
+export const moneyPhysicalRestoreSchema = z.object({
+  appUserId: z.string().trim().min(1).max(200),
+  productId: z.string().trim().min(1).max(200).default(MONEY_PHYSICAL_PRODUCT_ID),
+  transactionId: z.string().trim().min(1).max(200),
+  purchaseDate: z.string().datetime().nullable().optional(),
+  store: z.string().trim().max(80).optional(),
+  environment: z.enum(['SANDBOX', 'PRODUCTION', 'UNKNOWN']).default('UNKNOWN'),
+});
+export type MoneyPhysicalRestoreInput = z.infer<typeof moneyPhysicalRestoreSchema>;
 
 export type GoalStatus = 'active' | 'achieved' | 'archived';
 export type PacingStatus = 'on_track' | 'behind' | 'ahead' | 'no_deadline' | 'unknown';
@@ -745,6 +832,7 @@ export interface MobileHomeSummaryView {
   goals: GoalView[];
   subscriptionAudit: SubscriptionAuditView;
   moneyWins: MoneyWinsSummaryView;
+  moneyPhysical: MoneyPhysicalStatusView;
   openAnomalies: AnomalyView[];
   recentTransactions: EnrichedTransactionView[];
 }

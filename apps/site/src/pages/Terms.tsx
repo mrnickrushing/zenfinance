@@ -30,12 +30,14 @@ export function TermsPage() {
 
         <section>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-            Subscriptions
+            Purchases
           </h2>
           <p className="mt-3 text-sm leading-relaxed">
             Premium features are sold as auto-renewing App Store subscriptions managed through your
             Apple ID. Pricing and trial terms are shown at purchase. You can cancel any time in
-            your App Store settings.
+            your App Store settings. Money Physical is sold as a one-time App Store purchase and
+            generates a report from your available ZenFinance data at the time the purchase or
+            restore is processed.
           </p>
         </section>
 
@@ -83,6 +85,17 @@ export function TermsPage() {
             text-to-speech playback and does not create an account-transfer, payment, or advisory
             service. Treat spoken guidance the same as written ZenFinance coaching: educational
             information, not professional advice.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Money Physical
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            Money Physical is an educational 90-day checkup based on linked accounts, transactions,
+            goals, recurring charges, and Money Wins. It is not a credit score, investment advice,
+            tax advice, or a guarantee of future financial outcomes.
           </p>
         </section>
 

@@ -17,6 +17,7 @@ import { createHealthRouter } from './routes/health.js';
 import { createHouseholdsRouter } from './routes/households.js';
 import { createLinkRouter } from './routes/link.js';
 import { createMobileRouter } from './routes/mobile.js';
+import { createMoneyPhysicalRouter } from './routes/moneyPhysical.js';
 import { createPrivacyRouter } from './routes/privacy.js';
 import { createReferralsRouter } from './routes/referrals.js';
 import { createSupportRouter } from './routes/support.js';
@@ -62,6 +63,7 @@ export function createApp(): express.Express {
   app.use(createFreelancerRouter());
   app.use(createHouseholdsRouter());
   app.use(createVoiceBriefsRouter());
+  app.use(createMoneyPhysicalRouter());
   app.use(createMobileRouter());
   app.use(createPrivacyRouter());
   app.use(createReferralsRouter());
