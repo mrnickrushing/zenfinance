@@ -85,7 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'iOS visible color refresh · 2026-07-12.6';
+const OTA_DIAGNOSTIC_LABEL = 'Lazyweb porcelain coach redesign · 2026-07-12.1';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -159,19 +159,19 @@ const useAppStore = createStore<AppState>((set) => ({
 }));
 
 const light = {
-  bg: '#f6f3ed',
-  surface: '#ffffff',
-  surfaceAlt: '#edf3f1',
-  ink: '#12161c',
-  muted: '#617078',
-  border: '#d9e0e2',
-  accent: '#2f7f7a',
-  accentBright: '#6bd2c7',
-  accentSoft: '#dcefeb',
-  gold: '#c8902e',
-  goldSoft: '#f7ead1',
-  danger: '#c2413a',
-  success: '#2f8f5b',
+  bg: '#f7f3eb',
+  surface: '#fffdf8',
+  surfaceAlt: '#eee7db',
+  ink: '#10141c',
+  muted: '#656b75',
+  border: '#d8d0c2',
+  accent: '#18b99b',
+  accentBright: '#35d5b8',
+  accentSoft: '#dff5ee',
+  gold: '#b98220',
+  goldSoft: '#f4e3c2',
+  danger: '#b42332',
+  success: '#148a57',
 };
 
 const dark = {
@@ -370,7 +370,7 @@ function moneyPhysicalPayloadFromCustomerInfo(
 
 function useTheme() {
   useColorScheme();
-  return dark;
+  return light;
 }
 
 type IconComponent = typeof Sparkles;
@@ -457,29 +457,28 @@ function AuthScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.authScreen, { backgroundColor: dark.bg }]}>
-      <StatusBar style="light" />
+    <SafeAreaView style={[styles.authScreen, { backgroundColor: theme.bg }]}>
+      <StatusBar style="dark" />
       <ScrollView contentContainerStyle={styles.authContentV2} showsVerticalScrollIndicator={false}>
         <View style={styles.authBrandRow}>
-          <View style={[styles.authLogo, { backgroundColor: dark.surfaceAlt }]}>
-            <Sparkles color={dark.accent} size={24} />
+          <View style={[styles.authLogo, { backgroundColor: theme.surface }]}>
+            <Sparkles color={theme.accent} size={24} />
           </View>
           <Text style={styles.authBrandText}>ZenFinance</Text>
         </View>
 
         <Text style={styles.heroTitleV2}>
-          A financial coach in your pocket that reads your transactions{' '}
-          <Text style={styles.heroAccent}>so you don't have to</Text>
+          This week, do less. <Text style={styles.heroAccent}>One change beats ten insights.</Text>
         </Text>
         <Text style={styles.heroCopyV2}>
-          ZenFinance links your accounts, understands your spending, and tells you the one thing worth doing this week - in plain English.
+          ZenFinance reads your transactions and turns the noise into the one calm money move worth making now.
         </Text>
 
-        <View style={[styles.authPanelV2, { borderColor: dark.border }]}>
+        <View style={[styles.authPanelV2, { borderColor: theme.border }]}>
           <TextInput
             style={styles.authInputV2}
             placeholder="Email"
-            placeholderTextColor={dark.muted}
+            placeholderTextColor={theme.muted}
             autoCapitalize="none"
             keyboardType="email-address"
             value={email}
@@ -488,23 +487,23 @@ function AuthScreen() {
           <TextInput
             style={styles.authInputV2}
             placeholder="Password"
-            placeholderTextColor={dark.muted}
+            placeholderTextColor={theme.muted}
             secureTextEntry
             value={password}
             onChangeText={setPassword}
           />
-          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
+          <PrimaryButton label={busy ? 'Working...' : 'Do this now'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
           <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
           <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
         </View>
 
         <View style={styles.demoPanel}>
-          <Text style={styles.demoLabel}>Try it: paste a transaction</Text>
+          <Text style={styles.demoLabel}>Your next calm step</Text>
           <TextInput
             value={transaction}
             onChangeText={setTransaction}
             placeholder='"I spent $186 dining out this week"'
-            placeholderTextColor={dark.muted}
+            placeholderTextColor={theme.muted}
             style={styles.demoInput}
           />
           <Pressable style={styles.demoButton} onPress={generateBrief}>
@@ -592,8 +591,6 @@ function ProductShell() {
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
-  const totalWins = home ? home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents : 0;
-
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
       <StatusBar style={theme === dark ? 'light' : 'dark'} />
@@ -615,21 +612,51 @@ function ProductShell() {
       </View>
       {home ? (
         <View style={styles.shellRail}>
-          <StatusRail>
-            <MoneyMetric label="Banks" value={String(home.items.length)} icon={Landmark} />
-            <MoneyMetric label="Synced" value={String(home.transactionCount)} icon={WalletCards} />
-            <MoneyMetric label="Alerts" value={String(home.openAnomalies.length)} icon={Bell} />
-            <MoneyMetric
-              label={home.billing.isPremium ? 'Wins' : 'Plan'}
-              value={home.billing.isPremium ? usd(totalWins, true) : 'Free'}
-              icon={home.billing.isPremium ? CircleDollarSign : Crown}
-            />
-          </StatusRail>
+          <ShellCoachConsole home={home} onAsk={() => setTab('coach')} />
         </View>
       ) : null}
       <View style={styles.content}>{content}</View>
       {home ? <TabBar active={tab} onChange={setTab} /> : null}
     </SafeAreaView>
+  );
+}
+
+function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk: () => void }) {
+  const theme = useTheme();
+  const brief = home.weeklyBrief ?? home.firstLook;
+  const totalWins = home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents;
+  const nextAction = brief?.action.description ?? (home.items.length > 0 ? 'Ask the coach what changed in your spending.' : 'Link your first account to unlock a real money brief.');
+
+  return (
+    <View style={[styles.coachConsole, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.consoleStatusRow}>
+        <View style={[styles.consoleChip, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <Landmark color={theme.ink} size={14} />
+          <Text style={[styles.consoleChipText, { color: theme.ink }]}>{home.items.length} bank{home.items.length === 1 ? '' : 's'} linked</Text>
+          <View style={[styles.consoleDot, { backgroundColor: home.items.length > 0 ? theme.success : theme.gold }]} />
+        </View>
+        <View style={[styles.consoleChip, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <RefreshCcw color={theme.ink} size={14} />
+          <Text style={[styles.consoleChipText, { color: theme.ink }]}>{home.transactionCount} txns</Text>
+        </View>
+        <View style={[styles.consoleChip, { borderColor: theme.border, backgroundColor: theme.bg }]}>
+          <CircleDollarSign color={theme.ink} size={14} />
+          <Text style={[styles.consoleChipText, { color: theme.ink }]}>{home.billing.isPremium ? usd(totalWins, true) : 'Free'}</Text>
+        </View>
+      </View>
+      <Pressable style={[styles.consoleAskButton, { backgroundColor: theme.accent }]} onPress={onAsk}>
+        <MessageCircle color="#fff" size={18} />
+        <Text style={styles.consoleAskText}>Ask about a charge</Text>
+      </Pressable>
+      <Pressable style={[styles.consoleNextAction, { borderColor: theme.accent, backgroundColor: theme.accentSoft }]} onPress={onAsk}>
+        <SlidersHorizontal color={theme.accent} size={22} />
+        <View style={styles.flexShrink}>
+          <Text style={[styles.consoleActionKicker, { color: theme.accent }]}>Next calm step</Text>
+          <Text style={[styles.consoleActionText, { color: theme.ink }]} numberOfLines={2}>{nextAction}</Text>
+        </View>
+        <ChevronRight color={theme.accent} size={20} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -2285,9 +2312,16 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
         const Icon = tab.icon;
         const selected = active === tab.key;
         return (
-          <Pressable key={tab.key} style={styles.tabItem} onPress={() => onChange(tab.key)}>
-            <Icon color={selected ? theme.accent : theme.muted} size={20} />
-            <Text style={[styles.tabText, { color: selected ? theme.accent : theme.muted }]} numberOfLines={1}>
+          <Pressable
+            key={tab.key}
+            style={[
+              styles.tabItem,
+              selected ? [styles.tabItemActive, { backgroundColor: theme.accent }] : null,
+            ]}
+            onPress={() => onChange(tab.key)}
+          >
+            <Icon color={selected ? '#fff' : theme.muted} size={selected ? 22 : 20} />
+            <Text style={[styles.tabText, { color: selected ? '#fff' : theme.muted }]} numberOfLines={1}>
               {tab.label}
             </Text>
           </Pressable>
@@ -2504,47 +2538,57 @@ const styles = StyleSheet.create({
   authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
   authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#2f6f68' },
-  authBrandText: { color: '#f6f3ed', fontSize: 16, fontWeight: '800' },
+  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d8d0c2' },
+  authBrandText: { color: '#10141c', fontSize: 16, fontWeight: '900' },
   appScreen: { flex: 1 },
   content: { flex: 1 },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
-  heroTitleV2: { color: '#f6f3ed', fontSize: 38, lineHeight: 41, fontWeight: '900', textAlign: 'center', marginTop: 18 },
-  heroAccent: { color: '#6bd2c7' },
+  heroTitleV2: { color: '#10141c', fontSize: 38, lineHeight: 41, fontWeight: '900', textAlign: 'center', marginTop: 18 },
+  heroAccent: { color: '#10141c' },
   heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
-  heroCopyV2: { color: '#cbd5da', fontSize: 16, lineHeight: 24, textAlign: 'center', marginBottom: 4 },
+  heroCopyV2: { color: '#4b5563', fontSize: 16, lineHeight: 24, textAlign: 'center', marginBottom: 4 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
-  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#101923', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.26, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
-  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#334751', backgroundColor: '#05080d', color: '#fbf7ee', paddingHorizontal: 14, fontSize: 15 },
+  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#fffdf8', padding: 14, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#d8d0c2', backgroundColor: '#ffffff', color: '#10141c', paddingHorizontal: 14, fontSize: 15 },
   inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
-  disclosureV2: { color: '#aab6bd', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  demoPanel: { borderWidth: 1, borderColor: '#334751', borderRadius: 8, backgroundColor: '#101923', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  demoLabel: { color: '#f6f3ed', fontSize: 14, fontWeight: '800' },
-  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#334751', borderRadius: 8, backgroundColor: '#05080d', color: '#f6f3ed', paddingHorizontal: 14, fontSize: 15 },
-  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#2faaa1', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  disclosureV2: { color: '#656b75', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  demoPanel: { borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#fffdf8', padding: 14, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  demoLabel: { color: '#10141c', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
+  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#ffffff', color: '#10141c', paddingHorizontal: 14, fontSize: 15 },
+  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#18b99b', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   demoButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  generatedBrief: { borderWidth: 1, borderColor: '#334751', borderRadius: 8, backgroundColor: '#101923', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
-  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#2faaa1', alignItems: 'center', justifyContent: 'center' },
-  generatedTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  generatedBody: { color: '#d8e2e6', fontSize: 14, lineHeight: 20, marginTop: 4 },
-  generatedImpact: { color: '#68d391', fontSize: 14, lineHeight: 20, fontWeight: '800', marginTop: 2 },
+  generatedBrief: { borderWidth: 1, borderColor: '#18b99b', borderRadius: 8, backgroundColor: '#dff5ee', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#18b99b', alignItems: 'center', justifyContent: 'center' },
+  generatedTitle: { color: '#10141c', fontSize: 16, fontWeight: '900' },
+  generatedBody: { color: '#2f3742', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  generatedImpact: { color: '#148a57', fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 2 },
   authProofGrid: { flexDirection: 'row', gap: 10 },
-  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#334751', borderRadius: 8, backgroundColor: '#101923', padding: 12 },
-  authProofKicker: { color: '#d8a143', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
-  authProofTitle: { color: '#fff', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
-  authProofBody: { color: '#cbd5da', fontSize: 12, lineHeight: 17, marginTop: 6 },
-  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#20323c', backgroundColor: '#081018' },
+  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#fffdf8', padding: 12 },
+  authProofKicker: { color: '#18b99b', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
+  authProofTitle: { color: '#10141c', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
+  authProofBody: { color: '#4b5563', fontSize: 12, lineHeight: 17, marginTop: 6 },
+  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#d8d0c2', backgroundColor: '#f7f3eb' },
   appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   tinyLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
-  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#334751' },
-  shellRail: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#081018', borderBottomWidth: 1, borderBottomColor: '#20323c' },
+  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d8d0c2' },
+  shellRail: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#f7f3eb', borderBottomWidth: 1, borderBottomColor: '#d8d0c2' },
+  coachConsole: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  consoleStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  consoleChip: { minHeight: 30, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  consoleChipText: { fontSize: 12, fontWeight: '800' },
+  consoleDot: { width: 7, height: 7, borderRadius: 4 },
+  consoleAskButton: { minHeight: 52, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 3 },
+  consoleAskText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  consoleNextAction: { minHeight: 70, borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  consoleActionKicker: { fontSize: 11, lineHeight: 15, fontWeight: '900', textTransform: 'uppercase' },
+  consoleActionText: { fontSize: 14, lineHeight: 20, fontWeight: '900' },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
-  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#4fd1c5', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   primaryButtonText: { flexShrink: 1, fontWeight: '800', fontSize: 15, textAlign: 'center' },
   secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
@@ -2557,8 +2601,8 @@ const styles = StyleSheet.create({
   metric: { flex: 1, minHeight: 82, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
-  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
@@ -2571,14 +2615,14 @@ const styles = StyleSheet.create({
   evidenceChip: { maxWidth: '100%', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
   voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  actionBox: { borderRadius: 8, padding: 14, gap: 4, borderWidth: 1, borderColor: '#29514d' },
+  actionBox: { borderRadius: 8, padding: 14, gap: 4, borderWidth: 1, borderColor: '#18b99b' },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
   featureList: { gap: 9 },
   featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   planTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   planBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   planBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
@@ -2590,11 +2634,12 @@ const styles = StyleSheet.create({
   updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { borderTopWidth: 1, flexDirection: 'row', paddingTop: 9, paddingBottom: Platform.OS === 'ios' ? 20 : 10, paddingHorizontal: 8, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 16, shadowOffset: { width: 0, height: -8 }, elevation: 8 },
-  tabItem: { flex: 1, alignItems: 'center', gap: 3, minWidth: 0 },
-  tabText: { fontSize: 11, fontWeight: '700' },
+  tabBar: { marginHorizontal: 14, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 8, flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 8, shadowColor: '#7d715f', shadowOpacity: 0.26, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 },
+  tabItem: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0, borderRadius: 8 },
+  tabItemActive: { shadowColor: '#18b99b', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  tabText: { fontSize: 11, fontWeight: '800' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
-  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#000', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
   promptGroup: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
   quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
@@ -2609,7 +2654,7 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#4fd1c5', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8 },
   scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
