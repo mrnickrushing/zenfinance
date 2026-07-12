@@ -23,6 +23,7 @@ module.exports = {
         },
       ],
       '@sentry/react-native',
+      './withFollyCoroutineFix',
     ],
     runtimeVersion: {
       policy: 'fingerprint',

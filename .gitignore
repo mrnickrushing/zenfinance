@@ -11,3 +11,6 @@ coverage/
 .DS_Store
 *.tsbuildinfo
 .pgdata/
+apps/ios/ios/
+apps/ios/android/
+apps/ios/.expo/
