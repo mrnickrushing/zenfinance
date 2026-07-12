@@ -15,6 +15,7 @@ export default defineConfig({
       TOKEN_ENC_KEY: 'a3f1c2d4e5b6a7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2',
       TRANSACTION_PROVIDER: 'mock',
       ENRICHMENT_PROVIDER: 'mock',
+      INSIGHT_PROVIDER: 'mock',
     },
   },
 });

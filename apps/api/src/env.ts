@@ -18,6 +18,11 @@ const envSchema = z.object({
   ENRICHMENT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
   ANTHROPIC_API_KEY: z.string().optional(),
   ENRICHMENT_MODEL: z.string().default('claude-haiku-4-5'),
+  // The coaching brief is reasoning-quality-sensitive, so it runs on Sonnet
+  // (PLAN §3), separate from the high-volume Haiku enrichment model. 'mock'
+  // uses the deterministic template generator — no API key required.
+  INSIGHT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
+  INSIGHT_MODEL: z.string().default('claude-sonnet-5'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
   SUPPORT_EMAIL: z.string().email().default('support@rushingtechnologies.com'),
