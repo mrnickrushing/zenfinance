@@ -285,7 +285,7 @@ sign-off, and live beta retention/Sentry observation windows.
 - Weekly growth loop: PostHog cohort review → one retention or conversion experiment per week — nothing else
 - Referral mechanic: "give a month, get a month" (finance advice spreads by word of mouth)
 - Content flywheel: anonymized, aggregate insight posts ("the average subscriber has 2.3 zombie subscriptions worth $31/mo") — original data earns links; published on the marketing site
-- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8; next demand-ordered items are household sharing → voice briefs → Money Physical one-time report → net-worth view
+- Post-launch feature train (strictly demand-ordered): freelancer mode is built in Phase 8 and household sharing is built in Phase 9; next demand-ordered items are voice briefs → Money Physical one-time report → net-worth view
 - Ops cadence: `agents.cli scan` in CI stays required; monthly dependency + billing audits; watch CFPB §1033 developments for aggregator-cost leverage
 - **Success criteria for the first 90 days post-launch:** 1,000 free users, 60+ subscribers (break-even ×~1.5), churn <6%, verified Money Wins average >$25/user/month.
 
@@ -316,6 +316,23 @@ privacy inventory, and public privacy/terms pages. Packaging can still move to
 an add-on or higher tier later; the current repo implementation ships it as a
 Coach premium feature.
 
+### Phase 9 — Household Sharing *(Post-launch feature train item 2)*
+- Two-seat household model with owner/member roles, one household per user at launch, and expiring invite tokens
+- Individual privacy zones: household views expose members, invites, shared goals, and contributions, not bank accounts, transactions, chat, personal goals, anomalies, Money Wins, Freelancer Mode, or billing details
+- Premium-gated household creation and invite creation; invited members can accept without a second subscription
+- Shared household goals with target/progress fields and a contribution ledger
+- iOS Settings surface for creating a household, sharing an invite, accepting an invite, creating shared goals, and adding contributions
+- Admin metrics for households, active household members, pending invites, and shared goals
+- Privacy export includes household membership, shared goals, and contributions
+- **Exit gate:** creation paywall, invite acceptance, seat cap, shared goals, contributions, privacy boundary, export, and admin metrics are covered by `apps/api/src/test/phase9.test.ts`.
+
+**Implementation status in this repo:** Phase 9 is implemented behind the
+existing `zen_coach` entitlement for household owners. The API owns household,
+member, invite, shared-goal, and contribution tables plus `/api/household/*`
+routes. The iOS app exposes Household Sharing in Settings. Docs are updated in
+`docs/HOUSEHOLD_SHARING.md`, README, deploy checklist, privacy inventory,
+public privacy/terms pages, growth loop, and security notes.
+
 ---
 
 ## 9. Risks & Mitigations
@@ -344,4 +361,4 @@ Coach premium feature.
 
 ---
 
-*Current status: Phases 0–8 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, and Phase 8 Freelancer Mode for variable-income users. Mock-provider paths and Phase 8 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*
+*Current status: Phases 0–9 are built in code where repo work can complete them. The app and API now cover onboarding, Plaid Link, first-look/weekly brief cards, coach chat over scoped server-side transaction queries, goals, deterministic what-if simulation, subscription audit, Money Wins, notification preferences, RevenueCat monetization, Sentry hardening, privacy export/delete rights, Plaid item-status recovery, beta metrics, referral credits, launch KPIs, public aggregate launch insights, Phase 7 runbooks, Phase 8 Freelancer Mode for variable-income users, and Phase 9 Household Sharing with shared goals and individual privacy zones. Mock-provider paths and Phase 9 tests pass. Real-world gates still require external credentials, approvals, distribution, and live operations: Plaid production approval, App Store/TestFlight review, attorney sign-off, EAS/App Store publication, Sentry observation, launch promotion, and 90-day KPI measurement.*

@@ -12,6 +12,7 @@ import {
   CreditCard,
   Crown,
   Gift,
+  Home,
   Landmark,
   LockKeyhole,
   LogOut,
@@ -26,6 +27,8 @@ import {
   Sparkles,
   Target,
   Trash2,
+  UserPlus,
+  Users,
   WalletCards,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -57,6 +60,8 @@ import type {
   ChatAnswerView,
   FreelancerSummaryView,
   GoalView,
+  HouseholdInviteCreatedView,
+  HouseholdStatusView,
   InsightView,
   LinkedItem,
   MobileHomeSummaryView,
@@ -1062,6 +1067,13 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   const [targetIncome, setTargetIncome] = useState('');
   const [taxSetAside, setTaxSetAside] = useState('25');
   const [runwayTarget, setRunwayTarget] = useState('3');
+  const [household, setHousehold] = useState<HouseholdStatusView | null>(null);
+  const [householdBusy, setHouseholdBusy] = useState(false);
+  const [householdInviteEmail, setHouseholdInviteEmail] = useState('');
+  const [householdInviteCode, setHouseholdInviteCode] = useState('');
+  const [sharedGoalName, setSharedGoalName] = useState('');
+  const [sharedGoalTarget, setSharedGoalTarget] = useState('');
+  const [householdContribution, setHouseholdContribution] = useState<Record<number, string>>({});
 
   useEffect(() => {
     requestApi<ReferralStatusView>('/api/referrals/me')
@@ -1088,6 +1100,18 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   useEffect(() => {
     void loadFreelancer();
   }, [loadFreelancer]);
+
+  const loadHousehold = useCallback(async () => {
+    try {
+      setHousehold(await requestApi<HouseholdStatusView>('/api/household'));
+    } catch {
+      setHousehold(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHousehold();
+  }, [loadHousehold]);
 
   async function registerPush() {
     const permission = await Notifications.requestPermissionsAsync();
@@ -1216,6 +1240,93 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
       Alert.alert('Freelancer Mode', err instanceof Error ? err.message : 'Unable to update Freelancer Mode');
     } finally {
       setFreelancerBusy(false);
+    }
+  }
+
+  async function createHousehold() {
+    setHouseholdBusy(true);
+    try {
+      const res = await requestApi<HouseholdStatusView>('/api/household', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'Household' }),
+      });
+      setHousehold(res);
+    } catch (err) {
+      Alert.alert('Household Sharing', err instanceof Error ? err.message : 'Unable to create household');
+    } finally {
+      setHouseholdBusy(false);
+    }
+  }
+
+  async function inviteHouseholdMember() {
+    if (!householdInviteEmail.trim()) return;
+    setHouseholdBusy(true);
+    try {
+      const res = await requestApi<HouseholdInviteCreatedView>('/api/household/invites', {
+        method: 'POST',
+        body: JSON.stringify({ email: householdInviteEmail.trim().toLowerCase() }),
+      });
+      setHouseholdInviteEmail('');
+      await Share.share({ title: 'Join my ZenFinance household', message: res.shareText });
+      await loadHousehold();
+    } catch (err) {
+      Alert.alert('Invite failed', err instanceof Error ? err.message : 'Unable to create invite');
+    } finally {
+      setHouseholdBusy(false);
+    }
+  }
+
+  async function acceptHouseholdInvite() {
+    if (!householdInviteCode.trim()) return;
+    setHouseholdBusy(true);
+    try {
+      const res = await requestApi<HouseholdStatusView>('/api/household/invites/accept', {
+        method: 'POST',
+        body: JSON.stringify({ token: householdInviteCode.trim() }),
+      });
+      setHouseholdInviteCode('');
+      setHousehold(res);
+    } catch (err) {
+      Alert.alert('Invite failed', err instanceof Error ? err.message : 'Unable to accept invite');
+    } finally {
+      setHouseholdBusy(false);
+    }
+  }
+
+  async function createSharedGoal() {
+    const target = dollarInputToCents(sharedGoalTarget);
+    if (!sharedGoalName.trim() || !target) return;
+    setHouseholdBusy(true);
+    try {
+      const res = await requestApi<HouseholdStatusView>('/api/household/goals', {
+        method: 'POST',
+        body: JSON.stringify({ name: sharedGoalName.trim(), targetAmountCents: target }),
+      });
+      setSharedGoalName('');
+      setSharedGoalTarget('');
+      setHousehold(res);
+    } catch (err) {
+      Alert.alert('Shared goal failed', err instanceof Error ? err.message : 'Unable to create shared goal');
+    } finally {
+      setHouseholdBusy(false);
+    }
+  }
+
+  async function addHouseholdContribution(goalId: number) {
+    const amount = dollarInputToCents(householdContribution[goalId] ?? '');
+    if (!amount) return;
+    setHouseholdBusy(true);
+    try {
+      const res = await requestApi<HouseholdStatusView>(`/api/household/goals/${goalId}/contributions`, {
+        method: 'POST',
+        body: JSON.stringify({ amountCents: amount }),
+      });
+      setHouseholdContribution((current) => ({ ...current, [goalId]: '' }));
+      setHousehold(res);
+    } catch (err) {
+      Alert.alert('Contribution failed', err instanceof Error ? err.message : 'Unable to add contribution');
+    } finally {
+      setHouseholdBusy(false);
     }
   }
 
@@ -1375,6 +1486,133 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           <Text style={[styles.panelBody, { color: theme.muted }]}>
             Available with ZenFinance Coach.
           </Text>
+        )}
+      </View>
+      <SectionHeader title="Household Sharing" />
+      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <Users color={household?.household ? theme.accent : theme.muted} size={20} />
+          <Text style={[styles.panelKicker, { color: household?.household ? theme.accent : theme.muted }]}>
+            {household?.household ? `${household.household.members.length}/${household.household.seatLimit} seats` : 'Private by default'}
+          </Text>
+        </View>
+        {household?.household ? (
+          <>
+            <Text style={[styles.panelBody, { color: theme.muted }]}>
+              Shared goals are visible to household members. Bank accounts, transactions, chat, and personal goals stay individual.
+            </Text>
+            {household.household.members.map((member) => (
+              <View key={member.id} style={[styles.row, { borderColor: theme.border }]}>
+                <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
+                  <Users color={theme.accent} size={18} />
+                </View>
+                <View style={styles.flexShrink}>
+                  <Text style={[styles.rowTitle, { color: theme.ink }]}>{member.email}</Text>
+                  <Text style={[styles.rowDetail, { color: theme.muted }]}>{member.role} · individual privacy zone</Text>
+                </View>
+              </View>
+            ))}
+            {household.household.currentUserRole === 'owner' &&
+            household.household.members.length + household.household.invites.length < household.household.seatLimit ? (
+              <>
+                <TextInput
+                  value={householdInviteEmail}
+                  onChangeText={setHouseholdInviteEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholder="Member email"
+                  placeholderTextColor={theme.muted}
+                  style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+                />
+                <SecondaryButton
+                  label={householdBusy ? 'Sending...' : 'Share invite'}
+                  icon={UserPlus}
+                  disabled={householdBusy || !householdInviteEmail.trim()}
+                  onPress={inviteHouseholdMember}
+                />
+              </>
+            ) : null}
+            <TextInput
+              value={sharedGoalName}
+              onChangeText={setSharedGoalName}
+              placeholder="Shared goal name"
+              placeholderTextColor={theme.muted}
+              style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            />
+            <TextInput
+              value={sharedGoalTarget}
+              onChangeText={setSharedGoalTarget}
+              keyboardType="number-pad"
+              placeholder="Shared goal target"
+              placeholderTextColor={theme.muted}
+              style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            />
+            <SecondaryButton
+              label={householdBusy ? 'Saving...' : 'Create shared goal'}
+              icon={Target}
+              disabled={householdBusy || !sharedGoalName.trim() || !sharedGoalTarget.trim()}
+              onPress={createSharedGoal}
+            />
+            {household.household.goals.map((goal) => (
+              <View key={goal.id} style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+                <View style={styles.panelHeader}>
+                  <Home color={theme.accent} size={18} />
+                  <Text style={[styles.actionTitle, { color: theme.ink }]}>{goal.name}</Text>
+                </View>
+                <Text style={[styles.actionMeta, { color: theme.muted }]}>
+                  {usd(goal.currentAmountCents, true)} of {usd(goal.targetAmountCents, true)} · {Math.round(goal.progressRatio * 100)}%
+                </Text>
+                <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+                  <View style={[styles.progressFill, { width: `${Math.round(goal.progressRatio * 100)}%`, backgroundColor: theme.success }]} />
+                </View>
+                <View style={styles.inlineButtons}>
+                  <TextInput
+                    value={householdContribution[goal.id] ?? ''}
+                    onChangeText={(value) => setHouseholdContribution((current) => ({ ...current, [goal.id]: value }))}
+                    keyboardType="number-pad"
+                    placeholder="Amount"
+                    placeholderTextColor={theme.muted}
+                    style={[styles.input, styles.flexShrink, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+                  />
+                  <SecondaryButton
+                    compact
+                    label="Add"
+                    icon={Plus}
+                    disabled={householdBusy || !(householdContribution[goal.id] ?? '').trim()}
+                    onPress={() => addHouseholdContribution(goal.id)}
+                  />
+                </View>
+              </View>
+            ))}
+          </>
+        ) : (
+          <>
+            <Text style={[styles.panelBody, { color: theme.muted }]}>
+              Create a two-seat household with Coach, or join one with an invite code.
+            </Text>
+            {billing.isPremium ? (
+              <SecondaryButton
+                label={householdBusy ? 'Creating...' : 'Create household'}
+                icon={Home}
+                disabled={householdBusy}
+                onPress={createHousehold}
+              />
+            ) : null}
+            <TextInput
+              value={householdInviteCode}
+              onChangeText={setHouseholdInviteCode}
+              autoCapitalize="none"
+              placeholder="Invite code"
+              placeholderTextColor={theme.muted}
+              style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
+            />
+            <SecondaryButton
+              label={householdBusy ? 'Joining...' : 'Join household'}
+              icon={UserPlus}
+              disabled={householdBusy || !householdInviteCode.trim()}
+              onPress={acceptHouseholdInvite}
+            />
+          </>
         )}
       </View>
       <SectionHeader title="Notifications" />

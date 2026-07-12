@@ -3,6 +3,7 @@ import type {
   AnomalyView,
   EnrichedTransactionView,
   GoalView,
+  HouseholdStatusView,
   InsightClaim,
   InsightView,
   LinkedItem,
@@ -19,6 +20,11 @@ import {
   accounts,
   anomalies,
   goals,
+  householdGoalContributions,
+  householdGoals,
+  householdInvites,
+  householdMembers,
+  households,
   insights,
   items,
   notificationPreferences,
@@ -221,10 +227,109 @@ async function notificationPrefs(db: Db, userId: number): Promise<NotificationPr
   };
 }
 
+async function householdExport(db: Db, userId: number): Promise<HouseholdStatusView> {
+  const [membership] = await db
+    .select({ householdId: householdMembers.householdId, role: householdMembers.role })
+    .from(householdMembers)
+    .where(eq(householdMembers.userId, userId))
+    .limit(1);
+  if (!membership) return { household: null };
+  const [household] = await db.select().from(households).where(eq(households.id, membership.householdId)).limit(1);
+  const [memberRows, inviteRows, goalRows] = await Promise.all([
+    db
+      .select({
+        id: householdMembers.id,
+        userId: householdMembers.userId,
+        email: users.email,
+        role: householdMembers.role,
+        privacyMode: householdMembers.privacyMode,
+        joinedAt: householdMembers.joinedAt,
+      })
+      .from(householdMembers)
+      .innerJoin(users, eq(users.id, householdMembers.userId))
+      .where(eq(householdMembers.householdId, membership.householdId)),
+    db.select().from(householdInvites).where(eq(householdInvites.householdId, membership.householdId)),
+    db.select().from(householdGoals).where(eq(householdGoals.householdId, membership.householdId)).orderBy(asc(householdGoals.priority), asc(householdGoals.id)),
+  ]);
+  const goalIds = goalRows.map((goal) => goal.id);
+  const contributions =
+    goalIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: householdGoalContributions.id,
+            goalId: householdGoalContributions.goalId,
+            userId: householdGoalContributions.userId,
+            userEmail: users.email,
+            amountCents: householdGoalContributions.amountCents,
+            note: householdGoalContributions.note,
+            contributedAt: householdGoalContributions.contributedAt,
+          })
+          .from(householdGoalContributions)
+          .leftJoin(users, eq(users.id, householdGoalContributions.userId))
+          .where(inArray(householdGoalContributions.goalId, goalIds))
+          .orderBy(desc(householdGoalContributions.contributedAt));
+  const contributionsByGoal = new Map<number, typeof contributions>();
+  for (const contribution of contributions) {
+    const list = contributionsByGoal.get(contribution.goalId) ?? [];
+    list.push(contribution);
+    contributionsByGoal.set(contribution.goalId, list);
+  }
+
+  return {
+    household: {
+      id: household!.id,
+      name: household!.name,
+      seatLimit: household!.seatLimit,
+      privacyMode: 'individual',
+      currentUserRole: membership.role === 'owner' ? 'owner' : 'member',
+      members: memberRows.map((member) => ({
+        id: member.id,
+        userId: member.userId,
+        email: member.email,
+        role: member.role === 'owner' ? 'owner' : 'member',
+        privacyMode: 'individual',
+        joinedAt: member.joinedAt.toISOString(),
+      })),
+      invites: inviteRows.map((invite) => ({
+        id: invite.id,
+        email: invite.email,
+        status: invite.status === 'accepted' || invite.status === 'revoked' || invite.status === 'expired' ? invite.status : 'pending',
+        expiresAt: invite.expiresAt.toISOString(),
+        createdAt: invite.createdAt.toISOString(),
+      })),
+      goals: goalRows.map((goal) => ({
+        id: goal.id,
+        name: goal.name,
+        targetAmountCents: goal.targetAmountCents,
+        currentAmountCents: goal.currentAmountCents,
+        targetDate: goal.targetDate,
+        priority: goal.priority,
+        status: goal.status,
+        createdByUserId: goal.createdByUserId,
+        progressRatio: goal.targetAmountCents > 0 ? Math.min(1, Number((goal.currentAmountCents / goal.targetAmountCents).toFixed(4))) : 0,
+        remainingAmountCents: Math.max(0, goal.targetAmountCents - goal.currentAmountCents),
+        contributions: (contributionsByGoal.get(goal.id) ?? []).map((contribution) => ({
+          id: contribution.id,
+          userId: contribution.userId,
+          userEmail: contribution.userEmail,
+          amountCents: contribution.amountCents,
+          note: contribution.note,
+          contributedAt: contribution.contributedAt.toISOString(),
+        })),
+        createdAt: goal.createdAt.toISOString(),
+        updatedAt: goal.updatedAt.toISOString(),
+      })),
+      createdAt: household!.createdAt.toISOString(),
+      updatedAt: household!.updatedAt.toISOString(),
+    },
+  };
+}
+
 export async function buildUserDataExport(db: Db, userId: number): Promise<UserDataExportView | null> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
-  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs] = await Promise.all([
+  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household] = await Promise.all([
     itemViews(db, userId),
     transactionViews(db, userId),
     goalViews(db, userId),
@@ -233,6 +338,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     getMoneyWinsSummary(db, userId),
     getBillingStatus(db, userId),
     notificationPrefs(db, userId),
+    householdExport(db, userId),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -250,6 +356,7 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     moneyWins,
     billing,
     notificationPreferences: prefs,
+    household,
   };
 }
 

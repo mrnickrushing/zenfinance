@@ -64,6 +64,18 @@ export function TermsPage() {
 
         <section>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
+            Household Sharing
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed">
+            Household Sharing is for shared planning between invited members. Shared goals,
+            contribution history, member emails, and invite status are visible to household
+            members. Linked accounts, transactions, personal goals, chat, alerts, and billing
+            details remain individual unless a future feature explicitly says otherwise.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-slate-100">
             Beta availability
           </h2>
           <p className="mt-3 text-sm leading-relaxed">

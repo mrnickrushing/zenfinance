@@ -167,6 +167,13 @@ function Dashboard() {
             />
           </section>
 
+          <section aria-label="Household metrics" className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile label="Households" value={metrics.household.households} />
+            <StatTile label="Household members" value={metrics.household.activeMembers} />
+            <StatTile label="Pending household invites" value={metrics.household.pendingInvites} />
+            <StatTile label="Shared goals" value={metrics.household.sharedGoals} />
+          </section>
+
           <Card className="mt-6">
             <h2 className="text-sm font-medium text-slate-600 dark:text-slate-300">
               Waitlist signups — last 30 days

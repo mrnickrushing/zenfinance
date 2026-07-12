@@ -14,6 +14,10 @@ import {
   accounts,
   billingEntitlements,
   freelancerProfiles,
+  householdGoals,
+  householdInvites,
+  householdMembers,
+  households,
   insights,
   items,
   moneyWins,
@@ -221,6 +225,13 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       .where(eq(moneyWins.status, 'verified'));
     const [referralRedemptionCount] = await db.select({ n: sql<number>`count(*)` }).from(referralRedemptions);
     const [referralCreditCount] = await db.select({ n: sql<number>`count(*)` }).from(referralCredits);
+    const [householdCount] = await db.select({ n: sql<number>`count(*)` }).from(households);
+    const [householdMemberCount] = await db.select({ n: sql<number>`count(*)` }).from(householdMembers);
+    const [householdInviteCount] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(householdInvites)
+      .where(sql`${householdInvites.status} = 'pending' and ${householdInvites.expiresAt} > now()`);
+    const [householdGoalCount] = await db.select({ n: sql<number>`count(*)` }).from(householdGoals);
     const freelancerProfileRows = await db
       .select({
         userId: freelancerProfiles.userId,
@@ -363,6 +374,12 @@ export function createAdminRouter(): ReturnType<typeof Router> {
         usersWithIncome: freelancerUsersWithIncome,
         avgRunwayMonths: freelancerAvgRunwayMonths,
         avgTargetGapCents: freelancerAvgTargetGapCents,
+      },
+      household: {
+        households: Number(householdCount!.n),
+        activeMembers: Number(householdMemberCount!.n),
+        pendingInvites: Number(householdInviteCount!.n),
+        sharedGoals: Number(householdGoalCount!.n),
       },
     };
     res.json(metrics);

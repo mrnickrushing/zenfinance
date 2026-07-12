@@ -81,6 +81,7 @@ with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 - [ ] Referral redemption works: `/api/referrals/me`, `/api/referrals/redeem`, and billing status shows referral premium credit
 - [ ] `/insights` loads aggregate launch stats and suppresses public copy below the minimum sample size
 - [ ] Freelancer Mode works for premium users: `GET /api/freelancer/summary` returns income/runway data, free users get `402 premium_required`, and `/admin` shows the Freelancer metrics row
+- [ ] Household Sharing works: free users get `402 premium_required` on household creation, a premium owner can create a household, share an invite, the invited account can accept, shared goals accept contributions, and `/admin` shows the Household metrics row
 - [ ] Database backups: enable Railway's Postgres backups, and note the retention window in the privacy policy (deletion propagation)
 
 ## Local development

@@ -8,6 +8,11 @@ import {
   billingEntitlements,
   billingEvents,
   freelancerProfiles,
+  householdGoalContributions,
+  householdGoals,
+  householdInvites,
+  householdMembers,
+  households,
   privacyDeletionEvents,
   pricingExperiments,
   referralCodes,
@@ -36,6 +41,11 @@ export async function truncateAll(): Promise<void> {
   await db.delete(referralCredits);
   await db.delete(referralRedemptions);
   await db.delete(referralCodes);
+  await db.delete(householdGoalContributions);
+  await db.delete(householdGoals);
+  await db.delete(householdInvites);
+  await db.delete(householdMembers);
+  await db.delete(households);
   await db.delete(freelancerProfiles);
   await db.delete(billingEvents);
   await db.delete(appEvents);

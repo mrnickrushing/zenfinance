@@ -101,6 +101,12 @@ export interface AdminMetrics {
     avgRunwayMonths: number | null;
     avgTargetGapCents: number | null;
   };
+  household: {
+    households: number;
+    activeMembers: number;
+    pendingInvites: number;
+    sharedGoals: number;
+  };
 }
 
 export interface Paginated<T> {
@@ -196,6 +202,7 @@ export interface UserDataExportView {
   moneyWins: MoneyWinsSummaryView;
   billing: BillingStatusView;
   notificationPreferences: NotificationPreferencesView | null;
+  household?: HouseholdStatusView;
 }
 
 export interface PrivacyDeletionEventView {
@@ -581,6 +588,116 @@ export interface FreelancerSummaryView {
   estimatedTaxSetAsideRateBps: number;
   nextSlowMonthBufferCents: number;
   recommendations: FreelancerRecommendationView[];
+}
+
+// ---------- Household Sharing (Phase 9) ----------
+
+export const householdCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+});
+export type HouseholdCreateInput = z.infer<typeof householdCreateSchema>;
+
+export const householdInviteCreateSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+});
+export type HouseholdInviteCreateInput = z.infer<typeof householdInviteCreateSchema>;
+
+export const householdInviteAcceptSchema = z.object({
+  token: z.string().trim().min(16).max(160),
+});
+export type HouseholdInviteAcceptInput = z.infer<typeof householdInviteAcceptSchema>;
+
+export const householdGoalCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  targetAmountCents: z.number().int().positive().max(100_000_000),
+  currentAmountCents: z.number().int().min(0).max(100_000_000).optional(),
+  targetDate: z.string().date().nullable().optional(),
+  priority: z.number().int().min(1).max(99).optional(),
+});
+export type HouseholdGoalCreateInput = z.infer<typeof householdGoalCreateSchema>;
+
+export const householdGoalUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  targetAmountCents: z.number().int().positive().max(100_000_000).optional(),
+  currentAmountCents: z.number().int().min(0).max(100_000_000).optional(),
+  targetDate: z.string().date().nullable().optional(),
+  priority: z.number().int().min(1).max(99).optional(),
+  status: z.enum(['active', 'achieved', 'archived']).optional(),
+});
+export type HouseholdGoalUpdateInput = z.infer<typeof householdGoalUpdateSchema>;
+
+export const householdGoalContributionSchema = z.object({
+  amountCents: z.number().int().positive().max(100_000_000),
+  note: z.string().trim().max(240).optional(),
+});
+export type HouseholdGoalContributionInput = z.infer<typeof householdGoalContributionSchema>;
+
+export type HouseholdRole = 'owner' | 'member';
+export type HouseholdInviteStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface HouseholdMemberView {
+  id: number;
+  userId: number;
+  email: string;
+  role: HouseholdRole;
+  privacyMode: 'individual';
+  joinedAt: string;
+}
+
+export interface HouseholdInviteView {
+  id: number;
+  email: string;
+  status: HouseholdInviteStatus;
+  expiresAt: string;
+  createdAt: string;
+}
+
+export interface HouseholdGoalContributionView {
+  id: number;
+  userId: number | null;
+  userEmail: string | null;
+  amountCents: number;
+  note: string | null;
+  contributedAt: string;
+}
+
+export interface HouseholdGoalView {
+  id: number;
+  name: string;
+  targetAmountCents: number;
+  currentAmountCents: number;
+  targetDate: string | null;
+  priority: number;
+  status: 'active' | 'achieved' | 'archived';
+  createdByUserId: number | null;
+  progressRatio: number;
+  remainingAmountCents: number;
+  contributions: HouseholdGoalContributionView[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdView {
+  id: number;
+  name: string;
+  seatLimit: number;
+  privacyMode: 'individual';
+  currentUserRole: HouseholdRole;
+  members: HouseholdMemberView[];
+  invites: HouseholdInviteView[];
+  goals: HouseholdGoalView[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HouseholdStatusView {
+  household: HouseholdView | null;
+}
+
+export interface HouseholdInviteCreatedView {
+  invite: HouseholdInviteView;
+  acceptToken: string;
+  shareText: string;
 }
 
 // ---------- Mobile app product surface (Phase 4 + Phase 5) ----------
