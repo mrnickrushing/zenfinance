@@ -670,36 +670,27 @@ function BriefScreen({
       refreshControl={undefined}
       showsVerticalScrollIndicator={false}
     >
-      <MetricStrip home={home} />
-      {brief ? <InsightPanel insight={brief} /> : <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />}
       {brief ? (
-        <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <View style={styles.panelHeader}>
-            <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={20} />
-            <Text style={[styles.panelKicker, { color: home.billing.isPremium ? theme.accent : theme.muted }]}>Voice brief</Text>
-          </View>
-          {home.billing.isPremium ? (
-            <>
-              <Text style={[styles.panelBody, { color: theme.muted }]}>
-                {voiceBrief ? `${Math.round(voiceBrief.durationSeconds / 6) / 10} min · ${voiceBrief.headline}` : 'Preparing audio summary...'}
-              </Text>
-              <View style={styles.inlineButtons}>
-                <SecondaryButton
-                  label={speaking ? 'Playing' : voiceBusy ? 'Loading...' : 'Play'}
-                  icon={Volume2}
-                  compact
-                  disabled={voiceBusy || !voiceBrief || speaking}
-                  onPress={playVoiceBrief}
-                />
-                <SecondaryButton label="Stop" icon={Square} compact disabled={!speaking} onPress={stopVoiceBrief} />
-              </View>
-            </>
-          ) : (
-            <Text style={[styles.panelBody, { color: theme.muted }]}>Available with ZenFinance Coach.</Text>
-          )}
-        </View>
-      ) : null}
-      <SectionHeader title="Next Actions" />
+        <MoneyBriefHero
+          home={home}
+          brief={brief}
+          voiceBrief={voiceBrief}
+          voiceBusy={voiceBusy}
+          speaking={speaking}
+          onPlayVoice={playVoiceBrief}
+          onStopVoice={stopVoiceBrief}
+        />
+      ) : (
+        <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />
+      )}
+      <SectionHeader title="This Week" />
+      <StatusRail>
+        <MoneyMetric label="Saved" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
+        <MoneyMetric label="At risk" value={String(home.openAnomalies.length)} icon={Bell} />
+        <MoneyMetric label="Recurring" value={usd(home.subscriptionAudit.totalMonthlyCents, true)} icon={CreditCard} />
+        <MoneyMetric label="Goal pace" value={home.goals[0] ? `${Math.round(home.goals[0].pacing.progressRatio * 100)}%` : '0%'} icon={Target} />
+      </StatusRail>
+      <SectionHeader title="Next Best Actions" />
       <ActionRow
         icon={Target}
         title={home.goals[0]?.name ?? 'Create one savings goal'}
@@ -708,14 +699,14 @@ function BriefScreen({
       <ActionRow
         icon={CreditCard}
         title="Subscription audit"
-        detail={`${usd(home.subscriptionAudit.cancelCandidateMonthlyCents, true)}/mo in likely cancellation candidates`}
+        detail={`${usd(home.subscriptionAudit.cancelCandidateMonthlyCents, true)}/mo can be reviewed now`}
       />
       <ActionRow
         icon={Bell}
         title="Open alerts"
-        detail={`${home.openAnomalies.length} charge${home.openAnomalies.length === 1 ? '' : 's'} worth reviewing`}
+        detail={`${home.openAnomalies.length} charge${home.openAnomalies.length === 1 ? '' : 's'} need a decision`}
       />
-      <SectionHeader title="Recent Transactions" />
+      <SectionHeader title="Recent Money Movement" />
       {home.recentTransactions.slice(0, 6).map((txn) => (
         <View key={txn.id} style={[styles.row, { borderColor: theme.border }]}>
           <View>
@@ -748,6 +739,93 @@ function SubscriptionMetricStrip({ audit }: { audit: SubscriptionAuditView }) {
       <MoneyMetric label="Candidates" value={String(audit.cancelCandidateCount)} icon={Target} />
       <MoneyMetric label="Potential" value={usd(audit.cancelCandidateMonthlyCents, true)} icon={CircleDollarSign} />
     </StatusRail>
+  );
+}
+
+function MoneyBriefHero({
+  home,
+  brief,
+  voiceBrief,
+  voiceBusy,
+  speaking,
+  onPlayVoice,
+  onStopVoice,
+}: {
+  home: MobileHomeSummaryView;
+  brief: InsightView;
+  voiceBrief: VoiceBriefView | null;
+  voiceBusy: boolean;
+  speaking: boolean;
+  onPlayVoice: () => void;
+  onStopVoice: () => void;
+}) {
+  const theme = useTheme();
+  const impact = brief.action.estimatedImpactCents ? usd(brief.action.estimatedImpactCents, true) : '1 move';
+
+  async function feedback(rating: 'up' | 'down') {
+    await requestApi(`/api/insights/${brief.id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    }).catch((err) => Alert.alert('Feedback failed', err instanceof Error ? err.message : 'Unknown error'));
+  }
+
+  return (
+    <SectionBand>
+      <View style={styles.panelHeader}>
+        <Sparkles color={theme.accent} size={20} />
+        <Text style={[styles.panelKicker, { color: theme.accent }]}>
+          {brief.kind === 'first_look' ? 'First look' : 'Money brief'}
+        </Text>
+      </View>
+      <View style={styles.briefHeroTop}>
+        <View style={styles.flexShrink}>
+          <Text style={[styles.panelTitle, { color: theme.ink }]}>{brief.headline}</Text>
+          <Text style={[styles.panelBody, { color: theme.muted }]}>{brief.body}</Text>
+        </View>
+        <View style={[styles.impactPill, { backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.impactValue, { color: theme.accent }]}>{impact}</Text>
+          <Text style={[styles.impactLabel, { color: theme.muted }]}>impact</Text>
+        </View>
+      </View>
+      <View style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
+        <Text style={[styles.actionTitle, { color: theme.ink }]}>{brief.action.description}</Text>
+        <Text style={[styles.actionMeta, { color: theme.muted }]}>{brief.action.timeframe}</Text>
+      </View>
+      <View style={styles.evidenceRow}>
+        <EvidenceChip label={`${home.transactionCount} txns`} />
+        <EvidenceChip label={brief.action.timeframe} />
+        <EvidenceChip label={brief.kind === 'first_look' ? 'new signal' : 'weekly'} />
+      </View>
+      <View style={[styles.voiceInline, { borderColor: theme.border }]}>
+        <View style={styles.panelHeader}>
+          <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={18} />
+          <Text style={[styles.actionTitle, { color: theme.ink }]}>Voice brief</Text>
+        </View>
+        <Text style={[styles.actionMeta, { color: theme.muted }]}>
+          {home.billing.isPremium
+            ? voiceBrief
+              ? `${Math.round(voiceBrief.durationSeconds / 6) / 10} min · ${voiceBrief.headline}`
+              : 'Preparing audio summary...'
+            : 'Available with ZenFinance Coach.'}
+        </Text>
+        {home.billing.isPremium ? (
+          <View style={styles.inlineButtons}>
+            <SecondaryButton
+              label={speaking ? 'Playing' : voiceBusy ? 'Loading...' : 'Play'}
+              icon={Volume2}
+              compact
+              disabled={voiceBusy || !voiceBrief || speaking}
+              onPress={onPlayVoice}
+            />
+            <SecondaryButton label="Stop" icon={Square} compact disabled={!speaking} onPress={onStopVoice} />
+          </View>
+        ) : null}
+      </View>
+      <View style={styles.inlineButtons}>
+        <SecondaryButton label="Useful" onPress={() => feedback('up')} compact />
+        <SecondaryButton label="Not useful" onPress={() => feedback('down')} compact />
+      </View>
+    </SectionBand>
   );
 }
 
@@ -2058,6 +2136,17 @@ function SectionBand({ children }: { children: ReactNode }) {
   );
 }
 
+function EvidenceChip({ label }: { label: string }) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.evidenceChip, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+      <Text style={[styles.evidenceText, { color: theme.muted }]} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function SectionHeader({ title }: { title: string }) {
   const theme = useTheme();
   return <Text style={[styles.sectionTitle, { color: theme.ink }]}>{title}</Text>;
@@ -2191,6 +2280,14 @@ const styles = StyleSheet.create({
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
   panelBody: { fontSize: 15, lineHeight: 22 },
+  briefHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
+  impactPill: { minWidth: 82, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 10, alignItems: 'center', gap: 2 },
+  impactValue: { fontSize: 19, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  impactLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  evidenceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  evidenceChip: { maxWidth: '100%', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
+  evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
+  voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
   actionBox: { borderRadius: 8, padding: 14, gap: 4 },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
