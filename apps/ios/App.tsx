@@ -1212,6 +1212,12 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
       {goals.map((goal) => (
         <View key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.panelTitle, { color: theme.ink }]}>{goal.name}</Text>
+          <Text style={[styles.panelBody, { color: theme.muted }]}>{goalCoachSentence(goal)}</Text>
+          <StatusRail>
+            <MoneyMetric label="Current" value={usd(goal.currentAmountCents, true)} icon={PiggyBank} />
+            <MoneyMetric label="Target" value={usd(goal.targetAmountCents, true)} icon={Target} />
+            <MoneyMetric label="Pace" value={pacingLabel(goal.pacing.pacingStatus)} icon={SlidersHorizontal} />
+          </StatusRail>
           <ProgressBar value={goal.pacing.progressRatio} />
           <Text style={[styles.rowDetail, { color: theme.muted }]}>
             {usd(goal.currentAmountCents, true)} of {usd(goal.targetAmountCents, true)} · {goal.pacing.pacingStatus.replace('_', ' ')}
@@ -1227,16 +1233,37 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
         </View>
       ))}
       {scenario ? (
-        <View style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
-          <Text style={[styles.actionTitle, { color: theme.ink }]}>{scenario.narration}</Text>
-          <Text style={[styles.actionMeta, { color: theme.muted }]}>Weekly net change: {usd(scenario.weeklyNetChangeCents)}</Text>
-        </View>
+        <SectionBand>
+          <View style={styles.panelHeader}>
+            <SlidersHorizontal color={theme.accent} size={20} />
+            <Text style={[styles.panelKicker, { color: theme.accent }]}>What-if scenario</Text>
+          </View>
+          <Text style={[styles.panelBody, { color: theme.muted }]}>{scenario.narration}</Text>
+          <StatusRail>
+            <MoneyMetric label="Weekly net" value={usd(scenario.weeklyNetChangeCents, true)} icon={CircleDollarSign} />
+            <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={PiggyBank} />
+            <MoneyMetric label="Monthly cut" value={usd(scenario.monthlySpendReductionCents, true)} icon={CreditCard} />
+          </StatusRail>
+          {scenario.projections.slice(0, 2).map((projection) => (
+            <View key={projection.goalId} style={[styles.scenarioRow, { borderColor: theme.border }]}>
+              <View style={styles.flexShrink}>
+                <Text style={[styles.rowTitle, { color: theme.ink }]}>{projection.name}</Text>
+                <Text style={[styles.rowDetail, { color: theme.muted }]}>
+                  {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
+                </Text>
+              </View>
+              <Text style={[styles.amount, { color: theme.success }]}>
+                {projection.weeksFaster === null ? 'Updated' : `${projection.weeksFaster}w faster`}
+              </Text>
+            </View>
+          ))}
+        </SectionBand>
       ) : null}
       <SectionHeader title="New Goal" />
       {atFreeGoalLimit || showPaywall ? (
         <PaywallScreen billing={billing} source="goals_limit" onChanged={onChanged} />
       ) : (
-        <>
+        <SectionBand>
           <TextInput
             style={[styles.input, { borderColor: theme.border, color: theme.ink, backgroundColor: theme.surface }]}
             placeholder="Goal name"
@@ -1253,10 +1280,23 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
             onChangeText={setTarget}
           />
           <PrimaryButton label={saving ? 'Saving...' : 'Add goal'} icon={Plus} disabled={saving} onPress={addGoal} />
-        </>
+        </SectionBand>
       )}
     </ScrollView>
   );
+}
+
+function pacingLabel(value: GoalView['pacing']['pacingStatus']): string {
+  return value.replace('_', ' ');
+}
+
+function goalCoachSentence(goal: GoalView): string {
+  const remaining = usd(goal.pacing.remainingAmountCents, true);
+  const projected = dateLabel(goal.pacing.projectedCompletionDate);
+  if (goal.pacing.pacingStatus === 'on_track') return `${remaining} left, projected for ${projected}. Keep the current pace.`;
+  if (goal.pacing.pacingStatus === 'ahead') return `${remaining} left, projected for ${projected}. You have room to protect this win.`;
+  if (goal.pacing.pacingStatus === 'behind') return `${remaining} left, projected for ${projected}. A small weekly adjustment can pull this back on track.`;
+  return `${remaining} left. Add more activity and the coach will calculate a clearer pace.`;
 }
 
 function ProgressBar({ value }: { value: number }) {
@@ -2409,6 +2449,7 @@ const styles = StyleSheet.create({
   sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8 },
+  scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   bigNumber: { fontSize: 40, fontWeight: '800', fontVariant: ['tabular-nums'] },
   rightStack: { alignItems: 'flex-end', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '800' },
