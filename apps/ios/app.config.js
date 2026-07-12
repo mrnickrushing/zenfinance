@@ -13,6 +13,9 @@ module.exports = {
     ios: {
       bundleIdentifier: 'com.rushingtechnologies.zenfinance',
       supportsTablet: false,
+      infoPlist: {
+        ITSAppUsesNonExemptEncryption: false,
+      },
     },
     plugins: [
       'expo-secure-store',
