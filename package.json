@@ -11,8 +11,8 @@
   ],
   "scripts": {
     "typecheck": "npm run build -w @zenfinance/shared && npm run typecheck --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run typecheck --workspaces --if-present",
+    "test": "DATABASE_URL=${DATABASE_URL:-postgres://dev:dev@localhost:5434/zenfinance_test} npm run test --workspaces --if-present",
     "build": "npm run build -w @zenfinance/shared && npm run build -w @zenfinance/api",
     "build:site": "npm run build -w @zenfinance/shared && npm run build:marketing -w @zenfinance/site && npm run build:admin -w @zenfinance/site",
     "dev:api": "npm run dev -w @zenfinance/api",

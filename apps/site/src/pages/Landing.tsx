@@ -71,7 +71,7 @@ export function LandingPage() {
           <div className="mt-12 grid gap-6 md:grid-cols-3">
             {exampleBriefs.map((brief) => (
               <Card key={brief.headline} className="text-left">
-                <p className="text-xs font-semibold uppercase tracking-wide text-accent-600 dark:text-accent-400">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-accent-400">
                   {brief.impact}
                 </p>
                 <h3 className="mt-2 font-semibold">{brief.headline}</h3>

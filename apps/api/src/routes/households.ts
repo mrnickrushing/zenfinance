@@ -444,7 +444,7 @@ export function createHouseholdsRouter(): ReturnType<typeof Router> {
     });
     await db
       .update(householdGoals)
-      .set({ currentAmountCents: goal.currentAmountCents + input.amountCents, updatedAt: new Date() })
+      .set({ currentAmountCents: sql`${householdGoals.currentAmountCents} + ${input.amountCents}`, updatedAt: new Date() })
       .where(eq(householdGoals.id, goal.id));
     res.status(201).json({ household: await householdView(goal.householdId, userId) });
   });

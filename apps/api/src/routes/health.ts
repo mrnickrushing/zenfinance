@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { db } from '../db/client.js';
+import { env } from '../env.js';
 
 export function createHealthRouter(): ReturnType<typeof Router> {
   const healthRouter = Router();
@@ -13,6 +14,21 @@ export function createHealthRouter(): ReturnType<typeof Router> {
     } catch {
       res.status(503).json({ ok: false, db: 'down' });
     }
+  });
+
+  healthRouter.get('/ready', async (_req, res) => {
+    const checks: Record<string, boolean> = {
+      db: false,
+      redisConfigured: env.NODE_ENV !== 'production' || Boolean(env.REDIS_URL),
+    };
+    try {
+      await db.execute(sql`SELECT 1`);
+      checks.db = true;
+    } catch {
+      checks.db = false;
+    }
+    const ok = Object.values(checks).every(Boolean);
+    res.status(ok ? 200 : 503).json({ ok, checks });
   });
 
   return healthRouter;

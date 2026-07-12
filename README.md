@@ -41,17 +41,16 @@ infra/             railway.toml deploy config
 
 ```bash
 docker compose up -d                     # Postgres 15
-cp .env.example .env                     # set JWT_SECRET + ADMIN_SECRET (32+ chars)
+cp .env.example .env                     # set JWT_SECRET, ADMIN_SECRET, TOKEN_ENC_KEY
 npm install
 npm run db:migrate -w @zenfinance/api
 npm run dev:api                          # API on :3000
 npm run dev:site                         # site on :5173
-docker start zenfinance-test-postgres || docker run --name zenfinance-test-postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=zenfinance_test -p 5434:5432 -d postgres:15
-DATABASE_URL=postgres://dev:dev@localhost:5434/zenfinance_test npm run test -w @zenfinance/api
+npm test                                 # uses test Postgres on :5434 from compose
 ```
 
 For iOS store testing, set `REVENUECAT_IOS_API_KEY` on the API and
-`expo.extra.revenueCatIosApiKey` in `apps/ios/app.json`, then run an Expo dev
-build. RevenueCat webhooks should post to `/api/webhooks/revenuecat`; the same
+`EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` for `apps/ios/app.config.js`, then run an
+Expo dev build. RevenueCat webhooks should post to `/api/webhooks/revenuecat`; the same
 webhook handles both Coach subscriptions and the Money Physical one-time
 purchase product.

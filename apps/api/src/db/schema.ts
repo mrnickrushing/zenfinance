@@ -663,6 +663,7 @@ export const billingEntitlements = pgTable(
     managementUrl: text('management_url'),
     source: entitlementSourceEnum('source'),
     sourceEventId: text('source_event_id'),
+    sourceEventAt: timestamp('source_event_at', { withTimezone: true }),
     rawPayload: jsonb('raw_payload').notNull().default('{}'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

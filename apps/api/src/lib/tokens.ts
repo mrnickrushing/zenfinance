@@ -65,41 +65,56 @@ export async function issueRefreshToken(db: Db, familyId?: string): Promise<stri
  */
 export async function rotateRefreshToken(db: Db, presented: string): Promise<RefreshResult | null> {
   const presentedHash = hashToken(presented);
-  const [row] = await db
-    .select()
-    .from(adminRefreshTokens)
-    .where(eq(adminRefreshTokens.tokenHash, presentedHash))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(adminRefreshTokens)
+      .where(eq(adminRefreshTokens.tokenHash, presentedHash))
+      .limit(1);
 
-  if (!row) return null;
+    if (!row) return null;
 
-  const now = new Date();
-  if (row.revokedAt || row.replacedById !== null) {
-    // Reuse of a rotated/revoked token → revoke the whole session family.
-    await db
+    const now = new Date();
+    if (row.revokedAt || row.replacedById !== null) {
+      // Reuse of a rotated/revoked token → revoke the whole session family.
+      await tx
+        .update(adminRefreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(adminRefreshTokens.familyId, row.familyId), isNull(adminRefreshTokens.revokedAt)));
+      return null;
+    }
+    if (row.expiresAt < now) return null;
+
+    const [claimed] = await tx
       .update(adminRefreshTokens)
       .set({ revokedAt: now })
-      .where(and(eq(adminRefreshTokens.familyId, row.familyId), isNull(adminRefreshTokens.revokedAt)));
-    return null;
-  }
-  if (row.expiresAt < now) return null;
+      .where(and(eq(adminRefreshTokens.id, row.id), isNull(adminRefreshTokens.revokedAt), isNull(adminRefreshTokens.replacedById)))
+      .returning({ id: adminRefreshTokens.id });
+    if (!claimed) {
+      await tx
+        .update(adminRefreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(adminRefreshTokens.familyId, row.familyId), isNull(adminRefreshTokens.revokedAt)));
+      return null;
+    }
 
-  const rawNext = newOpaqueToken();
-  const [next] = await db
-    .insert(adminRefreshTokens)
-    .values({
-      familyId: row.familyId,
-      tokenHash: hashToken(rawNext),
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
-    })
-    .returning({ id: adminRefreshTokens.id });
+    const rawNext = newOpaqueToken();
+    const [next] = await tx
+      .insert(adminRefreshTokens)
+      .values({
+        familyId: row.familyId,
+        tokenHash: hashToken(rawNext),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+      })
+      .returning({ id: adminRefreshTokens.id });
 
-  await db
-    .update(adminRefreshTokens)
-    .set({ revokedAt: now, replacedById: next!.id })
-    .where(eq(adminRefreshTokens.id, row.id));
+    await tx
+      .update(adminRefreshTokens)
+      .set({ replacedById: next!.id })
+      .where(eq(adminRefreshTokens.id, row.id));
 
-  return { accessToken: issueAccessToken(), refreshToken: rawNext };
+    return { accessToken: issueAccessToken(), refreshToken: rawNext };
+  });
 }
 
 export async function revokeRefreshToken(db: Db, presented: string): Promise<void> {

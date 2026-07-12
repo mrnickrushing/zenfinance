@@ -8,7 +8,6 @@ import {
   moneyWins,
   recurringStreams,
   referralRedemptions,
-  users,
 } from '../db/schema.js';
 
 const MINIMUM_SAMPLE_SIZE = 10;
@@ -38,25 +37,25 @@ export function createContentRouter(): ReturnType<typeof Router> {
       .from(moneyWins)
       .where(eq(moneyWins.status, 'verified'));
     const [referrals] = await db.select({ n: sql<number>`count(*)` }).from(referralRedemptions);
-    const [registered] = await db.select({ n: sql<number>`count(*)` }).from(users);
-
     const linkedCount = Number(linkedUsers?.n ?? 0);
     const recurringUserCount = Number(recurring?.userCount ?? 0);
     const verifiedUserCount = Number(verifiedWins?.userCount ?? 0);
-    const registeredCount = Number(registered?.n ?? 0);
+    const publishable = linkedCount >= MINIMUM_SAMPLE_SIZE;
     const view: LaunchContentStatsView = {
       generatedAt: new Date().toISOString(),
       sampleSize: linkedCount,
-      publishable: linkedCount >= MINIMUM_SAMPLE_SIZE,
+      publishable,
       minimumSampleSize: MINIMUM_SAMPLE_SIZE,
-      metrics: {
-        linkedUsers: linkedCount,
-        premiumUsers: Number(premiumUsers?.n ?? 0),
-        avgRecurringStreamsPerLinkedUser: recurringUserCount ? Number(recurring?.streamCount ?? 0) / recurringUserCount : 0,
-        avgRecurringMonthlyCentsPerLinkedUser: recurringUserCount ? Math.round(Number(recurring?.monthlyCents ?? 0) / recurringUserCount) : 0,
-        avgVerifiedMoneyWinsCentsPerUser: registeredCount ? Math.round(Number(verifiedWins?.amountCents ?? 0) / registeredCount) : 0,
-        referralRedemptions: Number(referrals?.n ?? 0),
-      },
+      metrics: publishable
+        ? {
+            linkedUsers: linkedCount,
+            premiumUsers: Number(premiumUsers?.n ?? 0),
+            avgRecurringStreamsPerLinkedUser: recurringUserCount ? Number(recurring?.streamCount ?? 0) / recurringUserCount : 0,
+            avgRecurringMonthlyCentsPerLinkedUser: recurringUserCount ? Math.round(Number(recurring?.monthlyCents ?? 0) / recurringUserCount) : 0,
+            avgVerifiedMoneyWinsCentsPerUser: verifiedUserCount ? Math.round(Number(verifiedWins?.amountCents ?? 0) / verifiedUserCount) : 0,
+            referralRedemptions: Number(referrals?.n ?? 0),
+          }
+        : null,
     };
     res.json(view);
   });

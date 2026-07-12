@@ -223,6 +223,25 @@ async function persistTokens(tokens: AuthTokens | null): Promise<void> {
   await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
 }
 
+let refreshPromise: Promise<AuthTokens | null> | null = null;
+
+async function refreshAuthTokens(): Promise<AuthTokens | null> {
+  refreshPromise ??= (async () => {
+    const refreshToken = useAppStore.getState().refreshToken ?? (await SecureStore.getItemAsync('refreshToken'));
+    if (!refreshToken) return null;
+    const refresh = await fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!refresh.ok) return null;
+    return (await refresh.json()) as AuthTokens;
+  })().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+}
+
 async function requestApi<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = useAppStore.getState().accessToken ?? (await SecureStore.getItemAsync('accessToken'));
   const res = await fetch(`${API_URL}${path}`, {
@@ -235,19 +254,11 @@ async function requestApi<T>(path: string, init: RequestInit = {}, retry = true)
   });
 
   if (res.status === 401 && retry) {
-    const refreshToken = useAppStore.getState().refreshToken ?? (await SecureStore.getItemAsync('refreshToken'));
-    if (refreshToken) {
-      const refresh = await fetch(`${API_URL}/api/auth/refresh`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-      if (refresh.ok) {
-        const tokens = (await refresh.json()) as AuthTokens;
-        await persistTokens(tokens);
-        useAppStore.getState().setTokens(tokens);
-        return requestApi<T>(path, init, false);
-      }
+    const tokens = await refreshAuthTokens();
+    if (tokens) {
+      await persistTokens(tokens);
+      useAppStore.getState().setTokens(tokens);
+      return requestApi<T>(path, init, false);
     }
     await persistTokens(null);
     useAppStore.getState().setTokens(null);
@@ -289,12 +300,23 @@ async function configureRevenueCat(billing: BillingStatusView): Promise<boolean>
   const alreadyConfigured = await Purchases.isConfigured().catch(() => false);
   if (alreadyConfigured && configuredRevenueCatUserId === billing.appUserId) return true;
   await Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN).catch(() => {});
-  Purchases.configure({
-    apiKey: REVENUECAT_IOS_API_KEY,
-    appUserID: billing.appUserId,
-  } as Parameters<typeof Purchases.configure>[0]);
+  if (alreadyConfigured) {
+    await Purchases.logIn(billing.appUserId);
+  } else {
+    Purchases.configure({
+      apiKey: REVENUECAT_IOS_API_KEY,
+      appUserID: billing.appUserId,
+    } as Parameters<typeof Purchases.configure>[0]);
+  }
   configuredRevenueCatUserId = billing.appUserId;
   return true;
+}
+
+async function clearRevenueCatIdentity(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  const configured = await Purchases.isConfigured().catch(() => false);
+  if (configured) await Purchases.logOut().catch(() => {});
+  configuredRevenueCatUserId = null;
 }
 
 function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo: RevenueCatCustomerInfo): RestorePayload {
@@ -1580,6 +1602,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     if (refreshToken) {
       await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
     }
+    await clearRevenueCatIdentity();
     await persistTokens(null);
     setTokens(null);
   }
@@ -1592,6 +1615,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         style: 'destructive',
         onPress: async () => {
           await requestApi('/api/me', { method: 'DELETE' });
+          await clearRevenueCatIdentity();
           await persistTokens(null);
           setTokens(null);
         },
@@ -1871,7 +1895,13 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
               {item.status.replace('_', ' ')} · {item.accounts.length} account(s) · synced {dateLabel(item.lastSyncedAt)}
             </Text>
           </View>
-          <Pressable onPress={() => disconnect(item.id)}>
+          <Pressable
+            style={[styles.destructiveIconButton, { backgroundColor: theme.surfaceAlt }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Disconnect ${item.institutionName ?? 'bank'}`}
+            hitSlop={8}
+            onPress={() => disconnect(item.id)}
+          >
             <Trash2 color={theme.danger} size={20} />
           </Pressable>
         </View>
@@ -1976,14 +2006,15 @@ function PrimaryButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const contentColor = disabled ? theme.muted : '#fff';
   return (
     <Pressable
-      style={[styles.primaryButton, { backgroundColor: disabled ? theme.border : theme.accent }]}
+      style={[styles.primaryButton, { backgroundColor: disabled ? theme.surfaceAlt : theme.accent }]}
       disabled={disabled}
       onPress={onPress}
     >
-      {Icon ? <Icon color="#fff" size={18} /> : null}
-      <Text style={styles.primaryButtonText}>{label}</Text>
+      {Icon ? <Icon color={contentColor} size={18} /> : null}
+      <Text style={[styles.primaryButtonText, { color: contentColor }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -2025,13 +2056,15 @@ const styles = StyleSheet.create({
   flexShrink: { flex: 1, minWidth: 0 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerGrow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  authScreen: { flex: 1, justifyContent: 'center', padding: 24 },
+  authScreen: { flex: 1 },
+  authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   appScreen: { flex: 1 },
   content: { flex: 1 },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 42, fontWeight: '800' },
   heroCopy: { fontSize: 18, lineHeight: 26, marginTop: 10, marginBottom: 28 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
+  inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
   topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   appTitle: { fontSize: 24, fontWeight: '800' },
@@ -2040,7 +2073,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
   primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  primaryButtonText: { color: '#fff', fontWeight: '800', fontSize: 15 },
+  primaryButtonText: { fontWeight: '800', fontSize: 15 },
   secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
   secondaryButtonText: { fontWeight: '700', fontSize: 14 },
@@ -2067,6 +2100,7 @@ const styles = StyleSheet.create({
   packageOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
   row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  destructiveIconButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   rowTitle: { fontSize: 15, fontWeight: '800' },
   rowDetail: { fontSize: 13, lineHeight: 18, marginTop: 2 },
   amount: { fontSize: 15, fontWeight: '800' },

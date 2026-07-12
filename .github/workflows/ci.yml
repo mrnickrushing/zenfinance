@@ -33,7 +33,9 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm run build
+      - run: npm run build:site
       - run: npm test
         env:
           DATABASE_URL: postgres://dev:dev@localhost:5432/zenfinance_test

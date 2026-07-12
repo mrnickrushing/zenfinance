@@ -213,4 +213,8 @@ export class MockProvider implements TransactionProvider {
   async removeItem(): Promise<void> {
     // Nothing to revoke in the mock.
   }
+
+  async verifyWebhook(): Promise<boolean> {
+    return true;
+  }
 }

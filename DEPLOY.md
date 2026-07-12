@@ -12,11 +12,15 @@ DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 1. Create a new Railway project → **Deploy from GitHub repo** → `mrnickrushing/zenfinance`, branch `main`.
 2. Add a **PostgreSQL** database and a **Redis** database to the project (Railway injects `DATABASE_URL` / `REDIS_URL` into the service as reference variables).
 3. Set the service's build/start config directly (Railway's Railpack builder doesn't reliably pick up `infra/railway.toml`'s Config Path setting in practice — set these fields on the service instead):
-   - **Build command:** `npm ci --workspace=@zenfinance/api --workspace=@zenfinance/shared --include-workspace-root && npm run build && npm run db:migrate -w @zenfinance/api`
+   - **Build command:** `npm ci --workspace=@zenfinance/api --workspace=@zenfinance/shared --include-workspace-root && npm run build`
      (workspace-scoped deliberately — Railpack auto-mounts a persistent BuildKit cache volume for `apps/site/node_modules/.vite` because it detects `vite` as a devDependency there; a plain `npm ci` tries to reconcile that workspace's `node_modules` against the lockfile and fails with `EBUSY: resource busy or locked` trying to rmdir the live mount. Scoping the install to only the workspaces the API needs avoids touching it.)
    - **Start command:** `node apps/api/dist/server.js`
-   - **Healthcheck path:** `/health` (verifies the DB with `SELECT 1`), timeout 300s
+   - **Healthcheck path:** `/ready` (verifies DB and production readiness prerequisites), timeout 300s
    - **Restart policy:** on_failure, max 3 retries
+4. Run database migrations as a controlled release step before routing traffic to
+   code that depends on them: `npm run db:migrate -w @zenfinance/api`. Keep
+   migrations backward-compatible with the currently serving version so rollback
+   remains possible.
 
 ## 2. Environment variables (service → Variables)
 
@@ -127,12 +131,11 @@ npm install
 npm run db:migrate -w @zenfinance/api
 npm run dev:api               # API on :3000
 npm run dev:site               # Vite on :5173, proxies /api + /health to :3000
-docker start zenfinance-test-postgres || docker run --name zenfinance-test-postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=zenfinance_test -p 5434:5432 -d postgres:15
-DATABASE_URL=postgres://dev:dev@localhost:5434/zenfinance_test npm run test -w @zenfinance/api
+npm test                       # uses test Postgres on :5434 from compose
 ```
 
 `npm run dev:site` runs the marketing route tree (Landing, Insights, Support,
 Privacy, Terms) since `VITE_APP_TARGET` is unset in plain dev mode. To work on
 the admin console locally, run `npm run dev:admin -w @zenfinance/site`
-instead (loads `.env.admin`, so it points at the production API unless you
-override `VITE_API_URL`).
+instead. Committed Vite mode env files point at `http://localhost:3000`; set
+`VITE_API_URL` in the deployment environment for production Cloudflare builds.

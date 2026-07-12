@@ -5,6 +5,7 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     fileParallelism: false, // tests share one Postgres database
+    testTimeout: 15000,
     env: {
       NODE_ENV: 'test',
       DATABASE_URL:

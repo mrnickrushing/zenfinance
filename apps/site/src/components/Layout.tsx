@@ -4,12 +4,12 @@ export function Layout() {
   return (
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
-        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between px-6">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 py-4 sm:h-16 sm:flex-row sm:items-center sm:justify-between sm:py-0">
           <Link to="/" className="flex items-center gap-2.5 font-semibold tracking-tight">
             <img src="/favicon-64.png" alt="" className="h-8 w-8 rounded-lg" />
             ZenFinance
           </Link>
-          <nav aria-label="Main" className="flex items-center gap-6 text-sm">
+          <nav aria-label="Main" className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
             <Link
               to="/insights"
               className="text-slate-600 transition-colors duration-standard hover:text-primary-700 dark:text-slate-300 dark:hover:text-primary-300"

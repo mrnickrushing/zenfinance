@@ -59,46 +59,61 @@ export async function rotateUserRefreshToken(
   db: Db,
   presented: string,
 ): Promise<UserRefreshResult | null> {
-  const [row] = await db
-    .select()
-    .from(userRefreshTokens)
-    .where(eq(userRefreshTokens.tokenHash, hashToken(presented)))
-    .limit(1);
-  if (!row) return null;
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(userRefreshTokens)
+      .where(eq(userRefreshTokens.tokenHash, hashToken(presented)))
+      .limit(1);
+    if (!row) return null;
 
-  const now = new Date();
-  if (row.revokedAt || row.replacedById !== null) {
-    await db
+    const now = new Date();
+    if (row.revokedAt || row.replacedById !== null) {
+      await tx
+        .update(userRefreshTokens)
+        .set({ revokedAt: now })
+        .where(
+          and(eq(userRefreshTokens.familyId, row.familyId), isNull(userRefreshTokens.revokedAt)),
+        );
+      return null;
+    }
+    if (row.expiresAt < now) return null;
+
+    const [claimed] = await tx
       .update(userRefreshTokens)
       .set({ revokedAt: now })
-      .where(
-        and(eq(userRefreshTokens.familyId, row.familyId), isNull(userRefreshTokens.revokedAt)),
-      );
-    return null;
-  }
-  if (row.expiresAt < now) return null;
+      .where(and(eq(userRefreshTokens.id, row.id), isNull(userRefreshTokens.revokedAt), isNull(userRefreshTokens.replacedById)))
+      .returning({ id: userRefreshTokens.id });
+    if (!claimed) {
+      await tx
+        .update(userRefreshTokens)
+        .set({ revokedAt: now })
+        .where(and(eq(userRefreshTokens.familyId, row.familyId), isNull(userRefreshTokens.revokedAt)));
+      return null;
+    }
 
-  const rawNext = crypto.randomBytes(48).toString('base64url');
-  const [next] = await db
-    .insert(userRefreshTokens)
-    .values({
+    const rawNext = crypto.randomBytes(48).toString('base64url');
+    const [next] = await tx
+      .insert(userRefreshTokens)
+      .values({
+        userId: row.userId,
+        familyId: row.familyId,
+        tokenHash: hashToken(rawNext),
+        expiresAt: new Date(Date.now() + USER_REFRESH_TTL_MS),
+      })
+      .returning({ id: userRefreshTokens.id });
+
+    await tx
+      .update(userRefreshTokens)
+      .set({ replacedById: next!.id })
+      .where(eq(userRefreshTokens.id, row.id));
+
+    return {
       userId: row.userId,
-      familyId: row.familyId,
-      tokenHash: hashToken(rawNext),
-      expiresAt: new Date(Date.now() + USER_REFRESH_TTL_MS),
-    })
-    .returning({ id: userRefreshTokens.id });
-
-  await db
-    .update(userRefreshTokens)
-    .set({ revokedAt: now, replacedById: next!.id })
-    .where(eq(userRefreshTokens.id, row.id));
-
-  return {
-    userId: row.userId,
-    accessToken: issueUserAccessToken(row.userId),
-    refreshToken: rawNext,
-  };
+      accessToken: issueUserAccessToken(row.userId),
+      refreshToken: rawNext,
+    };
+  });
 }
 
 export async function revokeUserRefreshToken(db: Db, presented: string): Promise<void> {

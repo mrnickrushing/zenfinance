@@ -653,7 +653,7 @@ export interface LaunchContentStatsView {
     avgRecurringMonthlyCentsPerLinkedUser: number;
     avgVerifiedMoneyWinsCentsPerUser: number;
     referralRedemptions: number;
-  };
+  } | null;
 }
 
 // ---------- Freelancer Mode (Phase 8) ----------

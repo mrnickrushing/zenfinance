@@ -13,7 +13,7 @@ npm run prebuild -w zenfinance-ios
 npm run ios -w zenfinance-ios
 ```
 
-Point the app at your API by editing `expo.extra.apiUrl` in `app.json`:
+Point the app at your API by setting `EXPO_PUBLIC_API_URL` for `app.config.js`:
 
 - Simulator against local API: `http://localhost:3000`
 - Physical device: your machine's LAN IP, e.g. `http://192.168.1.20:3000`
@@ -22,8 +22,8 @@ For Plaid sandbox linking, run the API with `TRANSACTION_PROVIDER=plaid`,
 `PLAID_CLIENT_ID`, `PLAID_SECRET`, and `PLAID_ENV=sandbox`. Plaid sandbox test
 bank credentials are `user_good` / `pass_good`.
 
-For RevenueCat sandbox purchases, set `expo.extra.revenueCatIosApiKey` in
-`app.json` and configure both the Coach subscription products and the Money
+For RevenueCat sandbox purchases, set `EXPO_PUBLIC_REVENUECAT_IOS_API_KEY` and
+configure both the Coach subscription products and the Money
 Physical non-subscription product in RevenueCat/App Store Connect. Run a
 development build or TestFlight build. Expo Go cannot test native Plaid or
 RevenueCat purchase flows.
