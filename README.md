@@ -4,17 +4,19 @@
 
 ZenFinance links bank and card accounts (read-only, via Plaid), enriches every transaction with AI, and delivers short, actionable coaching — *"Cut dining out by $45 this week to hit your savings goal — here's a simple swap"* — instead of charts the user has to interpret themselves.
 
-The product ships exclusively as an **iOS app**. The web presence at [zenfinance.rushingtechnologies.com](https://zenfinance.rushingtechnologies.com) is non-product: marketing + waitlist, support, legal pages, and an owner admin console.
+The product ships exclusively as an **iOS app**. The web presence at [zenfinance.rushingtechnologies.com](https://zenfinance.rushingtechnologies.com) is non-product: marketing + waitlist, support, legal pages, and an owner admin console at [admin.zenfinance.rushingtechnologies.com](https://admin.zenfinance.rushingtechnologies.com).
 
 ## Repo layout
 
 ```
 apps/api/          Express + TypeScript + Zod + Drizzle/Postgres — the backend
                    (auth, linking, coaching, billing, freelancer mode,
-                   household sharing, voice briefs, Money Physical,
-                   webhooks, site serving)
+                   household sharing, voice briefs, Money Physical, webhooks)
+                   Deployed to Railway at api.zenfinance.rushingtechnologies.com
 apps/site/         Marketing page, support, privacy/terms, admin console
-                   (Vite + React + Tailwind; static build served by the API)
+                   (Vite + React + Tailwind). Builds as two static bundles
+                   (dist-marketing/, dist-admin/) deployed as separate
+                   Cloudflare Workers, cross-origin from the API.
 apps/ios/          Expo iOS app with Plaid Link, coaching screens, native TTS,
                    RevenueCat subscriptions and one-time IAP
 packages/shared/   Zod schemas + API types shared across workspaces
@@ -24,7 +26,7 @@ infra/             railway.toml deploy config
 ## Docs
 
 - **[PLAN.md](PLAN.md)** — the full product + technical plan: premium feature set, architecture, AI coaching engine, security/compliance, unit economics, and the roadmap from launch through the post-launch feature train
-- **[DEPLOY.md](DEPLOY.md)** — Railway deploy, GoDaddy DNS, Resend email setup, and the local dev loop
+- **[DEPLOY.md](DEPLOY.md)** — Railway deploy, Cloudflare Workers deploy, Cloudflare DNS, Resend email setup, and the local dev loop
 - **[docs/APP_STORE_PRIVACY.md](docs/APP_STORE_PRIVACY.md)** — App Store privacy answers and data inventory
 - **[docs/PLAID_PRODUCTION_CHECKLIST.md](docs/PLAID_PRODUCTION_CHECKLIST.md)** — Plaid production-access checklist and webhook coverage
 - **[docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md)** — dependency audit, remediations, and release security checks

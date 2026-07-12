@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:admin": "vite --mode admin",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "build:marketing": "tsc -p tsconfig.json --noEmit && vite build --mode marketing",
     "build:admin": "tsc -p tsconfig.json --noEmit && vite build --mode admin",

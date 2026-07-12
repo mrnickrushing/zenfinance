@@ -1,16 +1,22 @@
-# Deploying ZenFinance (site + API) to Railway
+# Deploying ZenFinance to Railway + Cloudflare
 
-One Railway service runs the Express API, which also serves the built site
-(marketing, support, legal, admin) at `zenfinance.rushingtechnologies.com`.
+The API runs as a single Railway service at `api.zenfinance.rushingtechnologies.com`.
+The marketing site (landing, support, privacy, terms, insights) and the admin
+console are separate static Cloudflare Workers at
+`zenfinance.rushingtechnologies.com` and
+`admin.zenfinance.rushingtechnologies.com` — they talk to the API cross-origin.
+DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 
-## 1. Railway project
+## 1. Railway project (API only)
 
 1. Create a new Railway project → **Deploy from GitHub repo** → `mrnickrushing/zenfinance`, branch `main`.
-2. Add a **PostgreSQL** database to the project (Railway injects `DATABASE_URL` into the service).
-3. In the service settings, set **Config Path** to `infra/railway.toml` (or copy that file to the repo root as `railway.toml`).
-   - Build: nixpacks, `npm ci && npm run build && npm run db:migrate -w @zenfinance/api` (migrations run at build/deploy time against the linked DB)
-   - Start: `node apps/api/dist/server.js`
-   - Health check: `/health` (verifies the DB with `SELECT 1`)
+2. Add a **PostgreSQL** database and a **Redis** database to the project (Railway injects `DATABASE_URL` / `REDIS_URL` into the service as reference variables).
+3. Set the service's build/start config directly (Railway's Railpack builder doesn't reliably pick up `infra/railway.toml`'s Config Path setting in practice — set these fields on the service instead):
+   - **Build command:** `npm ci --workspace=@zenfinance/api --workspace=@zenfinance/shared --include-workspace-root && npm run build && npm run db:migrate -w @zenfinance/api`
+     (workspace-scoped deliberately — Railpack auto-mounts a persistent BuildKit cache volume for `apps/site/node_modules/.vite` because it detects `vite` as a devDependency there; a plain `npm ci` tries to reconcile that workspace's `node_modules` against the lockfile and fails with `EBUSY: resource busy or locked` trying to rmdir the live mount. Scoping the install to only the workspaces the API needs avoids touching it.)
+   - **Start command:** `node apps/api/dist/server.js`
+   - **Healthcheck path:** `/health` (verifies the DB with `SELECT 1`), timeout 300s
+   - **Restart policy:** on_failure, max 3 retries
 
 ## 2. Environment variables (service → Variables)
 
@@ -22,14 +28,15 @@ One Railway service runs the Express API, which also serves the built site
 | `RESEND_API_KEY` | from Resend (step 4) |
 | `RESEND_FROM_EMAIL` | `zenfinance@rushingtechnologies.com` (must be on a Resend-verified domain) |
 | `SUPPORT_EMAIL` | `support@rushingtechnologies.com` |
-| `FRONTEND_URL` | `https://zenfinance.rushingtechnologies.com` |
+| `FRONTEND_URL` | `https://zenfinance.rushingtechnologies.com` — the marketing Worker's origin, used for CORS and referral links |
+| `ADMIN_URL` | `https://admin.zenfinance.rushingtechnologies.com` — the admin Worker's origin, used for CORS |
 | `SENTRY_DSN` | optional — from a Sentry Node project |
 | `TOKEN_ENC_KEY` | `openssl rand -hex 32` — encrypts Plaid access tokens at the app layer |
 | `TRANSACTION_PROVIDER` | `plaid` |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | from the Plaid dashboard (sandbox keys until production access is approved) |
 | `PLAID_ENV` | `sandbox` → `production` after Plaid approves the app |
 | `APPLE_BUNDLE_ID` | `com.rushingtechnologies.zenfinance` (Apple Sign-In verification) |
-| `REDIS_URL` | add a **Redis** service to the Railway project; sync/enrichment/rollup jobs run on BullMQ |
+| `REDIS_URL` | injected automatically from the Redis service reference; sync/enrichment/rollup jobs run on BullMQ |
 | `ENRICHMENT_PROVIDER` | `anthropic` |
 | `ANTHROPIC_API_KEY` | from the Anthropic Console — powers transaction categorization (Haiku) and coaching briefs (Sonnet) |
 | `ENRICHMENT_MODEL` | `claude-haiku-4-5` |
@@ -46,33 +53,57 @@ One Railway service runs the Express API, which also serves the built site
 `PORT` and `DATABASE_URL` are provided by Railway automatically.
 
 **Plaid webhook:** in the Plaid dashboard, set the transactions webhook URL to
-`https://zenfinance.rushingtechnologies.com/api/webhooks/plaid`.
+`https://api.zenfinance.rushingtechnologies.com/api/webhooks/plaid`.
 
 **RevenueCat webhook:** in RevenueCat, set the webhook URL to
-`https://zenfinance.rushingtechnologies.com/api/webhooks/revenuecat`, set the
+`https://api.zenfinance.rushingtechnologies.com/api/webhooks/revenuecat`, set the
 Authorization header to `REVENUECAT_WEBHOOK_AUTH`, and enable webhook signing
 with `REVENUECAT_WEBHOOK_SIGNING_SECRET`.
 
-## 3. Custom domain (GoDaddy DNS)
+## 3. Custom domain for the API (Cloudflare DNS)
 
-1. Railway service → Settings → Networking → **Custom Domain** → `zenfinance.rushingtechnologies.com`. Railway shows a CNAME target.
-2. GoDaddy → DNS for `rushingtechnologies.com` → add record:
-   - Type `CNAME`, Name `zenfinance`, Value = the Railway CNAME target, TTL default.
-3. Wait for the certificate to issue (usually minutes). Verify `https://zenfinance.rushingtechnologies.com/health` returns `{"ok":true,"db":"up"}`.
+1. `railway domain --service zenfinance-api api.zenfinance.rushingtechnologies.com` (or via the dashboard: service → Settings → Networking → Custom Domain). Railway prints a CNAME target (`*.up.railway.app`) and a `_railway-verify` TXT record.
+2. In Cloudflare DNS for the `rushingtechnologies.com` zone, add:
+   - `CNAME api.zenfinance` → the Railway target, **DNS only** (grey cloud, not proxied)
+   - `TXT _railway-verify.api.zenfinance` → the `railway-verify=...` value Railway gave you
+3. Wait for `Verified: yes` / `Certificate status: CERTIFICATE_STATUS_TYPE_ISSUED` (`railway domain status <id>`), then confirm `https://api.zenfinance.rushingtechnologies.com/health` returns `{"ok":true,"db":"up"}`.
 
-## 4. Support email (Resend)
+## 4. Marketing site + admin console (Cloudflare Workers)
 
-1. Resend → Domains → add `rushingtechnologies.com` and add the DKIM/SPF records it lists to GoDaddy DNS. Wait for verification.
+The site (`apps/site`) builds as **two** static bundles from one Vite codebase,
+selected by `VITE_APP_TARGET` at build time, each deployed as its own Worker
+with static assets (no D1/KV needed — both talk directly to the Railway API
+cross-origin via `VITE_API_URL` + `credentials: 'include'`):
+
+```bash
+npm run build:site   # builds dist-marketing/ and dist-admin/ (apps/site)
+
+cd apps/site
+npx wrangler deploy --config wrangler.site.jsonc   # zenfinance-site  -> zenfinance.rushingtechnologies.com
+npx wrangler deploy --config wrangler.admin.jsonc  # zenfinance-admin -> admin.zenfinance.rushingtechnologies.com
+```
+
+`wrangler.site.jsonc` / `wrangler.admin.jsonc` each declare a `routes` entry
+with `custom_domain: true`, which makes `wrangler deploy` provision the
+Cloudflare DNS record and certificate automatically — no manual DNS step
+needed for these two, unlike the Railway API domain above.
+
+Requires a Cloudflare API token (Workers Scripts:Edit, Account:Read) exported
+as `CLOUDFLARE_API_TOKEN` for `wrangler`.
+
+## 5. Support email (Resend)
+
+1. Resend → Domains → add `rushingtechnologies.com` and add the DKIM/SPF records it lists to Cloudflare DNS. Wait for verification.
 2. Create an API key → set `RESEND_API_KEY` on the Railway service.
 3. Support-form tickets are stored in Postgres **first** and then emailed to `SUPPORT_EMAIL`; if email delivery fails they still appear in the admin console inbox.
 
-## 5. Post-deploy checklist
+## 6. Post-deploy checklist
 
-- [ ] `/health` returns 200 with `db: "up"`
-- [ ] Waitlist form on `/` stores a row (check the admin console)
+- [ ] `/health` returns 200 with `db: "up"` at `api.zenfinance.rushingtechnologies.com`
+- [ ] Marketing site loads at `zenfinance.rushingtechnologies.com`; waitlist form on `/` stores a row (check the admin console)
 - [ ] Support form on `/support` stores a ticket AND arrives at support@rushingtechnologies.com
-- [ ] `/admin` login works with `ADMIN_SECRET`; metrics, waitlist, CSV export, and inbox render
-- [ ] CORS: requests from other origins are rejected (`FRONTEND_URL` is the only allowed origin)
+- [ ] Admin console loads at `admin.zenfinance.rushingtechnologies.com`; login works with `ADMIN_SECRET`; metrics, waitlist, CSV export, and inbox render
+- [ ] CORS: requests from origins other than `FRONTEND_URL` and `ADMIN_URL` are rejected
 - [ ] Sentry receives a test event (if configured)
 - [ ] RevenueCat sandbox purchase, cancellation, refund, and restore update `/api/billing/status`
 - [ ] RevenueCat Money Physical one-time purchase posts `NON_RENEWING_PURCHASE`, creates a `money_physical_reports` row, appears in `GET /api/money-physical/status`, and shows in `/admin`
@@ -95,7 +126,13 @@ cp .env.example .env          # fill in JWT_SECRET + ADMIN_SECRET (32+ chars eac
 npm install
 npm run db:migrate -w @zenfinance/api
 npm run dev:api               # API on :3000
-npm run dev:site              # Vite on :5173, proxies /api + /health to :3000
+npm run dev:site               # Vite on :5173, proxies /api + /health to :3000
 docker start zenfinance-test-postgres || docker run --name zenfinance-test-postgres -e POSTGRES_USER=dev -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=zenfinance_test -p 5434:5432 -d postgres:15
 DATABASE_URL=postgres://dev:dev@localhost:5434/zenfinance_test npm run test -w @zenfinance/api
 ```
+
+`npm run dev:site` runs the marketing route tree (Landing, Insights, Support,
+Privacy, Terms) since `VITE_APP_TARGET` is unset in plain dev mode. To work on
+the admin console locally, run `npm run dev:admin -w @zenfinance/site`
+instead (loads `.env.admin`, so it points at the production API unless you
+override `VITE_API_URL`).
