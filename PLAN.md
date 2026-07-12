@@ -190,7 +190,7 @@ Solo-built doesn't mean unreviewed. Every phase below has an explicit quality ga
 | App Store submission | `MobileDeployAgent` | EAS profile review (hardcoded-secret detection), App Store submission checklist, RevenueCat SDK setup |
 | Design system & screens | `UIGenerationAgent` | Zen design system (color/type/motion/elevation) + component generation with accessibility validation |
 
-Wire `python -m agents.cli scan` into GitHub Actions as a required check on `zenfinance` — free heuristic pass on every PR, `--triage` pass (API key in CI secrets) on release branches.
+Wire `python -m agents.cli scan` into GitHub Actions as a required check on `zenfinance` — free heuristic pass on every PR, `--triage` pass (API key in CI secrets) on release branches. **Done:** the `security-scan` job in `.github/workflows/ci.yml` installs the toolkit and runs the scan; `ANTHROPIC_API_KEY` is injected only on pushes to `main`/`release*` so PRs get the heuristic pass and release branches get LLM triage. Because the scan CLI always exits 0, `.github/scripts/gate_security_scan.py` reads its JSON report and fails the build only on triage-confirmed findings at/above `--fail-on` severity (default CRITICAL); the heuristic pass is informational and non-blocking on false positives.
 
 **Claude Code session agents** mirror the same coverage interactively: `project-scaffolder`, `fullstack-code-reviewer`, `security-auditor`, `stripe-billing-reviewer`, `railway-deploy-advisor`, `ui-designer` — used during development, while the CLI toolkit enforces the same standards in CI.
 

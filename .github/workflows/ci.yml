@@ -2,7 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # release/** and release-* are included so the security-scan job's triaged
+    # gate (which keys off github.ref) actually runs on release-branch pushes —
+    # the push trigger is evaluated before any job/env expression.
+    branches: [main, 'release/**', 'release-*']
   pull_request:
 
 jobs:
@@ -34,3 +37,33 @@ jobs:
       - run: npm test
         env:
           DATABASE_URL: postgres://dev:dev@localhost:5432/zenfinance_test
+
+  security-scan:
+    # PLAN §7: run the agents toolkit's static analysis on every PR (free
+    # heuristic pass) and on release branches with LLM triage (API key from
+    # secrets). The scan CLI always exits 0; gate_security_scan.py turns its
+    # JSON report into the pass/fail decision.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install agents toolkit
+        run: pip install "git+https://github.com/mrnickrushing/agents.git@main"
+      - name: Run scan
+        # ANTHROPIC_API_KEY is only set for pushes to main/release branches, so
+        # PRs get the heuristic-only pass and release branches get LLM triage.
+        # The CLI auto-enables triage when the key is present.
+        env:
+          ANTHROPIC_API_KEY: ${{ (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release'))) && secrets.ANTHROPIC_API_KEY || '' }}
+        run: python -m agents.cli scan --path . --out scan-report.json
+      - name: Upload scan report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-report
+          path: scan-report.json
+          if-no-files-found: warn
+      - name: Gate on confirmed critical findings
+        run: python .github/scripts/gate_security_scan.py scan-report.json
