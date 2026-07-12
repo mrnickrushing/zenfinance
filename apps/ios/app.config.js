@@ -26,8 +26,16 @@ module.exports = {
       './withFollyCoroutineFix',
       './withSentryHermesProfilerFix',
     ],
+    // 'appVersion' ties the OTA runtime version to the `version` field above
+    // (bump it on any native-code-affecting release). Deliberately not using
+    // the 'fingerprint' policy: our Podfile plugins patch files under
+    // node_modules/@sentry/react-native during the build (folly coroutine +
+    // Hermes profiler fixes), which made the content-hash-based fingerprint
+    // diverge between the local pre-upload calculation and the one EAS
+    // computes server-side, hard-failing the build with a runtime-version
+    // mismatch even though the actual compiled app was fine.
     runtimeVersion: {
-      policy: 'fingerprint',
+      policy: 'appVersion',
     },
     updates: {
       url: 'https://u.expo.dev/d8a500af-3ff0-476e-85a0-6cfc003d4b61',
