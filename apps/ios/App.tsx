@@ -204,6 +204,14 @@ function dateLabel(value: string | null | undefined): string {
   return new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function latestSyncLabel(items: LinkedItem[]): string {
+  const timestamps = items
+    .map((item) => (item.lastSyncedAt ? new Date(item.lastSyncedAt).getTime() : 0))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (timestamps.length === 0) return 'No sync yet';
+  return `Synced ${dateLabel(new Date(Math.max(...timestamps)).toISOString())}`;
+}
+
 function centsToDollarInput(cents: number | null | undefined): string {
   if (!cents) return '';
   return String(Math.round(cents / 100));
@@ -507,18 +515,36 @@ function ProductShell() {
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
+  const totalWins = home ? home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents : 0;
+
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
       <StatusBar style={theme === dark ? 'light' : 'dark'} />
       <View style={styles.topBar}>
         <View>
-          <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance</Text>
-          <Text style={[styles.appSub, { color: theme.muted }]}>{home?.transactionCount ?? 0} transactions synced</Text>
+          <Text style={[styles.appTitle, { color: theme.ink }]}>Today</Text>
+          <Text style={[styles.appSub, { color: theme.muted }]}>
+            {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
+          </Text>
         </View>
         <Pressable style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
           {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
         </Pressable>
       </View>
+      {home && home.items.length > 0 ? (
+        <View style={styles.shellRail}>
+          <StatusRail>
+            <MoneyMetric label="Banks" value={String(home.items.length)} icon={Landmark} />
+            <MoneyMetric label="Synced" value={String(home.transactionCount)} icon={WalletCards} />
+            <MoneyMetric label="Alerts" value={String(home.openAnomalies.length)} icon={Bell} />
+            <MoneyMetric
+              label={home.billing.isPremium ? 'Wins' : 'Plan'}
+              value={home.billing.isPremium ? usd(totalWins, true) : 'Free'}
+              icon={home.billing.isPremium ? CircleDollarSign : Crown}
+            />
+          </StatusRail>
+        </View>
+      ) : null}
       <View style={styles.content}>{content}</View>
       {home && home.items.length > 0 ? <TabBar active={tab} onChange={setTab} /> : null}
     </SafeAreaView>
@@ -1924,7 +1950,7 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
     { key: 'brief', icon: Sparkles, label: 'Brief' },
     { key: 'coach', icon: MessageCircle, label: 'Coach' },
     { key: 'goals', icon: Target, label: 'Goals' },
-    { key: 'subs', icon: WalletCards, label: 'Subs' },
+    { key: 'subs', icon: WalletCards, label: 'Audit' },
     { key: 'wins', icon: PiggyBank, label: 'Wins' },
     { key: 'settings', icon: Moon, label: 'More' },
   ];
@@ -2143,6 +2169,7 @@ const styles = StyleSheet.create({
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
   iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  shellRail: { paddingHorizontal: 20, paddingBottom: 12 },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
   primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
