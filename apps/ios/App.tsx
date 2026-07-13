@@ -2590,9 +2590,9 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   const [saving, setSaving] = useState(false);
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
-  const [dismissedMilestoneId, setDismissedMilestoneId] = useState<number | null>(null);
+  const [dismissedMilestoneIds, setDismissedMilestoneIds] = useState<Set<number>>(new Set());
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
-  const milestoneGoal = goals.find((goal) => goal.pacing.progressRatio >= 0.5 && goal.id !== dismissedMilestoneId);
+  const milestoneGoal = goals.find((goal) => goal.pacing.progressRatio >= 0.5 && !dismissedMilestoneIds.has(goal.id));
 
   async function addGoal() {
     const dollars = Number(target);
@@ -2637,7 +2637,12 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
         <Text style={styles.mindfulSavingsCaption}>Total Saved</Text>
       </ZenGlass>
       <SectionHeader title="Your Goals" />
-      {milestoneGoal ? <MilestoneModal goal={milestoneGoal} onDismiss={() => setDismissedMilestoneId(milestoneGoal.id)} /> : null}
+      {milestoneGoal ? (
+        <MilestoneModal
+          goal={milestoneGoal}
+          onDismiss={() => setDismissedMilestoneIds((prev) => new Set(prev).add(milestoneGoal.id))}
+        />
+      ) : null}
       {goals.map((goal) => (
         <ZenGlass key={goal.id} style={styles.goalCardGlass}>
           <View style={styles.goalCardHeaderRow}>
