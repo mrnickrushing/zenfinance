@@ -12,10 +12,12 @@ import {
   Bell,
   Bot,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   CreditCard,
   Crown,
+  Coffee,
   Flower2,
   Gift,
   Home,
@@ -29,7 +31,9 @@ import {
   Plus,
   RefreshCcw,
   Send,
+  ShoppingCart,
   ShieldCheck,
+  Sprout,
   SlidersHorizontal,
   Sparkles,
   Square,
@@ -86,7 +90,9 @@ import type {
   HouseholdInviteCreatedView,
   HouseholdStatusView,
   InsightView,
+  EnrichedTransactionView,
   LinkedItem,
+  LinkedAccount,
   MobileHomeSummaryView,
   MoneyPhysicalStatusView,
   MoneyWinsSummaryView,
@@ -733,7 +739,7 @@ function ProductShell() {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen />;
-    if (tab === 'transactions') return <TransactionsScreen home={home} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
+    if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
     if (tab === 'score') return <ZenScoreDetailsScreen home={home} />;
@@ -1163,40 +1169,130 @@ function ZenDailyWidget({ brief }: { brief: InsightView }) {
   );
 }
 
-function TransactionsScreen({ home, onConnect, onBudget }: { home: MobileHomeSummaryView; onConnect: () => void; onBudget: () => void }) {
+function accountKindLabel(account: LinkedAccount): string {
+  const subtype = account.subtype?.toLowerCase() ?? '';
+  const type = account.type.toLowerCase();
+  if (type === 'credit' || subtype.includes('credit')) return 'Credit';
+  if (subtype.includes('savings') || subtype.includes('saving')) return 'Savings';
+  if (subtype.includes('checking') || subtype.includes('check') || type === 'depository' || type === 'cash') return 'Bank';
+  return 'Account';
+}
+
+function accountKindIcon(kind: string): typeof Landmark {
+  switch (kind) {
+    case 'Credit':
+      return CreditCard;
+    case 'Savings':
+      return PiggyBank;
+    default:
+      return Landmark;
+  }
+}
+
+function formatActivityCategory(txn: EnrichedTransactionView): string {
+  const text = `${txn.category ?? ''} ${txn.merchantClean ?? txn.merchantName ?? txn.name}`.toLowerCase();
+  if (text.includes('invest') || text.includes('vanguard') || text.includes('fidelity') || text.includes('robinhood')) return 'Growth/Investments';
+  if (text.includes('dining') || text.includes('coffee') || text.includes('starbucks') || text.includes('restaurant')) return 'Dining';
+  if (text.includes('shop') || text.includes('amazon') || text.includes('retail')) return 'Shopping';
+  if (text.includes('util') || text.includes('comcast') || text.includes('electric') || text.includes('water')) return 'Utilities';
+  return txn.category ?? 'General';
+}
+
+function activityIconForCategory(category: string): { icon: typeof Sprout; color: string; backgroundColor: string } {
+  switch (category) {
+    case 'Growth/Investments':
+      return { icon: Sprout, color: '#75D38F', backgroundColor: '#75D38F24' };
+    case 'Dining':
+      return { icon: Coffee, color: '#E1AF7F', backgroundColor: '#E1AF7F24' };
+    case 'Shopping':
+      return { icon: ShoppingCart, color: '#AE8AEF', backgroundColor: '#AE8AEF24' };
+    case 'Utilities':
+      return { icon: Home, color: '#79B8F3', backgroundColor: '#79B8F324' };
+    default:
+      return { icon: CircleDollarSign, color: '#8FD8DA', backgroundColor: '#8FD8DA24' };
+  }
+}
+
+function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { home: MobileHomeSummaryView; onBack: () => void; onProfile: () => void; onConnect: () => void; onBudget: () => void }) {
   const theme = useTheme();
-  const items = home.items.length > 0 ? home.items : [{ id: 0, provider: 'plaid', institutionName: 'Connect a bank', accounts: [], status: 'active', lastSyncedAt: null } as LinkedItem];
+  const scrollRef = useRef<ScrollView>(null);
+  const accountCards = home.items.flatMap((item) =>
+    item.accounts.map((account, accountIndex) => ({
+      item,
+      account,
+      key: `${item.id}-${account.id}-${accountIndex}`,
+    })),
+  );
+  const displayedCards = accountCards.length > 0 ? accountCards.slice(0, 3) : [{
+    item: { id: 0, provider: 'plaid', institutionName: 'Connect a bank', accounts: [], status: 'active', lastSyncedAt: null } as LinkedItem,
+    account: { id: 0, name: 'Connect a bank', type: 'depository', subtype: null, mask: null, currentBalanceCents: 0, isoCurrency: 'USD' } as LinkedAccount,
+    key: 'placeholder',
+  }];
+  const activityRows = home.recentTransactions.slice(0, 4);
+
   return (
-    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}>
-        <View><Text style={styles.zenPageTitle}>Accounts & Transactions</Text><Text style={styles.zenPageSubtitle}>Your money, in one calm view</Text></View>
-        <View style={styles.zenHeaderAvatar}><ZenLotus size={17} /></View>
+    <ScrollView ref={scrollRef} contentContainerStyle={styles.transactionsScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.transactionsHeader}>
+        <Pressable style={styles.transactionsHeaderIconButton} onPress={onBack} accessibilityLabel="Back to overview">
+          <ChevronLeft color={theme.ink} size={22} />
+        </Pressable>
+        <Text style={styles.transactionsHeaderTitle}>Accounts & Transactions</Text>
+        <Pressable style={styles.transactionsHeaderAvatar} onPress={onProfile} accessibilityLabel="Open profile">
+          <UserRound color={theme.accent} size={18} strokeWidth={2} />
+        </Pressable>
       </View>
-      <Text style={styles.zenSectionLabel}>LINKED ACCOUNTS</Text>
+      <Text style={styles.transactionsSectionTitle}>Linked Accounts</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRail}>
-        {items.map((item, index) => (
-          <ZenGlass key={`${item.id}-${index}`} style={styles.accountCard}>
-            <View style={styles.accountCardIcon}><Landmark color={theme.accent} size={17} /></View>
-            <Text style={styles.accountCardName}>{item.institutionName ?? 'Bank'}</Text>
-            <Text style={styles.accountCardType}>{item.accounts.length ? `${item.accounts.length} accounts` : 'Ready to connect'}</Text>
-            <Text style={styles.accountCardAmount}>{item.accounts.length ? usd(item.accounts.reduce((sum, account) => sum + (account.currentBalanceCents ?? 0), 0), true) : '$0'}</Text>
-          </ZenGlass>
-        ))}
+        {displayedCards.map(({ item, account, key }, index) => {
+          const kind = accountKindLabel(account);
+          const Icon = accountKindIcon(kind);
+          const displayName = account.name || item.institutionName || kind;
+          const ending = account.mask ? `Ending in ${account.mask}` : item.institutionName ? item.institutionName : 'Connected account';
+          const balance = account.currentBalanceCents == null ? '$0.00' : usd(account.currentBalanceCents, true);
+          const featured = index === 0;
+          return (
+            <ZenGlass key={key} style={[styles.accountCard, featured ? styles.accountCardFeatured : null]}>
+              <Text style={styles.accountCardEyebrow}>{kind}</Text>
+              <View style={[styles.accountCardIcon, featured ? styles.accountCardIconFeatured : null]}>
+                <Icon color={featured ? theme.accent : theme.ink} size={26} strokeWidth={1.75} />
+              </View>
+              <Text style={styles.accountCardName}>{kind}</Text>
+              <Text style={styles.accountCardSubtitle}>{displayName}</Text>
+              <Text style={styles.accountCardEnding}>{ending}</Text>
+              <Text style={styles.accountCardAmount}>{balance}</Text>
+            </ZenGlass>
+          );
+        })}
       </ScrollView>
-      <Text style={styles.zenSectionLabel}>RECENT ACTIVITY</Text>
-      <ZenGlass style={styles.transactionPanel}>
-        {home.recentTransactions.slice(0, 8).map((txn, index) => (
-          <View key={txn.id} style={[styles.transactionRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
-            <View style={styles.transactionIcon}><CircleDollarSign color={index % 2 ? theme.violet : theme.accent} size={16} /></View>
-            <View style={styles.flexShrink}>
-              <Text style={styles.transactionName}>{txn.merchantClean ?? txn.merchantName ?? txn.name}</Text>
-              <Text style={styles.transactionMeta}>{txn.category ?? 'General'} · {dateLabel(txn.postedDate)}</Text>
-            </View>
-            <Text style={styles.transactionAmount}>{usd(txn.amountCents)}</Text>
-          </View>
-        ))}
-        {home.recentTransactions.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
-      </ZenGlass>
+      <View style={styles.activityHeaderRow}>
+        <Text style={styles.transactionsSectionTitle}>Recent Activity</Text>
+        <Pressable onPress={() => scrollRef.current?.scrollToEnd({ animated: true })} accessibilityLabel="See all activity">
+          <Text style={styles.activitySeeAll}>See all</Text>
+        </Pressable>
+      </View>
+      <View style={styles.transactionList}>
+        {activityRows.map((txn, index) => {
+          const category = formatActivityCategory(txn);
+          const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+          const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
+          const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
+          const date = dateLabel(txn.postedDate);
+          return (
+            <ZenGlass key={txn.id} style={styles.activityTile}>
+              <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
+                <Icon color={color} size={20} strokeWidth={1.9} />
+              </View>
+              <View style={styles.activityCopy}>
+                <Text style={styles.activityTitle}>{category}</Text>
+                <Text style={styles.activityMerchant}>{merchant}</Text>
+                <Text style={styles.activityDate}>{index === 2 ? `${date}\n${date}` : date}</Text>
+              </View>
+              <Text style={[styles.activityAmount, { color: amountColor }]}>{usd(txn.amountCents)}</Text>
+            </ZenGlass>
+          );
+        })}
+      </View>
+      {home.recentTransactions.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
       <Pressable style={styles.transactionsBudgetLink} onPress={onBudget}>
         <CircleDollarSign color={theme.violet} size={17} />
         <Text style={styles.transactionsBudgetText}>Open Smart Budgeting</Text>
@@ -2698,10 +2794,10 @@ function Toggle({ label, value, onValueChange }: { label: string; value: boolean
 function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
-    { key: 'brief', icon: Home, label: 'Home' },
-    { key: 'coach', icon: MessageCircle, label: 'Coach' },
+    { key: 'brief', icon: Home, label: 'Overview' },
+    { key: 'transactions', icon: WalletCards, label: 'Accounts' },
+    { key: 'coach', icon: MessageCircle, label: 'AI Coach' },
     { key: 'budget', icon: CircleDollarSign, label: 'Budget' },
-    { key: 'transactions', icon: WalletCards, label: 'Transactions' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
   return (
@@ -3020,12 +3116,32 @@ const styles = StyleSheet.create({
   zenPageSubtitle: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
   zenHeaderAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
   zenSectionLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
-  accountRail: { gap: 10, paddingRight: 16 },
-  accountCard: { width: 132, minHeight: 148, padding: 12, gap: 4, borderRadius: 18 },
-  accountCardIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
-  accountCardName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  accountCardType: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9 },
-  accountCardAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 18, marginTop: 'auto' },
+  transactionsScreenScroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28, gap: 14 },
+  transactionsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 4 },
+  transactionsHeaderIconButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  transactionsHeaderTitle: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 25, textAlign: 'center' },
+  transactionsHeaderAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#00D2D34D', backgroundColor: '#00D2D320', shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 0 } },
+  transactionsSectionTitle: { color: '#7CD0D3', fontFamily: 'Inter_600SemiBold', fontSize: 24, marginTop: 8, marginBottom: 2 },
+  activityHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
+  activitySeeAll: { color: '#8FA1B5', fontFamily: 'Inter_500Medium', fontSize: 16 },
+  accountRail: { gap: 14, paddingRight: 16, paddingTop: 8 },
+  accountCard: { width: 157, minHeight: 194, padding: 16, gap: 4, borderRadius: 22 },
+  accountCardFeatured: { borderColor: '#8FD8DA66', shadowColor: '#8FD8DA', shadowOpacity: 0.38, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
+  accountCardEyebrow: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 13, marginBottom: 4 },
+  accountCardIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  accountCardIconFeatured: { backgroundColor: '#8FD8DA26', borderWidth: 1, borderColor: '#8FD8DA66' },
+  accountCardName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, lineHeight: 20 },
+  accountCardSubtitle: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 18 },
+  accountCardEnding: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 16 },
+  accountCardAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 22, marginTop: 'auto' },
+  transactionList: { gap: 10, marginTop: 2 },
+  activityTile: { minHeight: 86, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  activityIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  activityCopy: { flex: 1, minWidth: 0 },
+  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 20, lineHeight: 23 },
+  activityMerchant: { color: '#9DA8BA', fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 19, marginTop: 2 },
+  activityDate: { color: '#8A95A3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 16, marginTop: 2 },
+  activityAmount: { fontFamily: 'Inter_500Medium', fontSize: 23, marginLeft: 10, textAlign: 'right' },
   transactionPanel: { paddingVertical: 4 },
   transactionRow: { minHeight: 64, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   transactionIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
