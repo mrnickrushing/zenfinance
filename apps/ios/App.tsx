@@ -484,7 +484,9 @@ const LOTUS_PETAL = 'M0 0 C -10 -14 -9 -29 0 -42 C 9 -29 10 -14 0 0 Z';
 const LOTUS_VEIN = 'M0 -3 C -1.6 -15 -1.2 -29 0 -38';
 
 function ZenLotus({ size = 18 }: { size?: number }) {
-  const breathe = useRef(new Animated.Value(0.6)).current;
+  // "The First Breath" (animation spec): scale 1→1.08, opacity 0.7→1 over a 4s
+  // yoyo cycle on the standard bezier(0.4,0,0.2,1) curve.
+  const breathe = useRef(new Animated.Value(0)).current;
   // Unique gradient ids per instance so multiple lotuses on one screen (e.g.
   // profile avatar + score pill) don't collide on a shared def id.
   const uid = useRef(Math.random().toString(36).slice(2, 8)).current;
@@ -495,17 +497,20 @@ function ZenLotus({ size = 18 }: { size?: number }) {
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(breathe, { toValue: 1, duration: 2250, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breathe, { toValue: 0.6, duration: 2250, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 1, duration: 2000, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0, duration: 2000, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
       ]),
     );
     animation.start();
     return () => animation.stop();
   }, [breathe]);
 
+  const opacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
+  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+
   return (
     <Animated.View
-      style={{ opacity: breathe }}
+      style={{ opacity, transform: [{ scale }] }}
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
@@ -1785,29 +1790,29 @@ const SCORE_COMPONENT_ICON: Record<string, IconComponent> = {
   growth_savings: PiggyBank,
   consistency: CheckCircle2,
 };
-// Blueprint §4: Mindful = Teal, Consistency = Violet, Growth = Teal.
+// Match the Stitch render: Mindful = Teal, Growth = Violet, Consistency = Teal.
 const SCORE_COMPONENT_TINT: Record<string, keyof typeof midnightZen> = {
   mindful_spending: 'accent',
-  growth_savings: 'accent',
-  consistency: 'violet',
+  growth_savings: 'violet',
+  consistency: 'accent',
 };
 
-function ScoreMeterCard({ icon: Icon, tint, label, detail, value }: { icon: IconComponent; tint: string; label: string; detail: string; value: number | null }) {
+function ScoreRowCard({ icon: Icon, tint, label, detail, value }: { icon: IconComponent; tint: string; label: string; detail: string; value: number | null }) {
   const pct = Math.max(0, Math.min(100, value ?? 0));
   return (
-    <ZenGlass style={styles.scoreMeterCard}>
-      <View style={styles.scoreMeterInner}>
-        <View style={styles.scoreMeterBody}>
-          <View style={styles.scoreMetricIcon}><Icon color={tint} size={18} /></View>
-          <Text style={styles.scoreMeterName} numberOfLines={2}>{label}</Text>
-          <Text style={styles.scoreMeterDetail} numberOfLines={4}>{detail}</Text>
+    <ZenGlass style={styles.scoreRowCard}>
+      <View style={styles.scoreRowTop}>
+        <View style={styles.scoreMetricIcon}><Icon color={tint} size={20} /></View>
+        <View style={styles.flexShrink}>
+          <Text style={styles.scoreRowName}>{label}</Text>
+          <Text style={styles.scoreRowDetail} numberOfLines={2}>{detail}</Text>
         </View>
-        <View style={styles.scoreMeterBarCol}>
-          <Text style={styles.scoreMeterPct}>{value === null ? '—' : `${value}%`}</Text>
-          <View style={styles.scoreMeterTrack}>
-            <View style={[styles.scoreMeterFill, { height: `${pct}%`, backgroundColor: tint }]} />
-          </View>
+      </View>
+      <View style={styles.scoreRowBarRow}>
+        <View style={styles.scoreRowTrack}>
+          <View style={[styles.scoreRowFill, { width: `${pct}%`, backgroundColor: tint }]} />
         </View>
+        <Text style={styles.scoreRowPct}>{value === null ? '—' : `${value}%`}</Text>
       </View>
     </ZenGlass>
   );
@@ -1820,14 +1825,14 @@ function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryVie
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Score Details</Text><Text style={styles.zenPageSubtitle}>Your progress, reflected</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
       <View style={styles.scoreHeroV2}>
-        <ZenLotus size={168} />
-        <Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text>
+        <Text style={styles.scoreHeroLabel}>Zen Score</Text>
         <Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text>
+        <ZenLotus size={196} />
         <Text style={styles.scoreHeroMeta}>{caption}</Text>
       </View>
-      <View style={styles.scoreMeterRow}>
+      <View style={styles.scoreRowStack}>
         {components.map((c) => (
-          <ScoreMeterCard
+          <ScoreRowCard
             key={c.key}
             icon={SCORE_COMPONENT_ICON[c.key] ?? CircleDollarSign}
             tint={theme[SCORE_COMPONENT_TINT[c.key] ?? 'accent']}
@@ -3656,20 +3661,20 @@ const styles = StyleSheet.create({
   capButton: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
   categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
-  scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 20, gap: 2 },
-  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 64, lineHeight: 70, marginTop: 4 },
-  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
+  scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 14, gap: 0 },
+  scoreHeroLabel: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 22, letterSpacing: 0.3 },
+  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 60, lineHeight: 64, marginTop: -2, marginBottom: -6 },
+  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 6 },
   scoreMetricStack: { gap: 10 },
-  scoreMeterRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  scoreMeterCard: { flex: 1, padding: 12, minHeight: 196 },
-  scoreMeterInner: { flex: 1, flexDirection: 'row', gap: 8 },
-  scoreMeterBody: { flex: 1, gap: 6 },
-  scoreMeterName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13, lineHeight: 16 },
-  scoreMeterDetail: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 13 },
-  scoreMeterBarCol: { width: 24, alignItems: 'center', gap: 6 },
-  scoreMeterPct: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  scoreMeterTrack: { width: 6, flex: 1, borderRadius: 3, backgroundColor: '#FFFFFF14', overflow: 'hidden', justifyContent: 'flex-end' },
-  scoreMeterFill: { width: 6, borderRadius: 3 },
+  scoreRowStack: { gap: 12 },
+  scoreRowCard: { padding: 14, gap: 12 },
+  scoreRowTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scoreRowName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 21 },
+  scoreRowDetail: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 17, marginTop: 2 },
+  scoreRowBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  scoreRowTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#FFFFFF1A', overflow: 'hidden' },
+  scoreRowFill: { height: 7, borderRadius: 4 },
+  scoreRowPct: { width: 40, textAlign: 'right', color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   scoreImproveWrap: { marginTop: 18 },
   scoreMetric: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 18 },
   scoreMetricIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
