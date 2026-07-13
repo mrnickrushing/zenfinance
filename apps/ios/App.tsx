@@ -1532,7 +1532,16 @@ function formatActivityCategory(txn: EnrichedTransactionView): string {
   if (text.includes('dining') || text.includes('coffee') || text.includes('starbucks') || text.includes('restaurant')) return 'Dining';
   if (text.includes('shop') || text.includes('amazon') || text.includes('retail')) return 'Shopping';
   if (text.includes('util') || text.includes('comcast') || text.includes('electric') || text.includes('water')) return 'Utilities';
-  return txn.category ?? 'General';
+  // Fall back to the raw enrichment category, but title-case it so codes like
+  // "RIDESHARE_AND_TAXI" read as "Rideshare And Taxi" instead of shouting.
+  const raw = txn.category ?? 'General';
+  return raw
+    .replace(/_+/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
 }
 
 function activityIconForCategory(category: string): { icon: typeof Sprout; color: string; backgroundColor: string } {
@@ -1630,7 +1639,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
                 <Icon color={color} size={20} strokeWidth={1.9} />
               </View>
               <View style={styles.activityCopy}>
-                <Text style={styles.activityTitle}>{category}</Text>
+                <Text style={styles.activityTitle} numberOfLines={1}>{category}</Text>
                 <Text style={styles.activityMerchant}>{merchant}</Text>
                 <Text style={styles.activityDate}>{index === 2 ? `${date}\n${date}` : date}</Text>
               </View>
@@ -1662,7 +1671,7 @@ function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { b
   return (
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
-      <View style={styles.profileAvatar}><ZenLotus size={38} /></View>
+      <View style={styles.profileAvatar}><ZenLotus size={64} /></View>
       <Text style={styles.profileName}>ZenFinance Member</Text>
       <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
       <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
@@ -3506,7 +3515,7 @@ const styles = StyleSheet.create({
   activityTile: { minHeight: 86, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
   activityIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   activityCopy: { flex: 1, minWidth: 0 },
-  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 20, lineHeight: 23 },
+  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, lineHeight: 20 },
   activityMerchant: { color: '#9DA8BA', fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 19, marginTop: 2 },
   activityDate: { color: '#8A95A3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 16, marginTop: 2 },
   activityAmount: { fontFamily: 'Inter_500Medium', fontSize: 23, marginLeft: 10, textAlign: 'right' },
