@@ -1838,6 +1838,153 @@ function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { b
   );
 }
 
+function budgetCategoryIcon(category: string): MaterialSymbolName {
+  const key = category.toLowerCase();
+  if (key.includes('rent') || key.includes('mortgage') || key.includes('util') || key.includes('housing')) return 'home';
+  if (key.includes('grocery') || key.includes('groceries') || key.includes('supermarket')) return 'shopping_cart';
+  if (key.includes('shop') || key.includes('retail') || key.includes('amazon')) return 'shopping_basket';
+  if (key.includes('coffee') || key.includes('cafe')) return 'local_cafe';
+  if (key.includes('dining') || key.includes('restaurant') || key.includes('food')) return 'restaurant';
+  if (key.includes('game') || key.includes('play') || key.includes('entertain') || key.includes('subscri')) return 'sports_esports';
+  if (key.includes('gas') || key.includes('fuel')) return 'local_gas_station';
+  if (key.includes('bus') || key.includes('transit')) return 'directions_bus';
+  if (key.includes('transport') || key.includes('rideshare') || key.includes('taxi') || key.includes('uber') || key.includes('lyft')) return 'directions_car';
+  if (key.includes('gym') || key.includes('fitness')) return 'fitness_center';
+  if (key.includes('health') || key.includes('medical') || key.includes('doctor')) return 'medical_services';
+  if (key.includes('pet')) return 'pets';
+  if (key.includes('school') || key.includes('education') || key.includes('tuition')) return 'school';
+  if (key.includes('movie') || key.includes('theater') || key.includes('cinema')) return 'movie';
+  if (key.includes('travel') || key.includes('flight') || key.includes('airline')) return 'flight';
+  if (key.includes('invest') || key.includes('saving')) return 'savings';
+  return 'receipt_long';
+}
+
+type BudgetNodeStatus = 'healthy' | 'steady' | 'warning' | 'quiet';
+
+function budgetNodeStatus(ratio: number): BudgetNodeStatus {
+  if (ratio >= 0.9) return 'warning';
+  if (ratio >= 0.5) return 'steady';
+  if (ratio > 0) return 'healthy';
+  return 'quiet';
+}
+
+const BUDGET_STATUS_COLOR: Record<BudgetNodeStatus, string> = {
+  healthy: '#00D2D3',
+  steady: '#8E44AD',
+  warning: '#F5A623',
+  quiet: '#FFFFFF4D',
+};
+
+// Hand-placed like the Stitch render's scattered hub-and-spoke layout — a
+// strict grid reads too mechanical for "floating glass spheres."
+const BUDGET_HUB = { leftPct: 50, top: 96, size: 196 };
+const BUDGET_NODE_SLOTS = [
+  { leftPct: 24, top: 300, size: 168 },
+  { leftPct: 74, top: 200, size: 148 },
+  { leftPct: 68, top: 392, size: 158 },
+  { leftPct: 20, top: 486, size: 108 },
+];
+const BUDGET_GRAPH_HEIGHT = 570;
+// [-1, n] connects the hub to node n; [a, b] connects node a to node b.
+const BUDGET_CONNECTORS: Array<[number, number]> = [
+  [-1, 0],
+  [-1, 1],
+  [0, 3],
+  [1, 2],
+];
+
+function BudgetNodeGraph({
+  availableCents,
+  categories,
+  caps,
+}: {
+  availableCents: number;
+  categories: Array<[string, number]>;
+  caps: Record<string, number>;
+}) {
+  const { width: screenWidth } = useWindowDimensions();
+  const graphWidth = screenWidth - 32; // matches zenScreenScroll's horizontal padding
+
+  const nodes = categories.slice(0, 4).map(([category, amountCents], index) => {
+    const slot = BUDGET_NODE_SLOTS[index];
+    const capDollars = caps[category] ?? Math.max(50, Math.round(amountCents / 100));
+    const ratio = capDollars > 0 ? amountCents / 100 / capDollars : 0;
+    return { category, amountCents, capDollars, ratio, slot, status: budgetNodeStatus(ratio) };
+  });
+
+  function centerOf(slot: { leftPct: number; top: number; size: number }) {
+    return { x: (slot.leftPct / 100) * graphWidth, y: slot.top + slot.size / 2 };
+  }
+  const hubCenter = centerOf(BUDGET_HUB);
+
+  return (
+    <View style={[styles.budgetGraph, { height: BUDGET_GRAPH_HEIGHT }]}>
+      <Svg width="100%" height={BUDGET_GRAPH_HEIGHT} style={StyleSheet.absoluteFill}>
+        {BUDGET_CONNECTORS.map(([fromIdx, toIdx]) => {
+          const to = nodes[toIdx];
+          if (!to) return null;
+          const from = fromIdx === -1 ? hubCenter : nodes[fromIdx] ? centerOf(nodes[fromIdx].slot) : null;
+          if (!from) return null;
+          const toCenter = centerOf(to.slot);
+          return (
+            <SvgLine
+              key={`${fromIdx}-${toIdx}`}
+              x1={from.x}
+              y1={from.y}
+              x2={toCenter.x}
+              y2={toCenter.y}
+              stroke="#FFFFFF26"
+              strokeWidth={3}
+            />
+          );
+        })}
+      </Svg>
+      <ZenGlass
+        style={[
+          styles.budgetHubNode,
+          {
+            left: `${BUDGET_HUB.leftPct}%`,
+            marginLeft: -BUDGET_HUB.size / 2,
+            top: BUDGET_HUB.top,
+            width: BUDGET_HUB.size,
+            height: BUDGET_HUB.size,
+            borderRadius: BUDGET_HUB.size / 2,
+            borderColor: '#00D2D366',
+          },
+        ]}
+      >
+        <Text style={styles.budgetHubAmount}>{usd(availableCents, true)}</Text>
+        <Text style={styles.budgetHubLabel}>Available Funds</Text>
+      </ZenGlass>
+      {nodes.map((node) => {
+        const color = BUDGET_STATUS_COLOR[node.status];
+        return (
+          <ZenGlass
+            key={node.category}
+            style={[
+              styles.budgetNode,
+              {
+                left: `${node.slot.leftPct}%`,
+                marginLeft: -node.slot.size / 2,
+                top: node.slot.top,
+                width: node.slot.size,
+                height: node.slot.size,
+                borderRadius: node.slot.size / 2,
+                borderColor: color,
+              },
+            ]}
+          >
+            <Text style={styles.budgetNodeName} numberOfLines={1}>{node.category}</Text>
+            <Text style={styles.budgetNodeAmount} numberOfLines={1}>{usd(node.amountCents, true)} / ${node.capDollars}</Text>
+            <MaterialSymbol name={budgetCategoryIcon(node.category)} size={18} color={color} style={styles.budgetNodeIcon} />
+            {node.status === 'warning' ? <Text style={styles.budgetNodeWarning}>Mindfulness Needed</Text> : null}
+          </ZenGlass>
+        );
+      })}
+    </View>
+  );
+}
+
 function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   const theme = useTheme();
   const [editing, setEditing] = useState(false);
@@ -1882,20 +2029,13 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
       {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>Monthly budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder="$3,000" placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} onPress={saveBudget} /></View></ZenGlass> : null}
-      <ZenGlass style={styles.budgetHero}>
-        <View style={styles.budgetRing}><Text style={styles.budgetHeroAmount}>{usd(availableCents, true)}</Text><Text style={styles.budgetHeroMeta}>Available Funds</Text></View>
-        <View style={styles.budgetLegend}><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.accent }]} /><Text style={styles.budgetLegendText}>Essentials</Text></View><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.violet }]} /><Text style={styles.budgetLegendText}>Flexible</Text></View></View>
-      </ZenGlass>
+      <BudgetNodeGraph availableCents={availableCents} categories={categories} caps={categoryCaps} />
       <ZenGlass style={styles.budgetControls}>
         <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget rhythm</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
         <View style={styles.budgetSegmented}><Pressable style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
         <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Nudge me before a category runs hot</Text></View><Switch value={alertsEnabled} onValueChange={setAlertsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
         <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Round-up buffer</Text><Text style={styles.budgetToggleMeta}>Move spare change into savings</Text></View><Switch value={roundupsEnabled} onValueChange={setRoundupsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.violet }} thumbColor="#FFFFFF" /></View>
       </ZenGlass>
-      <Text style={styles.zenSectionLabel}>SPENDING FLOW</Text>
-      <View style={styles.budgetBubbleGrid}>
-        {categories.map(([category, amount], index) => <View key={category} style={[styles.budgetBubble, index === 0 ? styles.budgetBubbleLarge : null, { borderColor: index % 2 ? theme.violet : theme.accent }]}><Text style={styles.budgetBubbleName}>{category}</Text><Text style={styles.budgetBubbleAmount}>{usd(amount, true)}</Text><Text style={styles.budgetBubbleMeta}>{total ? `${Math.round((amount / total) * 100)}%` : '0%'}</Text></View>)}
-      </View>
       <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
       <ZenGlass style={styles.categoryCapsPanel}>{categories.map(([category, amount], index) => { const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100)); return <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}><View style={styles.flexShrink}><Text style={styles.categoryCapName}>{category}</Text><Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text></View><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, -50)}><Minus color={theme.muted} size={14} /></Pressable><Text style={styles.categoryCapValue}>${cap}</Text><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, 50)}><Plus color={theme.accent} size={14} /></Pressable></View>; })}</ZenGlass>
       <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
@@ -3797,20 +3937,15 @@ const styles = StyleSheet.create({
   zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 10 },
   zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
   zenEditButton: { minHeight: 32, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
-  budgetHero: { minHeight: 210, alignItems: 'center', justifyContent: 'center', gap: 16 },
-  budgetRing: { width: 142, height: 142, borderRadius: 71, borderWidth: 10, borderColor: '#00D2D366', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-  budgetHeroAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 23 },
-  budgetHeroMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
-  budgetLegend: { flexDirection: 'row', gap: 16 },
-  legendLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  legendDot: { width: 7, height: 7, borderRadius: 4 },
-  budgetLegendText: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10 },
-  budgetBubbleGrid: { minHeight: 290, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10 },
-  budgetBubble: { width: 104, height: 104, borderRadius: 52, backgroundColor: '#FFFFFF14', borderWidth: 2, borderColor: '#FFFFFF26', alignItems: 'center', justifyContent: 'center', padding: 8, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
-  budgetBubbleLarge: { width: 132, height: 132, borderRadius: 66 },
-  budgetBubbleName: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 10, textAlign: 'center' },
-  budgetBubbleAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 4 },
-  budgetBubbleMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 },
+  budgetGraph: { position: 'relative' },
+  budgetHubNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 8, borderWidth: 2, shadowColor: '#00D2D3', shadowOpacity: 0.35, shadowRadius: 24 },
+  budgetHubAmount: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24 },
+  budgetHubLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
+  budgetNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 10, borderWidth: 2, shadowOpacity: 0.3, shadowRadius: 18 },
+  budgetNodeName: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 13 },
+  budgetNodeAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
+  budgetNodeIcon: { marginTop: 6 },
+  budgetNodeWarning: { color: '#F5A623', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 4, textAlign: 'center' },
   budgetInsight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   budgetInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetInsightBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
