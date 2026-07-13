@@ -995,7 +995,7 @@ function CoachScreen() {
         method: 'POST',
         body: JSON.stringify({ question: trimmed }),
       });
-      setAnswers((items) => [answer, ...items]);
+      setAnswers((items) => [...items, answer]);
       await requestApi('/api/app-events', {
         method: 'POST',
         body: JSON.stringify({ name: 'coach:asked_question' }),
@@ -1012,7 +1012,6 @@ function CoachScreen() {
       <FlatList
         data={answers}
         keyExtractor={(item) => item.id}
-        inverted
         contentContainerStyle={styles.chatList}
         ListEmptyComponent={
           <CoachPromptBoard onPress={setQuestion} />
