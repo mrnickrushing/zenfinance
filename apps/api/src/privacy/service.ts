@@ -13,7 +13,7 @@ import type {
   VoiceBriefView,
   VoiceBriefSegmentView,
 } from '@zenfinance/shared';
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 import { getBillingStatus } from '../billing/service.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { getMoneyWinsSummary } from '../coaching/moneyWins.js';
@@ -21,6 +21,10 @@ import type { Db } from '../db/client.js';
 import {
   accounts,
   anomalies,
+  appEvents,
+  billingEvents,
+  categoryCorrections,
+  chatMessages,
   goals,
   householdGoalContributions,
   householdGoals,
@@ -31,7 +35,12 @@ import {
   items,
   notificationPreferences,
   pushTokens,
+  recurringStreams,
+  referralCodes,
+  referralCredits,
+  referralRedemptions,
   privacyDeletionEvents,
+  providerRevocationJobs,
   transactionEnrichments,
   transactions,
   users,
@@ -367,7 +376,7 @@ async function voiceBriefViews(db: Db, userId: number): Promise<VoiceBriefView[]
 export async function buildUserDataExport(db: Db, userId: number): Promise<UserDataExportView | null> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (!user) return null;
-  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList, moneyPhysicalReports] = await Promise.all([
+  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList, moneyPhysicalReports, appEventRows, billingEventRows, chatRows, correctionRows, recurringRows, referralCodeRows, referralRedemptionRows, referralCreditRows] = await Promise.all([
     itemViews(db, userId),
     transactionViews(db, userId),
     goalViews(db, userId),
@@ -379,6 +388,14 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     householdExport(db, userId),
     voiceBriefViews(db, userId),
     moneyPhysicalReportsForExport(db, userId),
+    db.select().from(appEvents).where(eq(appEvents.userId, userId)),
+    db.select().from(billingEvents).where(eq(billingEvents.userId, userId)),
+    db.select().from(chatMessages).where(eq(chatMessages.userId, userId)),
+    db.select().from(categoryCorrections).where(eq(categoryCorrections.userId, userId)),
+    db.select().from(recurringStreams).where(eq(recurringStreams.userId, userId)),
+    db.select().from(referralCodes).where(eq(referralCodes.userId, userId)),
+    db.select().from(referralRedemptions).where(or(eq(referralRedemptions.referrerUserId, userId), eq(referralRedemptions.referredUserId, userId))),
+    db.select().from(referralCredits).where(or(eq(referralCredits.recipientUserId, userId), eq(referralCredits.sourceUserId, userId))),
   ]);
   return {
     generatedAt: new Date().toISOString(),
@@ -399,6 +416,16 @@ export async function buildUserDataExport(db: Db, userId: number): Promise<UserD
     household,
     voiceBriefs: voiceBriefsList,
     moneyPhysicalReports,
+    supplementalData: {
+      appEvents: appEventRows,
+      billingEvents: billingEventRows,
+      chatMessages: chatRows,
+      categoryCorrections: correctionRows,
+      recurringStreams: recurringRows,
+      referralCodes: referralCodeRows,
+      referralRedemptions: referralRedemptionRows,
+      referralCredits: referralCreditRows,
+    },
   };
 }
 
@@ -407,19 +434,34 @@ export async function deleteUserAccount(db: Db, userId: number): Promise<Privacy
   if (!user) return null;
   const userItems = await db.select().from(items).where(eq(items.userId, userId));
   let failures = 0;
+  const revocationJobs: Array<{
+    provider: string;
+    encryptedAccessToken: string;
+    lastError: string;
+    nextAttemptAt: Date;
+  }> = [];
   for (const item of userItems) {
     try {
       await getProvider().removeItem(decryptToken(item.encryptedAccessToken));
     } catch (err) {
       failures += 1;
       console.error(`[privacy] provider removeItem failed for item ${item.id}:`, err);
+      revocationJobs.push({
+        provider: item.provider,
+        encryptedAccessToken: item.encryptedAccessToken,
+        lastError: err instanceof Error ? err.message.slice(0, 500) : 'Unknown provider revocation error',
+        nextAttemptAt: new Date(Date.now() + 60_000),
+      });
     }
   }
 
   const completedAt = new Date();
-  const [event] = await db
-    .insert(privacyDeletionEvents)
-    .values({
+  // Queue failed processor revocations, erase local data, and create the
+  // completion record atomically. No durable "completed" evidence is visible
+  // unless the local deletion itself commits.
+  const event = await db.transaction(async (tx) => {
+    if (revocationJobs.length > 0) await tx.insert(providerRevocationJobs).values(revocationJobs);
+    const [createdEvent] = await tx.insert(privacyDeletionEvents).values({
       userId,
       emailHash: emailHash(user.email),
       itemCount: userItems.length,
@@ -434,7 +476,40 @@ export async function deleteUserAccount(db: Db, userId: number): Promise<Privacy
       completedAt,
     })
     .returning({ id: privacyDeletionEvents.id, completedAt: privacyDeletionEvents.completedAt });
-
-  await db.delete(users).where(eq(users.id, userId));
+    // These audit tables intentionally use SET NULL for aggregate metrics, so
+    // delete the user's identifiable/raw payload rows explicitly.
+    await tx.delete(appEvents).where(eq(appEvents.userId, userId));
+    await tx.delete(billingEvents).where(eq(billingEvents.userId, userId));
+    await tx.delete(users).where(eq(users.id, userId));
+    return createdEvent!;
+  });
   return { ok: true, deletionEventId: event!.id, completedAt: (event!.completedAt ?? completedAt).toISOString() };
+}
+
+export async function processPendingProviderRevocations(db: Db): Promise<void> {
+  const jobs = await db
+    .select()
+    .from(providerRevocationJobs)
+    .where(and(isNull(providerRevocationJobs.completedAt), lte(providerRevocationJobs.nextAttemptAt, new Date())))
+    .limit(25);
+  for (const job of jobs) {
+    try {
+      await getProvider().removeItem(decryptToken(job.encryptedAccessToken));
+      await db
+        .update(providerRevocationJobs)
+        .set({ encryptedAccessToken: '', completedAt: new Date(), lastError: null })
+        .where(eq(providerRevocationJobs.id, job.id));
+    } catch (err) {
+      const attempts = job.attempts + 1;
+      const delay = Math.min(24 * 60 * 60_000, 60_000 * 2 ** Math.min(attempts, 10));
+      await db
+        .update(providerRevocationJobs)
+        .set({
+          attempts,
+          lastError: err instanceof Error ? err.message.slice(0, 500) : 'Unknown provider revocation error',
+          nextAttemptAt: new Date(Date.now() + delay),
+        })
+        .where(eq(providerRevocationJobs.id, job.id));
+    }
+  }
 }

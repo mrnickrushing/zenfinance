@@ -107,6 +107,28 @@ describe('Phase 7 launch and growth loop', () => {
     expect(second.status).toBe(400);
   });
 
+  it("preserves the other user's earned credit when one referral participant deletes their account", async () => {
+    const referrer = await register('deleting-referrer@example.com');
+    const referred = await register('credit-holder@example.com');
+    const status = await request(app).get('/api/referrals/me').set('Authorization', `Bearer ${referrer.access}`);
+    await request(app)
+      .post('/api/referrals/redeem')
+      .set('Authorization', `Bearer ${referred.access}`)
+      .send({ code: status.body.code });
+
+    const deleted = await request(app).delete('/api/me').set('Authorization', `Bearer ${referrer.access}`);
+    expect(deleted.status).toBe(200);
+    const remainingCredits = await db
+      .select()
+      .from(referralCredits)
+      .where(eq(referralCredits.recipientUserId, referred.userId));
+    expect(remainingCredits).toHaveLength(1);
+    expect(remainingCredits[0]!.sourceUserId).toBeNull();
+    const billing = await request(app).get('/api/billing/status').set('Authorization', `Bearer ${referred.access}`);
+    expect(billing.body.isPremium).toBe(true);
+    expect(billing.body.plan).toBe('referral');
+  });
+
   it('reports launch metrics for paid conversion, MRR, referrals, active users, and Money Wins', async () => {
     const referrer = await register('launch-referrer@example.com');
     const referred = await register('launch-referred@example.com');

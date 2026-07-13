@@ -101,6 +101,26 @@ describe('Phase 9 Household Sharing', () => {
     expect(extraInvite.body.error.code).toBe('household_full');
   });
 
+  it('serializes concurrent invite reservations so a two-seat household cannot overbook', async () => {
+    const owner = await register('concurrent-owner@example.com');
+    await grantPremium(owner.userId);
+    await request(app).post('/api/household').set('Authorization', `Bearer ${owner.access}`).send({ name: 'One Seat Left' });
+
+    const [first, second] = await Promise.all([
+      request(app)
+        .post('/api/household/invites')
+        .set('Authorization', `Bearer ${owner.access}`)
+        .send({ email: 'first-seat@example.com' }),
+      request(app)
+        .post('/api/household/invites')
+        .set('Authorization', `Bearer ${owner.access}`)
+        .send({ email: 'second-seat@example.com' }),
+    ]);
+
+    expect([first.status, second.status].sort()).toEqual([201, 400]);
+    expect([first.body.error?.code, second.body.error?.code]).toContain('household_full');
+  });
+
   it('supports shared household goals and member contributions', async () => {
     const owner = await register('goal-owner@example.com');
     const member = await register('goal-member@example.com');

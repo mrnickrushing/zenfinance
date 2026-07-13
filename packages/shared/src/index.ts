@@ -231,6 +231,7 @@ export interface UserDataExportView {
   household?: HouseholdStatusView;
   voiceBriefs?: VoiceBriefView[];
   moneyPhysicalReports?: MoneyPhysicalReportView[];
+  supplementalData?: Record<string, unknown[]>;
 }
 
 export interface PrivacyDeletionEventView {

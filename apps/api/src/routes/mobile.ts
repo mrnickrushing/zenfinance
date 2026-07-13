@@ -48,6 +48,7 @@ import {
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
 import { getMoneyPhysicalStatus } from '../moneyPhysical/service.js';
 import { requireUser } from '../middleware/userAuth.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { validateBody } from '../middleware/validate.js';
 
 type InsightRow = InferSelectModel<typeof insights>;
@@ -650,7 +651,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     res.json(body);
   });
 
-  router.post('/api/chat', requireUser, validateBody(chatQuestionSchema), async (_req, res) => {
+  router.post('/api/chat', requireUser, userRateLimit('chat', { windowMs: 60_000, limit: 10, message: 'Too many coach requests. Please wait a minute.' }), validateBody(chatQuestionSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const premium = await assertPremium(db, userId, 'chat_coach');
     if (!premium.ok) {
@@ -661,7 +662,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     res.status(201).json(await buildChatAnswer(userId, input.question));
   });
 
-  router.post('/api/chat/stream', requireUser, validateBody(chatQuestionSchema), async (_req, res) => {
+  router.post('/api/chat/stream', requireUser, userRateLimit('chat-stream', { windowMs: 60_000, limit: 10, message: 'Too many coach requests. Please wait a minute.' }), validateBody(chatQuestionSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const premium = await assertPremium(db, userId, 'chat_coach');
     if (!premium.ok) {
@@ -672,7 +673,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     streamAnswer(res, await buildChatAnswer(userId, input.question));
   });
 
-  router.post('/api/what-if', requireUser, validateBody(whatIfSchema), async (_req, res) => {
+  router.post('/api/what-if', requireUser, userRateLimit('what-if', { windowMs: 60_000, limit: 20, message: 'Too many scenario requests. Please wait a minute.' }), validateBody(whatIfSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const premium = await assertPremium(db, userId, 'what_if');
     if (!premium.ok) {
@@ -704,7 +705,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     },
   );
 
-  router.post('/api/push-tokens', requireUser, validateBody(pushTokenSchema), async (_req, res) => {
+  router.post('/api/push-tokens', requireUser, userRateLimit('push-token', { windowMs: 60_000, limit: 10, message: 'Too many push registration attempts.' }), validateBody(pushTokenSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const input = res.locals.body as PushTokenInput;
     await db
@@ -717,7 +718,17 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     res.status(201).json(await getNotificationPrefs(userId));
   });
 
-  router.post('/api/app-events', requireUser, validateBody(appEventSchema), async (_req, res) => {
+  router.delete('/api/push-tokens', requireUser, validateBody(pushTokenSchema), async (_req, res) => {
+    const userId = res.locals.userId as number;
+    const input = res.locals.body as PushTokenInput;
+    await db
+      .update(pushTokens)
+      .set({ enabled: false, updatedAt: new Date() })
+      .where(and(eq(pushTokens.userId, userId), eq(pushTokens.token, input.token)));
+    res.status(204).end();
+  });
+
+  router.post('/api/app-events', requireUser, userRateLimit('app-events', { windowMs: 60_000, limit: 120, message: 'Too many analytics events.' }), validateBody(appEventSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const input = res.locals.body as AppEventInput;
     await db.insert(appEvents).values({ userId, name: input.name, properties: input.properties });

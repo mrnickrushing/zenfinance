@@ -33,7 +33,6 @@ module.exports = {
       ],
       '@sentry/react-native',
       './withFollyCoroutineFix',
-      './withSentryHermesProfilerFix',
     ],
     // 'appVersion' ties the OTA runtime version to the `version` field above
     // (bump it on any native-code-affecting release). Deliberately not using
@@ -49,7 +48,7 @@ module.exports = {
     updates: {
       url: 'https://u.expo.dev/d8a500af-3ff0-476e-85a0-6cfc003d4b61',
       checkAutomatically: 'ON_LOAD',
-      fallbackToCacheTimeout: 30000,
+      fallbackToCacheTimeout: 3000,
     },
     extra: {
       apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://api.zenfinance.rushingtechnologies.com',

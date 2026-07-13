@@ -1,6 +1,7 @@
 import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
+import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
@@ -45,9 +46,10 @@ import {
   Volume2,
   WalletCards,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  AccessibilityInfo,
   Animated,
   Alert,
   FlatList,
@@ -56,7 +58,7 @@ import {
   Linking,
   Modal,
   Platform,
-  Pressable,
+  Pressable as RNPressable,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -65,6 +67,7 @@ import {
   Switch,
   Text as RNText,
   TextInput,
+  type PressableProps,
   type TextProps,
   useColorScheme,
   useWindowDimensions,
@@ -84,7 +87,7 @@ import {
   Stop,
   Svg,
 } from 'react-native-svg';
-import { create, open } from 'react-native-plaid-link-sdk';
+import { createPlaidLinkSession } from 'react-native-plaid-link-sdk';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { create as createStore } from 'zustand';
 import { MONEY_PHYSICAL_PRODUCT_ID } from '@zenfinance/shared';
@@ -260,12 +263,32 @@ async function persistTokens(tokens: AuthTokens | null): Promise<void> {
 }
 
 let refreshPromise: Promise<AuthTokens | null> | null = null;
+const API_TIMEOUT_MS = 20_000;
+
+async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const externalSignal = init.signal;
+  const abortFromExternal = () => controller.abort();
+  externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (controller.signal.aborted && !externalSignal?.aborted) {
+      throw new Error('The request timed out. Check your connection and try again.');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+    externalSignal?.removeEventListener('abort', abortFromExternal);
+  }
+}
 
 async function refreshAuthTokens(): Promise<AuthTokens | null> {
   refreshPromise ??= (async () => {
     const refreshToken = useAppStore.getState().refreshToken ?? (await SecureStore.getItemAsync('refreshToken'));
     if (!refreshToken) return null;
-    const refresh = await fetch(`${API_URL}/api/auth/refresh`, {
+    const refresh = await fetchWithTimeout(`${API_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
@@ -280,7 +303,7 @@ async function refreshAuthTokens(): Promise<AuthTokens | null> {
 
 async function requestApi<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = useAppStore.getState().accessToken ?? (await SecureStore.getItemAsync('accessToken'));
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -356,11 +379,27 @@ async function clearRevenueCatIdentity(): Promise<void> {
 }
 
 async function signOutUser(): Promise<void> {
+  const pushToken = await SecureStore.getItemAsync('expoPushToken').catch(() => null);
+  if (pushToken) {
+    const removed = await requestApi('/api/push-tokens', {
+      method: 'DELETE',
+      body: JSON.stringify({ token: pushToken, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
+    }).then(() => true).catch(() => false);
+    if (!removed) {
+      Alert.alert(
+        'Sign-out paused',
+        'ZenFinance could not disable financial notifications for this device. Check your connection and try signing out again.',
+      );
+      return;
+    }
+    await SecureStore.deleteItemAsync('expoPushToken').catch(() => {});
+  }
   const refreshToken = useAppStore.getState().refreshToken;
   if (refreshToken) {
     await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
   }
   await clearRevenueCatIdentity();
+  await SecureStore.deleteItemAsync(BUDGET_CONFIG_KEY).catch(() => {});
   try {
     await persistTokens(null);
   } finally {
@@ -408,8 +447,22 @@ function useTheme() {
   return midnightZen;
 }
 
+function useReduceMotion(): boolean {
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
+    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
+    return () => subscription.remove();
+  }, []);
+  return reduceMotion;
+}
+
 function Text({ style, ...props }: TextProps) {
   return <RNText {...props} style={[styles.globalText, style]} />;
+}
+
+function Pressable({ accessibilityRole = 'button', ...props }: PressableProps) {
+  return <RNPressable accessibilityRole={accessibilityRole} {...props} />;
 }
 
 // Renders a glyph from the same "Material Symbols Outlined" font Stitch used
@@ -472,22 +525,25 @@ function ZenBackdrop() {
   const phase = useRef(new Animated.Value(0)).current;
   const starDrift = useRef(new Animated.Value(0)).current;
   const { height: screenHeight } = useWindowDimensions();
+  const reduceMotion = useReduceMotion();
 
   useEffect(() => {
+    if (reduceMotion) return;
     const animation = Animated.loop(
       Animated.timing(phase, { toValue: 1, duration: 12000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
     );
     animation.start();
     return () => animation.stop();
-  }, [phase]);
+  }, [phase, reduceMotion]);
 
   useEffect(() => {
+    if (reduceMotion) return;
     const animation = Animated.loop(
       Animated.timing(starDrift, { toValue: 1, duration: 50000, easing: Easing.linear, useNativeDriver: true }),
     );
     animation.start();
     return () => animation.stop();
-  }, [starDrift]);
+  }, [reduceMotion, starDrift]);
 
   const starTransform = {
     transform: [{ translateY: starDrift.interpolate({ inputRange: [0, 1], outputRange: [0, -screenHeight] }) }],
@@ -531,9 +587,9 @@ function ZenBackdrop() {
         <Ellipse cx="78%" cy="72%" rx="64%" ry="38%" fill="url(#blueGlow)" />
         <SvgCircle cx="20%" cy="82%" r="30%" fill="url(#violetGlow)" opacity="0.55" />
       </Svg>
-      <Animated.View style={[styles.meshTeal, tealTransform]} />
-      <Animated.View style={[styles.meshViolet, violetTransform]} />
-      <Animated.View style={[StyleSheet.absoluteFill, starTransform]}>
+      <Animated.View style={[styles.meshTeal, reduceMotion ? null : tealTransform]} />
+      <Animated.View style={[styles.meshViolet, reduceMotion ? null : violetTransform]} />
+      <Animated.View style={[StyleSheet.absoluteFill, reduceMotion ? null : starTransform]}>
         <Svg width="100%" height="200%" viewBox="0 0 100 200" preserveAspectRatio="none">
           {ZEN_STAR_DOTS.map((d) => (
             <SvgCircle key={d.key} cx={d.cx} cy={d.cy} r={d.r} fill="#FFFFFF" opacity={d.o} />
@@ -578,7 +634,9 @@ const LOTUS_VEIN = 'M0 -3 C -1.6 -15 -1.2 -29 0 -38';
 // that should "breathe" — the lotus itself, and the Coach's avatar icon.
 function useZenBreath() {
   const breathe = useRef(new Animated.Value(0)).current;
+  const reduceMotion = useReduceMotion();
   useEffect(() => {
+    if (reduceMotion) return;
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(breathe, { toValue: 1, duration: 2000, easing: Easing.bezier(0.4, 0, 0.2, 1), useNativeDriver: true }),
@@ -587,11 +645,11 @@ function useZenBreath() {
     );
     animation.start();
     return () => animation.stop();
-  }, [breathe]);
+  }, [breathe, reduceMotion]);
 
   return {
-    opacity: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
-    scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }),
+    opacity: reduceMotion ? 1 : breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
+    scale: reduceMotion ? 1 : breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }),
   };
 }
 
@@ -696,10 +754,22 @@ function ZenScorePill({ score }: { score: number | null }) {
 
 type IconComponent = typeof Sparkles;
 
+class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { Sentry.captureException(error, { contexts: { react: { componentStack: info.componentStack } } }); }
+  render() {
+    if (this.state.failed) {
+      return <SafeAreaView style={[styles.center, { backgroundColor: midnightZen.bg }]}><Text style={{ color: midnightZen.ink }}>ZenFinance hit an unexpected problem.</Text><SecondaryButton label="Try again" onPress={() => this.setState({ failed: false })} /></SafeAreaView>;
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const { accessToken, loading, setTokens, setLoading } = useAppStore();
   const theme = useTheme();
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_300Light,
     Inter_400Regular,
     Inter_500Medium,
@@ -710,16 +780,22 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      const [access, refresh] = await Promise.all([
-        SecureStore.getItemAsync('accessToken'),
-        SecureStore.getItemAsync('refreshToken'),
-      ]);
-      setTokens(access && refresh ? { accessToken: access, refreshToken: refresh } : null);
-      setLoading(false);
+      try {
+        const [access, refresh] = await Promise.all([
+          SecureStore.getItemAsync('accessToken'),
+          SecureStore.getItemAsync('refreshToken'),
+        ]);
+        setTokens(access && refresh ? { accessToken: access, refreshToken: refresh } : null);
+      } catch (err) {
+        Sentry.captureException(err);
+        setTokens(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [setLoading, setTokens]);
 
-  if (loading || !fontsLoaded) {
+  if (loading || (!fontsLoaded && !fontError)) {
     return (
       <SafeAreaView style={[styles.center, { backgroundColor: theme.bg }]}>
         <ActivityIndicator color={theme.accent} />
@@ -727,7 +803,7 @@ export default function App() {
     );
   }
 
-  return accessToken ? <ProductShell /> : <AuthScreen />;
+  return <AppErrorBoundary>{accessToken ? <ProductShell /> : <AuthScreen />}</AppErrorBoundary>;
 }
 
 function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
@@ -1146,13 +1222,12 @@ function ProductShell() {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [nextHome, prefs] = await Promise.all([
-        requestApi<MobileHomeSummaryView>('/api/mobile/home'),
-        requestApi<NotificationPreferencesView>('/api/notifications/preferences'),
-      ]);
+      const nextHome = await requestApi<MobileHomeSummaryView>('/api/mobile/home');
       setHome(nextHome);
-      setNotificationPrefs(prefs);
       setLoadError(null);
+      void requestApi<NotificationPreferencesView>('/api/notifications/preferences')
+        .then(setNotificationPrefs)
+        .catch((err) => Sentry.captureException(err));
     } catch (err) {
       Sentry.captureException(err);
       const message = err instanceof Error ? err.message : 'Unknown error';
@@ -1238,7 +1313,7 @@ function ProductShell() {
                 {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
               </Text>
             </View>
-            <Pressable style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
+            <Pressable accessibilityLabel="Refresh dashboard" style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
               {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
             </Pressable>
           </View>
@@ -1305,25 +1380,33 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
     setBusy(true);
     try {
       const { linkToken } = await requestApi<{ linkToken: string }>('/api/link/token', { method: 'POST' });
-      create({ token: linkToken });
-      open({
+      const session = await createPlaidLinkSession({
+        token: linkToken,
         onSuccess: async (success) => {
-          await requestApi('/api/link/exchange', {
-            method: 'POST',
-            body: JSON.stringify({
-              publicToken: success.publicToken,
-              institutionName: success.metadata.institution?.name,
-            }),
-          });
-          await requestApi('/api/app-events', {
-            method: 'POST',
-            body: JSON.stringify({ name: 'onboarding:linked_bank', properties: { institution: success.metadata.institution?.name } }),
-          }).catch(() => {});
-          onLinked();
-          setBusy(false);
+          try {
+            await requestApi('/api/link/exchange', {
+              method: 'POST',
+              body: JSON.stringify({
+                publicToken: success.publicToken,
+                institutionName: success.metadata.institution?.name,
+              }),
+            });
+            await requestApi('/api/app-events', {
+              method: 'POST',
+              body: JSON.stringify({ name: 'onboarding:linked_bank', properties: { institution: success.metadata.institution?.name } }),
+            }).catch(() => {});
+            onLinked();
+          } catch (err) {
+            Sentry.captureException(err);
+            Alert.alert('Bank connection failed', err instanceof Error ? err.message : 'Unable to finish linking your bank.');
+          } finally {
+            setBusy(false);
+          }
         },
         onExit: () => setBusy(false),
+        onEvent: () => {},
       });
+      await session.open();
     } catch (err) {
       Alert.alert('Link failed', err instanceof Error ? err.message : 'Unknown error');
       setBusy(false);
@@ -1364,7 +1447,7 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
       <ZenGlass style={styles.budgetEntryCard}>
         <View style={styles.budgetEntryIcon}><CircleDollarSign color={theme.violet} size={18} /></View>
         <View style={styles.flexShrink}><Text style={styles.budgetEntryTitle}>Preview Smart Budgeting</Text><Text style={styles.budgetEntryBody}>Explore the calm spending view before linking an account.</Text></View>
-        <Pressable style={styles.budgetEntryButton} onPress={onBudget}><ChevronRight color="#0B0E14" size={16} /></Pressable>
+        <Pressable accessibilityLabel="Open Smart Budgeting" style={styles.budgetEntryButton} onPress={onBudget}><ChevronRight color="#0B0E14" size={16} /></Pressable>
       </ZenGlass>
       <StatusRail>
         <MoneyMetric label="Access" value="Read-only" icon={ShieldCheck} />
@@ -1550,7 +1633,8 @@ function BriefScreen({
       {home.recentTransactions.slice(0, 6).map((txn) => {
         const category = formatActivityCategory(txn);
         const { icon: iconName, color, backgroundColor } = activityIconForCategory(category);
-        const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
+        const { moneyIn, label: amountLabel } = moneyMovementDisplay(txn.amountCents, (amount) => usd(amount));
+        const amountColor = moneyIn ? theme.accent : '#FF6B99';
         const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
         const date = dateLabel(txn.postedDate);
         return (
@@ -1563,7 +1647,7 @@ function BriefScreen({
               <Text style={styles.activityMerchant}>{merchant}</Text>
               <Text style={styles.activityDate}>{date}</Text>
             </View>
-            <Text style={[styles.activityAmount, { color: amountColor }]}>{usd(txn.amountCents)}</Text>
+            <Text style={[styles.activityAmount, { color: amountColor }]}>{amountLabel}</Text>
           </ZenGlass>
         );
       })}
@@ -1637,14 +1721,14 @@ function MoneyBriefHero({
       <SecondaryButton label="View Swap" compact onPress={onViewSwap} />
       <View style={styles.zenInsightFooter}>
         <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
-        <Pressable onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
+        <Pressable accessibilityRole="button" accessibilityLabel={home.billing.isPremium && voiceBrief ? 'Play voice brief' : 'Mark insight helpful'} hitSlop={12} onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
           <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={17} />
         </Pressable>
       </View>
       {home.billing.isPremium && voiceBrief ? (
         <View style={styles.zenVoiceRow}>
           <Text style={styles.zenDailyMeta}>{speaking ? 'Playing voice brief' : voiceBusy ? 'Preparing audio summary...' : `${Math.round(voiceBrief.durationSeconds / 6) / 10} min audio summary`}</Text>
-          {speaking ? <Pressable onPress={onStopVoice}><Square color={theme.accent} size={16} /></Pressable> : null}
+          {speaking ? <Pressable accessibilityRole="button" accessibilityLabel="Stop voice brief" hitSlop={12} onPress={onStopVoice}><Square color={theme.accent} size={16} /></Pressable> : null}
         </View>
       ) : null}
     </ZenGlass>
@@ -2022,24 +2106,82 @@ function BudgetNodeGraph({
   );
 }
 
+type BudgetConfig = {
+  targets: Record<BudgetPeriod, string>;
+  period: BudgetPeriod;
+  alertsEnabled: boolean;
+  categoryCaps: Record<string, number>;
+};
+
+const BUDGET_CONFIG_KEY = 'smartBudgetConfigV2';
+
+async function fetchBudgetTransactions(): Promise<EnrichedTransactionView[]> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const earliest = monthStart < weekStart ? monthStart : weekStart;
+  const earliestDate = `${earliest.getFullYear()}-${String(earliest.getMonth() + 1).padStart(2, '0')}-${String(earliest.getDate()).padStart(2, '0')}`;
+  const collected: EnrichedTransactionView[] = [];
+  for (let page = 1; ; page += 1) {
+    const response = await requestApi<{ items: EnrichedTransactionView[]; total: number; page: number; pageSize: number }>(
+      `/api/transactions?page=${page}&pageSize=200`,
+    );
+    collected.push(...response.items);
+    if (
+      response.items.length === 0
+      || collected.length >= response.total
+      || response.items.some((transaction) => transaction.postedDate < earliestDate)
+    ) break;
+  }
+  return collected;
+}
+
 function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   const theme = useTheme();
   const [editing, setEditing] = useState(false);
-  const [budgetTarget, setBudgetTarget] = useState('3000');
-  const [draftBudgetTarget, setDraftBudgetTarget] = useState('3000');
-  const [period, setPeriod] = useState<'monthly' | 'weekly'>('monthly');
+  const [targets, setTargets] = useState<Record<BudgetPeriod, string>>({ monthly: '', weekly: '' });
+  const [draftBudgetTarget, setDraftBudgetTarget] = useState('');
+  const [period, setPeriod] = useState<BudgetPeriod>('monthly');
   const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [roundupsEnabled, setRoundupsEnabled] = useState(false);
   const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({});
-  const categories = useMemo(() => {
-    const grouped = new Map<string, number>();
-    for (const txn of home.recentTransactions) {
-      const key = txn.category ?? 'Essentials';
-      grouped.set(key, (grouped.get(key) ?? 0) + Math.abs(txn.amountCents));
-    }
-    return [...grouped.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-  }, [home.recentTransactions]);
-  const total = categories.reduce((sum, [, amount]) => sum + amount, 0);
+  const [transactions, setTransactions] = useState<EnrichedTransactionView[]>(home.recentTransactions);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      SecureStore.getItemAsync(BUDGET_CONFIG_KEY),
+      fetchBudgetTransactions(),
+    ]).then(([stored, loadedTransactions]) => {
+      if (!active) return;
+      if (stored) {
+        const config = JSON.parse(stored) as BudgetConfig;
+        setTargets(config.targets);
+        setDraftBudgetTarget(config.targets[config.period]);
+        setPeriod(config.period);
+        setAlertsEnabled(config.alertsEnabled);
+        setCategoryCaps(config.categoryCaps);
+      } else {
+        setEditing(true);
+      }
+      setTransactions(loadedTransactions);
+    }).catch((err) => {
+      if (active) Alert.alert('Budget unavailable', err instanceof Error ? err.message : 'Unable to load your budget.');
+    });
+    return () => { active = false; };
+  }, []);
+
+  const persistBudget = useCallback((next: BudgetConfig) => {
+    void SecureStore.setItemAsync(BUDGET_CONFIG_KEY, JSON.stringify(next)).catch(() => {
+      Alert.alert('Budget not saved', 'Your device could not securely save these settings.');
+    });
+  }, []);
+
+  const allCategories = useMemo(() => {
+    return budgetCategories(transactions, period);
+  }, [period, transactions]);
+  const categories = allCategories.slice(0, 5);
+  const total = allCategories.reduce((sum, [, amount]) => sum + amount, 0);
+  const budgetTarget = targets[period];
   const targetCents = Math.max(0, Math.round(Number(budgetTarget.replace(/[$,\s]/g, '')) * 100) || 0);
   const availableCents = Math.max(0, targetCents - total);
 
@@ -2051,30 +2193,40 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   function saveBudget() {
     const next = Number(draftBudgetTarget.replace(/[$,\s]/g, ''));
     if (!Number.isFinite(next) || next <= 0) return;
-    setBudgetTarget(String(Math.round(next)));
+    const nextTargets = { ...targets, [period]: String(Math.round(next)) };
+    setTargets(nextTargets);
+    persistBudget({ targets: nextTargets, period, alertsEnabled, categoryCaps });
     setEditing(false);
+  }
+
+  function selectPeriod(nextPeriod: BudgetPeriod) {
+    setPeriod(nextPeriod);
+    setDraftBudgetTarget(targets[nextPeriod]);
+    if (!targets[nextPeriod]) setEditing(true);
+    persistBudget({ targets, period: nextPeriod, alertsEnabled, categoryCaps });
   }
 
   function adjustCategoryCap(category: string, amountCents: number, delta: number) {
     setCategoryCaps((current) => {
       const currentCap = current[category] ?? Math.max(50, Math.round(amountCents / 100));
-      return { ...current, [category]: Math.max(25, currentCap + delta) };
+      const next = { ...current, [category]: Math.max(25, currentCap + delta) };
+      persistBudget({ targets, period, alertsEnabled, categoryCaps: next });
+      return next;
     });
   }
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
-      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>Monthly budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder="$3,000" placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} onPress={saveBudget} /></View></ZenGlass> : null}
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Cancel editing budget' : 'Edit budget'} style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
+      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>{period === 'monthly' ? 'Monthly' : 'Weekly'} budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending for this {period === 'monthly' ? 'month' : 'week'}.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder={period === 'monthly' ? '$3,000' : '$750'} placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} onPress={saveBudget} /></View></ZenGlass> : null}
       <BudgetNodeGraph availableCents={availableCents} categories={categories} caps={categoryCaps} />
       <ZenGlass style={styles.budgetControls}>
         <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget rhythm</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
-        <View style={styles.budgetSegmented}><Pressable style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
-        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Nudge me before a category runs hot</Text></View><Switch value={alertsEnabled} onValueChange={setAlertsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
-        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Round-up buffer</Text><Text style={styles.budgetToggleMeta}>Move spare change into savings</Text></View><Switch value={roundupsEnabled} onValueChange={setRoundupsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.violet }} thumbColor="#FFFFFF" /></View>
+        <View style={styles.budgetSegmented}><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'monthly' }} style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'weekly' }} style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
+        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Remember whether budget nudges are enabled</Text></View><Switch value={alertsEnabled} onValueChange={(value) => { setAlertsEnabled(value); persistBudget({ targets, period, alertsEnabled: value, categoryCaps }); }} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
       </ZenGlass>
       <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
-      <ZenGlass style={styles.categoryCapsPanel}>{categories.map(([category, amount], index) => { const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100)); return <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}><View style={styles.flexShrink}><Text style={styles.categoryCapName}>{category}</Text><Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text></View><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, -50)}><Minus color={theme.muted} size={14} /></Pressable><Text style={styles.categoryCapValue}>${cap}</Text><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, 50)}><Plus color={theme.accent} size={14} /></Pressable></View>; })}</ZenGlass>
+      <ZenGlass style={styles.categoryCapsPanel}>{categories.map(([category, amount], index) => { const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100)); return <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}><View style={styles.flexShrink}><Text style={styles.categoryCapName}>{category}</Text><Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${category} cap`} style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, -50)}><Minus color={theme.muted} size={18} /></Pressable><Text style={styles.categoryCapValue}>${cap}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Increase ${category} cap`} style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, 50)}><Plus color={theme.accent} size={18} /></Pressable></View>; })}</ZenGlass>
       <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
     </ScrollView>
   );
@@ -3041,27 +3193,42 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }, [loadHousehold]);
 
   async function registerPush() {
-    const permission = await Notifications.requestPermissionsAsync();
-    if (!permission.granted) return;
-    const token = await Notifications.getExpoPushTokenAsync();
-    const next = await requestApi<NotificationPreferencesView>('/api/push-tokens', {
-      method: 'POST',
-      body: JSON.stringify({ token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
-    });
-    setPrefs(next);
+    try {
+      const permission = await Notifications.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Notifications are off', 'Enable notifications in iOS Settings if you want financial alerts.');
+        return;
+      }
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId as string | undefined;
+      const token = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+      const next = await requestApi<NotificationPreferencesView>('/api/push-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
+      });
+      await SecureStore.setItemAsync('expoPushToken', token.data);
+      setPrefs(next);
+    } catch (err) {
+      Sentry.captureException(err);
+      Alert.alert('Notifications unavailable', err instanceof Error ? err.message : 'Unable to enable notifications.');
+    }
   }
 
   async function updatePrefs(next: NotificationPreferencesView) {
-    const saved = await requestApi<NotificationPreferencesView>('/api/notifications/preferences', {
-      method: 'PATCH',
-      body: JSON.stringify({
-        weeklyBrief: next.weeklyBrief,
-        anomalies: next.anomalies,
-        goalPacing: next.goalPacing,
-        marketing: next.marketing,
-      }),
-    });
-    setPrefs(saved);
+    try {
+      const saved = await requestApi<NotificationPreferencesView>('/api/notifications/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          weeklyBrief: next.weeklyBrief,
+          anomalies: next.anomalies,
+          goalPacing: next.goalPacing,
+          marketing: next.marketing,
+        }),
+      });
+      setPrefs(saved);
+    } catch (err) {
+      Sentry.captureException(err);
+      Alert.alert('Preference not saved', err instanceof Error ? err.message : 'Unable to update notifications.');
+    }
   }
 
   async function checkForUpdate() {
@@ -3088,8 +3255,21 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }
 
   async function disconnect(itemId: number) {
-    await requestApi(`/api/items/${itemId}`, { method: 'DELETE' });
-    onChanged();
+    const item = items.find((candidate) => candidate.id === itemId);
+    Alert.alert(
+      'Disconnect bank?',
+      `This removes ${item?.institutionName ?? 'this bank'} and its imported transaction history from ZenFinance.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Disconnect',
+          style: 'destructive',
+          onPress: () => void requestApi(`/api/items/${itemId}`, { method: 'DELETE' })
+            .then(onChanged)
+            .catch((err) => Alert.alert('Disconnect failed', err instanceof Error ? err.message : 'Unable to disconnect bank.')),
+        },
+      ],
+    );
   }
 
   async function restorePurchases() {
@@ -3296,10 +3476,16 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          await requestApi('/api/me', { method: 'DELETE' });
-          await clearRevenueCatIdentity();
-          await persistTokens(null);
-          setTokens(null);
+          try {
+            await requestApi('/api/me', { method: 'DELETE' });
+            await clearRevenueCatIdentity();
+            await SecureStore.deleteItemAsync(BUDGET_CONFIG_KEY).catch(() => {});
+            await persistTokens(null);
+            setTokens(null);
+          } catch (err) {
+            Sentry.captureException(err);
+            Alert.alert('Deletion failed', err instanceof Error ? err.message : 'Your account was not deleted. Please try again.');
+          }
         },
       },
     ]);
@@ -3566,6 +3752,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
             <Toggle label="Weekly brief" value={prefs.weeklyBrief} onValueChange={(v) => updatePrefs({ ...prefs, weeklyBrief: v })} />
             <Toggle label="Charge alerts" value={prefs.anomalies} onValueChange={(v) => updatePrefs({ ...prefs, anomalies: v })} />
             <Toggle label="Goal pacing" value={prefs.goalPacing} onValueChange={(v) => updatePrefs({ ...prefs, goalPacing: v })} />
+            <Toggle label="Product updates" value={prefs.marketing} onValueChange={(v) => updatePrefs({ ...prefs, marketing: v })} />
           </>
         ) : null}
       </ZenGlass>
@@ -3730,6 +3917,8 @@ function PlanOption({
         },
       ]}
       onPress={onPress}
+      accessibilityLabel={`${title}, ${price}`}
+      accessibilityState={{ selected }}
     >
       <View style={styles.flexShrink}>
         <View style={styles.planTitleRow}>
@@ -3770,7 +3959,7 @@ function SectionHeader({ title }: { title: string }) {
 function ActionRow({ icon: Icon, title, detail, onPress }: { icon: IconComponent; title: string; detail: string; onPress?: () => void }) {
   const theme = useTheme();
   return (
-    <Pressable style={[styles.glassRow, onPress ? styles.actionRowInteractive : null]} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
+    <Pressable style={[styles.glassRow, onPress ? styles.actionRowInteractive : null]} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : 'none'}>
       <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
         <Icon color={theme.accent} size={18} />
       </View>
@@ -3805,9 +3994,10 @@ function PrimaryButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const reduceMotion = useReduceMotion();
   const pulse = useRef(new Animated.Value(0.98)).current;
   useEffect(() => {
-    if (disabled) return;
+    if (disabled || reduceMotion) return;
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 1, duration: 500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
@@ -3816,14 +4006,17 @@ function PrimaryButton({
     );
     animation.start();
     return () => animation.stop();
-  }, [disabled, pulse]);
-  const contentColor = disabled ? theme.muted : '#fff';
+  }, [disabled, pulse, reduceMotion]);
+  const contentColor = disabled ? theme.muted : '#06292A';
   return (
     <Animated.View style={[styles.primaryButtonPulse, { transform: [{ scale: disabled ? 1 : pulse }] }]}>
       <Pressable
         style={[styles.primaryButton, { backgroundColor: disabled ? theme.surfaceAlt : theme.accent }]}
         disabled={disabled}
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityState={{ disabled: Boolean(disabled) }}
+        accessibilityLabel={label}
       >
         {Icon ? <Icon color={contentColor} size={18} /> : null}
         <Text style={[styles.primaryButtonText, { color: contentColor }]} numberOfLines={2}>
@@ -3859,6 +4052,9 @@ function SecondaryButton({
       ]}
       disabled={disabled}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityLabel={label}
     >
       {Icon ? <Icon color={danger ? theme.danger : theme.accent} size={17} /> : null}
       <Text style={[styles.secondaryButtonText, { color: danger ? theme.danger : theme.ink }]} numberOfLines={2}>
@@ -3897,7 +4093,7 @@ const styles = StyleSheet.create({
   zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
   zenLotusMark: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   zenBrand: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
-  zenHeaderAction: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  zenHeaderAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   zenScorePill: { alignSelf: 'center', minHeight: 34, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 7 },
   zenScoreCard: { alignItems: 'center', paddingVertical: 18, gap: 3, borderColor: '#FFFFFF38' },
   zenScoreAura: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D31A', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
@@ -4041,7 +4237,7 @@ const styles = StyleSheet.create({
   categoryCapRow: { minHeight: 58, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
   categoryCapName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   categoryCapMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
-  capButton: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
+  capButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
   categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
   scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 14, gap: 0 },
@@ -4094,7 +4290,7 @@ const styles = StyleSheet.create({
   budgetEntryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
   budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetEntryBody: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 3 },
-  budgetEntryButton: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
+  budgetEntryButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
   milestoneBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   milestoneCard: { alignItems: 'center', gap: 10, width: '100%', maxWidth: 340, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.45, shadowRadius: 30 },
   milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24, textAlign: 'center' },
@@ -4132,7 +4328,7 @@ const styles = StyleSheet.create({
   tinyLogo: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26' },
   appTitle: { fontSize: 24, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 },
   appSub: { fontSize: 13, marginTop: 2 },
-  iconButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
+  iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
   shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#0B0E14B3', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A' },
   coachConsole: { borderWidth: 1, borderRadius: 24, padding: 12, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   consoleHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },

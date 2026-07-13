@@ -130,6 +130,14 @@ describe('Phase 4 mobile product API', () => {
     expect(after.body.pushEnabled).toBe(true);
     expect(after.body.weeklyBrief).toBe(true);
     expect(after.body.anomalies).toBe(false);
+
+    const unregistered = await request(app)
+      .delete('/api/push-tokens')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ token: 'ExponentPushToken[phase4-test-token]', platform: 'ios' });
+    expect(unregistered.status).toBe(204);
+    const disabled = await request(app).get('/api/notifications/preferences').set('Authorization', `Bearer ${access}`);
+    expect(disabled.body.pushEnabled).toBe(false);
   });
 
   it('records app funnel events', async () => {

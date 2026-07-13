@@ -66,6 +66,8 @@ const envSchema = z.object({
   };
 
   requireProduction('REDIS_URL', 'REDIS_URL is required in production');
+  requireProduction('RESEND_API_KEY', 'RESEND_API_KEY is required in production');
+  requireProduction('RESEND_FROM_EMAIL', 'RESEND_FROM_EMAIL is required in production');
   requireProduction('REVENUECAT_WEBHOOK_AUTH', 'REVENUECAT_WEBHOOK_AUTH is required in production');
   requireProduction('REVENUECAT_WEBHOOK_SIGNING_SECRET', 'REVENUECAT_WEBHOOK_SIGNING_SECRET is required in production');
 

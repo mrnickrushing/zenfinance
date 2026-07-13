@@ -19,6 +19,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
 import { passwordResetCodes, users } from '../db/schema.js';
+import { env } from '../env.js';
 import { verifyAppleIdentityToken } from '../lib/apple.js';
 import { sendPasswordResetEmail } from '../lib/email.js';
 import {
@@ -33,7 +34,7 @@ import { validateBody } from '../middleware/validate.js';
 const RESET_CODE_TTL_MS = 15 * 60 * 1000;
 
 function hashResetCode(code: string): string {
-  return crypto.createHash('sha256').update(code).digest('hex');
+  return crypto.createHmac('sha256', env.JWT_SECRET).update(code).digest('hex');
 }
 
 const BCRYPT_ROUNDS = 12;
@@ -169,7 +170,16 @@ export function createAuthRouter(): ReturnType<typeof Router> {
           codeHash: hashResetCode(code),
           expiresAt: new Date(Date.now() + RESET_CODE_TTL_MS),
         });
-        await sendPasswordResetEmail(input.email, code);
+        const delivered = await sendPasswordResetEmail(input.email, code);
+        if (!delivered) {
+          // Preserve the non-enumerating response while ensuring an
+          // undelivered code cannot remain valid in the database.
+          await db
+            .update(passwordResetCodes)
+            .set({ consumedAt: new Date() })
+            .where(and(eq(passwordResetCodes.userId, user.id), isNull(passwordResetCodes.consumedAt)));
+          console.error(`[auth] password reset delivery failed for user ${user.id}`);
+        }
       }
       res.json({ ok: true });
     },
