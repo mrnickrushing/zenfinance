@@ -478,6 +478,16 @@ function ZenScoreCard({ score }: { score: number }) {
   );
 }
 
+function ZenScorePill({ score }: { score: number }) {
+  return (
+    <ZenGlass style={styles.zenScorePill}>
+      <View style={styles.zenScoreIcon}><ZenLotus size={15} /></View>
+      <Text style={styles.zenScoreText}>Zen Score: {score}/100</Text>
+      <View style={styles.zenScoreDot} />
+    </ZenGlass>
+  );
+}
+
 type IconComponent = typeof Sparkles;
 
 export default function App() {
@@ -949,7 +959,7 @@ function BriefScreen({
           {refreshing ? <ActivityIndicator color={theme.accent} size="small" /> : <RefreshCcw color={theme.muted} size={17} />}
         </Pressable>
       </View>
-      <ZenScoreCard score={88} />
+      <ZenScorePill score={88} />
       {brief ? (
         <MoneyBriefHero
           home={home}
@@ -1396,6 +1406,14 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
         <View style={styles.chatBubbleHeader}><View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View><Text style={styles.chatBubbleKicker}>ZEN AI</Text></View>
         <Text style={styles.chatMessageText}>Ask me about a charge, a goal, or what you can comfortably spend next.</Text>
       </ZenGlass>
+      <ZenGlass style={styles.coachInsightsCard}>
+        <Text style={styles.coachInsightsTitle}>Your Path to Zen</Text>
+        <Text style={styles.coachInsightsSubtitle}>Recent milestones</Text>
+        {[['Emergency Fund Goal Reached', 'You successfully saved $1,000', CheckCircle2], ['Mindful Spending Tip', 'Try tracking your coffee purchases', Target], ['Weekly Budget Review Completed', 'Good job staying within your limits', Sparkles]].map(([title, copy, Icon]) => {
+          const InsightIcon = Icon as typeof Sparkles;
+          return <View key={title as string} style={styles.coachInsightRow}><View style={styles.coachInsightIcon}><InsightIcon color="#00D2D3" size={15} /></View><View style={styles.flexShrink}><Text style={styles.coachInsightTitle}>{title as string}</Text><Text style={styles.coachInsightCopy}>{copy as string}</Text></View></View>;
+        })}
+      </ZenGlass>
       <Text style={styles.chatPromptLabel}>TRY ASKING</Text>
       {groups.map((group) => {
         const Icon = group.icon;
@@ -1634,8 +1652,10 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-      <SectionHeader title="Goals" />
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Savings Goals</Text><Text style={styles.zenPageSubtitle}>Small steps, meaningful progress</Text></View><Target color={theme.accent} size={19} /></View>
+      {goals[0] ? <ZenGlass style={styles.goalsSummary}><View style={styles.goalsSummaryHeader}><View style={styles.goalsSummaryIcon}><PiggyBank color={theme.accent} size={18} /></View><Text style={styles.goalsSummaryName}>{goals[0].name}</Text><Text style={styles.goalsSummaryPercent}>{Math.round(goals[0].pacing.progressRatio * 100)}%</Text></View><Text style={styles.goalsSummaryAmount}>{usd(goals[0].currentAmountCents, true)} <Text style={styles.goalsSummaryTarget}>of {usd(goals[0].targetAmountCents, true)}</Text></Text><View style={styles.goalProgressTrack}><View style={[styles.goalProgressFill, { width: `${Math.min(100, Math.max(0, goals[0].pacing.progressRatio * 100))}%` }]} /></View></ZenGlass> : null}
+      <SectionHeader title="Your Goals" />
       {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
       {goals.map((goal) => (
         <View key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -2972,6 +2992,15 @@ const styles = StyleSheet.create({
   scoreMetricName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   scoreMetricCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
   scoreMetricValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  goalsSummary: { gap: 10, borderColor: '#00D2D34D' },
+  goalsSummaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  goalsSummaryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  goalsSummaryName: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  goalsSummaryPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  goalsSummaryAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 22 },
+  goalsSummaryTarget: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  goalProgressTrack: { height: 8, borderRadius: 4, backgroundColor: '#FFFFFF14', overflow: 'hidden' },
+  goalProgressFill: { height: '100%', borderRadius: 4, backgroundColor: '#00D2D3' },
   connectClose: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
   connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
   connectStep: { alignItems: 'center', gap: 5 },
@@ -3097,6 +3126,13 @@ const styles = StyleSheet.create({
   chatMessageBubble: { alignSelf: 'stretch', gap: 8, borderColor: '#8E44AD66', backgroundColor: '#8E44AD14', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 24 },
   chatMessageText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
   chatPromptLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
+  coachInsightsCard: { alignSelf: 'stretch', gap: 8, borderColor: '#00D2D34D' },
+  coachInsightsTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17 },
+  coachInsightsSubtitle: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
+  coachInsightRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 6 },
+  coachInsightIcon: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  coachInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 11 },
+  coachInsightCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 },
   promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
   promptGroup: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
   quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
