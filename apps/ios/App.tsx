@@ -361,8 +361,11 @@ async function signOutUser(): Promise<void> {
     await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
   }
   await clearRevenueCatIdentity();
-  await persistTokens(null);
-  useAppStore.getState().setTokens(null);
+  try {
+    await persistTokens(null);
+  } finally {
+    useAppStore.getState().setTokens(null);
+  }
 }
 
 function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo: RevenueCatCustomerInfo): RestorePayload {
