@@ -45,6 +45,8 @@ const envSchema = z.object({
   // uses the deterministic template generator — no API key required.
   INSIGHT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
   INSIGHT_MODEL: z.string().default('claude-sonnet-5'),
+  CHAT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
+  CHAT_MODEL: z.string().default('claude-sonnet-5'),
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_EMAIL: z.string().email().optional(),
   SUPPORT_EMAIL: z.string().email().default('support@rushingtechnologies.com'),
@@ -89,7 +91,9 @@ const envSchema = z.object({
 
   if (
     value.NODE_ENV === 'production' &&
-    (value.ENRICHMENT_PROVIDER === 'anthropic' || value.INSIGHT_PROVIDER === 'anthropic') &&
+    (value.ENRICHMENT_PROVIDER === 'anthropic' ||
+      value.INSIGHT_PROVIDER === 'anthropic' ||
+      value.CHAT_PROVIDER === 'anthropic') &&
     !value.ANTHROPIC_API_KEY
   ) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['ANTHROPIC_API_KEY'], message: 'ANTHROPIC_API_KEY is required when an Anthropic provider is enabled' });

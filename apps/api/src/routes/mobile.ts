@@ -26,6 +26,8 @@ import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import { Router } from 'express';
 import { assertPremium, getBillingStatus } from '../billing/service.js';
+import { generateGroundedChatAnswer } from '../chat/anthropic.js';
+import { assembleCoachingContext } from '../coaching/derive.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { getMoneyWinsSummary } from '../coaching/moneyWins.js';
@@ -46,6 +48,7 @@ import {
   transactions,
 } from '../db/schema.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 import { getMoneyPhysicalStatus } from '../moneyPhysical/service.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { userRateLimit } from '../middleware/userRateLimit.js';
@@ -484,6 +487,54 @@ async function answerSubscriptionQuestion(userId: number, question: string): Pro
   };
 }
 
+async function answerGoalQuestion(userId: number, question: string): Promise<Omit<ChatAnswerView, 'id' | 'createdAt'> | null> {
+  if (!/(goal|on pace|on track|target date|move .* up)/i.test(question)) return null;
+  const goalViews = await listGoals(userId);
+  const goal = goalViews.find((item) => item.status === 'active') ?? goalViews[0];
+  if (!goal) {
+    return {
+      answer: 'You do not have an active goal yet, so I cannot calculate goal pacing.',
+      facts: [],
+      actions: ['Create a goal with a target amount and date.'],
+    };
+  }
+  const pacing = goal.pacing;
+  const status = pacing.pacingStatus.replace(/_/g, ' ');
+  return {
+    answer: `${goal.name} is ${status}. You have ${cents(pacing.remainingAmountCents)} remaining.${
+      pacing.projectedCompletionDate ? ` At your recent pace, the projected completion date is ${pacing.projectedCompletionDate}.` : ''
+    }`,
+    facts: [{ label: `${goal.name} remaining`, amountCents: pacing.remainingAmountCents, source: 'goal' }],
+    actions: pacing.weeklyTargetCents
+      ? [`Set aside ${cents(pacing.weeklyTargetCents)} per week to target ${goal.targetDate}.`]
+      : ['Add a target date to turn this into a weekly savings target.'],
+  };
+}
+
+async function answerBudgetQuestion(userId: number, question: string): Promise<Omit<ChatAnswerView, 'id' | 'createdAt'> | null> {
+  if (!/(budget|spending limit|need to cut|cut to save)/i.test(question)) return null;
+  const context = await assembleCoachingContext(db, userId, 'weekly_brief');
+  const category = context.topDiscretionaryCategories[0];
+  const requested = question.match(/\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/);
+  const requestedCents = requested ? Math.round(Number(requested[1]!.replace(/,/g, '')) * 100) : null;
+  if (!category) {
+    return {
+      answer: 'I need at least a week of categorized spending before I can recommend a grounded budget limit.',
+      facts: [],
+      actions: ['Sync transactions, then ask again after your first weekly rollup.'],
+    };
+  }
+  const suggestedCutCents = requestedCents ?? Math.max(500, Math.round(category.amountCents * 0.1));
+  const suggestedLimitCents = Math.max(0, category.amountCents - suggestedCutCents);
+  return {
+    answer: `Your largest recent discretionary category is ${category.label} at ${cents(category.amountCents)} this week. A starting weekly limit of ${cents(
+      suggestedLimitCents,
+    )} would create ${cents(Math.min(suggestedCutCents, category.amountCents))} of room if your pattern holds.`,
+    facts: [{ label: `${category.label} spend this week`, amountCents: category.amountCents, source: 'feature_rollup' }],
+    actions: [`Set a ${cents(suggestedLimitCents)} weekly limit for ${category.label}.`, 'Review the limit after two full weeks.'],
+  };
+}
+
 async function answerGeneralQuestion(userId: number): Promise<Omit<ChatAnswerView, 'id' | 'createdAt'>> {
   const [weekly, firstLook, wins, goalViews] = await Promise.all([
     latestInsight(userId, 'weekly_brief'),
@@ -500,19 +551,77 @@ async function answerGeneralQuestion(userId: number): Promise<Omit<ChatAnswerVie
   if (topGoal) facts.push({ label: `${topGoal.name} remaining`, amountCents: topGoal.pacing.remainingAmountCents, source: 'goal' });
   return {
     answer: brief
-      ? `${brief.headline}. ${brief.action.description}`
-      : 'I need linked transaction history before I can coach from your actual spending.',
+      ? 'I found relevant account context, but I could not safely tailor it to that question just now.'
+      : 'I need linked transaction history before I can answer that question from your actual spending.',
     facts,
     actions: [brief?.action.description ?? 'Link an account to generate your first brief.'],
   };
 }
 
+function mergeChatFacts(primary: ChatFactView[], extra: ChatFactView[]): ChatFactView[] {
+  const seen = new Set<string>();
+  return [...primary, ...extra].filter((fact) => {
+    const key = `${fact.source}:${fact.label}:${fact.amountCents ?? 'null'}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 20);
+}
+
+function sourceForContextFact(kind: string): ChatFactView['source'] {
+  if (kind === 'goal_remaining') return 'goal';
+  if (kind === 'recurring_charge') return 'subscription_audit';
+  return 'feature_rollup';
+}
+
 async function buildChatAnswer(userId: number, question: string): Promise<ChatAnswerView> {
-  const body =
+  const deterministic =
     (await answerSubscriptionQuestion(userId, question)) ??
     (await answerAffordQuestion(userId, question)) ??
     (await answerSpendingQuestion(userId, question)) ??
+    (await answerGoalQuestion(userId, question)) ??
+    (await answerBudgetQuestion(userId, question)) ??
     (await answerGeneralQuestion(userId));
+
+  let body = deterministic;
+  try {
+    const context = await assembleCoachingContext(db, userId, 'weekly_brief');
+    const contextFacts: ChatFactView[] = context.facts.map((fact) => ({
+      label: fact.label,
+      amountCents: fact.amountCents,
+      source: sourceForContextFact(fact.kind),
+    }));
+    const availableFacts = mergeChatFacts(deterministic.facts, contextFacts);
+    body = await generateGroundedChatAnswer(question, deterministic, availableFacts, {
+      weeksOfData: context.weeksOfData,
+      recentWeeklyNetCents: context.profile.recentWeeklyNetCents,
+      hasIncome: context.profile.hasIncome,
+      goals: context.goals.map((goal) => ({
+        name: goal.name,
+        pacingStatus: goal.pacingStatus,
+        remainingAmountCents: goal.remainingAmountCents,
+        weeklyTargetCents: goal.weeklyTargetCents,
+        targetDate: goal.targetDate,
+        projectedCompletionDate: goal.projectedCompletionDate,
+      })),
+      categories: context.topDiscretionaryCategories.map((category) => ({
+        label: category.label,
+        amountCents: category.amountCents,
+        deltaCents: category.deltaCents,
+      })),
+      recurringCharges: context.recurringCharges.map((charge) => ({
+        merchant: charge.merchantClean,
+        cadence: charge.cadence,
+        avgAmountCents: charge.avgAmountCents,
+      })),
+      anomalies: context.anomalies.map((anomaly) => ({
+        title: anomaly.title,
+        amountCents: anomaly.amountCents,
+      })),
+    });
+  } catch (err) {
+    console.error('[chat] Anthropic response failed; using grounded deterministic answer:', safeErrorSummary(err));
+  }
 
   const [saved] = await db
     .insert(chatMessages)

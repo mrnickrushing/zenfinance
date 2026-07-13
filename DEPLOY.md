@@ -46,6 +46,8 @@ DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 | `ENRICHMENT_MODEL` | `claude-haiku-4-5` |
 | `INSIGHT_PROVIDER` | `anthropic` |
 | `INSIGHT_MODEL` | `claude-sonnet-5` — the coaching brief runs on Sonnet for reasoning quality |
+| `CHAT_PROVIDER` | `anthropic` |
+| `CHAT_MODEL` | `claude-sonnet-5` — answers on-demand coach questions from server-scoped facts |
 | `REVENUECAT_IOS_API_KEY` | RevenueCat public iOS SDK key; also set this in `apps/ios/app.json` for builds |
 | `REVENUECAT_SECRET_API_KEY` | RevenueCat secret REST key for server-side subscriber refresh and restore validation |
 | `REVENUECAT_WEBHOOK_AUTH` | Shared Authorization value configured on the RevenueCat webhook |
