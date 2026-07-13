@@ -1284,6 +1284,11 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
 function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);
+  const [bankQuery, setBankQuery] = useState('');
+  const bankNames = ['Chase', 'Wells Fargo', 'Bank of America', 'Citibank', 'Capital One', 'US Bank'];
+  const filteredBanks = bankQuery.trim()
+    ? bankNames.filter((name) => name.toLowerCase().includes(bankQuery.trim().toLowerCase()))
+    : bankNames;
 
   async function linkBank() {
     setBusy(true);
@@ -1330,7 +1335,21 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
         <PrimaryButton label={busy ? 'Opening Plaid...' : 'Link a bank'} icon={Landmark} disabled={busy} onPress={linkBank} />
       </SectionBand>
       <Text style={styles.zenSectionLabel}>POPULAR BANKS</Text>
-      <View style={styles.bankGrid}>{['Chase', 'Wells Fargo', 'Bank of America', 'Citibank', 'Capital One', 'US Bank'].map((name) => <Pressable key={name} style={styles.bankTile} onPress={linkBank}><Landmark color={theme.accent} size={18} /><Text style={styles.bankTileText}>{name}</Text></Pressable>)}</View>
+      <View style={[styles.bankSearchBar, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+        <MaterialSymbol name="search" size={17} color={theme.muted} />
+        <TextInput
+          style={[styles.bankSearchInput, { color: theme.ink }]}
+          placeholder="Search for your bank"
+          placeholderTextColor={theme.muted}
+          value={bankQuery}
+          onChangeText={setBankQuery}
+        />
+      </View>
+      <View style={styles.bankGrid}>{filteredBanks.map((name) => <Pressable key={name} style={styles.bankTile} onPress={linkBank}><Landmark color={theme.accent} size={18} /><Text style={styles.bankTileText}>{name}</Text></Pressable>)}</View>
+      <View style={styles.securityBanner}>
+        <MaterialSymbol name="lock" size={16} color={theme.muted} />
+        <Text style={styles.securityBannerText}>Your data is encrypted and private. We never store your login credentials.</Text>
+      </View>
       <ZenGlass style={styles.budgetEntryCard}>
         <View style={styles.budgetEntryIcon}><CircleDollarSign color={theme.violet} size={18} /></View>
         <View style={styles.flexShrink}><Text style={styles.budgetEntryTitle}>Preview Smart Budgeting</Text><Text style={styles.budgetEntryBody}>Explore the calm spending view before linking an account.</Text></View>
@@ -4044,6 +4063,10 @@ const styles = StyleSheet.create({
   bankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bankTile: { width: '31%', minHeight: 70, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF26', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 7, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   bankTileText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'center' },
+  bankSearchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, minHeight: 46 },
+  bankSearchInput: { flex: 1, fontSize: 14, fontFamily: 'Inter_400Regular' },
+  securityBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 4 },
+  securityBannerText: { flex: 1, color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
   budgetEntryCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#8E44AD66', borderRadius: 18, backgroundColor: '#8E44AD14' },
   budgetEntryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
   budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
