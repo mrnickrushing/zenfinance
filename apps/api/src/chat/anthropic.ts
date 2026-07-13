@@ -47,9 +47,11 @@ Rules:
 - Return JSON matching the required schema.`;
 
 function dollarAmounts(text: string): number[] {
-  return [...text.matchAll(/\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g)].map((match) =>
-    Math.round(Number(match[1]!.replace(/,/g, '')) * 100),
-  );
+  return [
+    ...text.matchAll(
+      /(?:\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)|([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:dollars?|usd)\b)/gi,
+    ),
+  ].map((match) => Math.round(Number((match[1] ?? match[2])!.replace(/,/g, '')) * 100));
 }
 
 export async function generateGroundedChatAnswer(
@@ -64,7 +66,7 @@ export async function generateGroundedChatAnswer(
   const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 15_000 });
   const response = await client.messages.create({
     model: env.CHAT_MODEL,
-    max_tokens: 900,
+    max_tokens: 2400,
     system: CHAT_SYSTEM_PROMPT,
     output_config: { format: { type: 'json_schema', schema: CHAT_JSON_SCHEMA } },
     messages: [
@@ -83,7 +85,10 @@ export async function generateGroundedChatAnswer(
   if (response.stop_reason === 'refusal') throw new Error('chat model refused the request');
   const text = response.content.find((block): block is Anthropic.TextBlock => block.type === 'text')?.text ?? '';
   const parsed = responseSchema.parse(JSON.parse(text));
-  const indexes = [...new Set(parsed.fact_indexes)].filter((index) => index < availableFacts.length);
+  if (parsed.fact_indexes.some((index) => index >= availableFacts.length)) {
+    throw new Error('chat model returned an invalid fact index');
+  }
+  const indexes = [...new Set(parsed.fact_indexes)];
   const allowedAmounts = new Set([
     ...availableFacts.flatMap((fact) => (fact.amountCents === null ? [] : [Math.abs(fact.amountCents)])),
     ...dollarAmounts(`${draft.answer} ${draft.actions.join(' ')}`),

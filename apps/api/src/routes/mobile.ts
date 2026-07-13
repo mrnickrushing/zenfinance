@@ -499,6 +499,37 @@ async function answerGoalQuestion(userId: number, question: string): Promise<Omi
     };
   }
   const pacing = goal.pacing;
+  const accelerationMatch = question.match(/(?:move|finish|reach).*?(\d+)\s*weeks?/i);
+  const wordAcceleration = /\btwo weeks?\b/i.test(question) ? 2 : /\bone week\b/i.test(question) ? 1 : null;
+  const accelerationWeeks = accelerationMatch ? Number(accelerationMatch[1]) : wordAcceleration;
+  if (accelerationWeeks && accelerationWeeks > 0 && pacing.remainingAmountCents > 0) {
+    const recentWeeklyNet = await getRecentWeeklyNetCents(db, userId);
+    if (recentWeeklyNet <= 0) {
+      return {
+        answer: `${goal.name} cannot be accelerated from the current projection because recent weekly net savings are not positive.`,
+        facts: [
+          { label: `${goal.name} remaining`, amountCents: pacing.remainingAmountCents, source: 'goal' },
+          { label: 'Recent average weekly net', amountCents: recentWeeklyNet, source: 'feature_rollup' },
+        ],
+        actions: ['Create a positive weekly surplus first, then recalculate the goal timeline.'],
+      };
+    }
+    const currentWeeks = Math.ceil(pacing.remainingAmountCents / recentWeeklyNet);
+    const acceleratedWeeks = Math.max(1, currentWeeks - accelerationWeeks);
+    const requiredWeeklyNet = Math.ceil(pacing.remainingAmountCents / acceleratedWeeks);
+    const extraWeeklyCents = Math.max(0, requiredWeeklyNet - recentWeeklyNet);
+    return {
+      answer: `To move ${goal.name} up by about ${accelerationWeeks} week${accelerationWeeks === 1 ? '' : 's'}, increase weekly savings by ${cents(
+        extraWeeklyCents,
+      )}, from ${cents(recentWeeklyNet)} to ${cents(requiredWeeklyNet)}.`,
+      facts: [
+        { label: `${goal.name} remaining`, amountCents: pacing.remainingAmountCents, source: 'goal' },
+        { label: 'Recent average weekly net', amountCents: recentWeeklyNet, source: 'feature_rollup' },
+        { label: 'Additional weekly savings needed', amountCents: extraWeeklyCents, source: 'goal' },
+      ],
+      actions: [`Add ${cents(extraWeeklyCents)} to weekly savings and review the projection after the next sync.`],
+    };
+  }
   const status = pacing.pacingStatus.replace(/_/g, ' ');
   return {
     answer: `${goal.name} is ${status}. You have ${cents(pacing.remainingAmountCents)} remaining.${
@@ -517,15 +548,26 @@ async function answerBudgetQuestion(userId: number, question: string): Promise<O
   const category = context.topDiscretionaryCategories[0];
   const requested = question.match(/\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/);
   const requestedCents = requested ? Math.round(Number(requested[1]!.replace(/,/g, '')) * 100) : null;
+  const requestsReduction = /(cut|save|reduce|trim)/i.test(question);
   if (!category) {
+    if (requestedCents !== null && !requestsReduction) {
+      return {
+        answer: `Use ${cents(requestedCents)} as the weekly spending limit. I will be able to compare it with your actual category history after the next rollup.`,
+        facts: [{ label: 'Requested weekly spending limit', amountCents: requestedCents, source: 'transaction_query' }],
+        actions: [`Set a ${cents(requestedCents)} weekly spending limit.`],
+      };
+    }
     return {
       answer: 'I need at least a week of categorized spending before I can recommend a grounded budget limit.',
       facts: [],
       actions: ['Sync transactions, then ask again after your first weekly rollup.'],
     };
   }
-  const suggestedCutCents = requestedCents ?? Math.max(500, Math.round(category.amountCents * 0.1));
-  const suggestedLimitCents = Math.max(0, category.amountCents - suggestedCutCents);
+  const suggestedLimitCents =
+    requestedCents !== null && !requestsReduction
+      ? requestedCents
+      : Math.max(0, category.amountCents - (requestedCents ?? Math.max(500, Math.round(category.amountCents * 0.1))));
+  const suggestedCutCents = Math.max(0, category.amountCents - suggestedLimitCents);
   return {
     answer: `Your largest recent discretionary category is ${category.label} at ${cents(category.amountCents)} this week. A starting weekly limit of ${cents(
       suggestedLimitCents,
@@ -578,9 +620,9 @@ async function buildChatAnswer(userId: number, question: string): Promise<ChatAn
   const deterministic =
     (await answerSubscriptionQuestion(userId, question)) ??
     (await answerAffordQuestion(userId, question)) ??
+    (await answerBudgetQuestion(userId, question)) ??
     (await answerSpendingQuestion(userId, question)) ??
     (await answerGoalQuestion(userId, question)) ??
-    (await answerBudgetQuestion(userId, question)) ??
     (await answerGeneralQuestion(userId));
 
   let body = deterministic;

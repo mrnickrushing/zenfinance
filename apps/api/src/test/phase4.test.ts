@@ -100,6 +100,22 @@ describe('Phase 4 mobile product API', () => {
     expect(budget.status).toBe(201);
     expect(budget.body.answer).not.toContain('could not safely tailor');
     expect(budget.body.actions.length).toBeGreaterThan(0);
+
+    const explicitLimit = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'Set a $100 spending limit.' });
+    expect(explicitLimit.status).toBe(201);
+    expect(explicitLimit.body.answer).toContain('$100.00');
+    expect(explicitLimit.body.actions.some((action: string) => action.includes('$100.00'))).toBe(true);
+
+    const accelerated = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'What would move my goal up by two weeks?' });
+    expect(accelerated.status).toBe(201);
+    expect(accelerated.body.answer).toContain('2 weeks');
+    expect(accelerated.body.answer).toContain('weekly savings');
   });
 
   it('streams chat answers over server-sent events', async () => {
