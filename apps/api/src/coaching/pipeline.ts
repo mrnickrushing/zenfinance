@@ -4,6 +4,7 @@ import { insights, items, users } from '../db/schema.js';
 import { recordAiUsage } from '../enrichment/cost.js';
 import { computeRecentRollups } from '../features/rollup.js';
 import { sendPushToUser } from '../lib/push.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 import { detectAnomalies } from './anomalies.js';
 import { assembleCoachingContext } from './derive.js';
 import { recordSpendReductionWins, verifyMoneyWins } from './moneyWins.js';
@@ -110,7 +111,7 @@ export async function generateAndStoreBrief(
       }
       console.warn(`[coaching] brief attempt ${attempt + 1} failed guard: ${validation.reason}`);
     } catch (err) {
-      console.error(`[coaching] brief attempt ${attempt + 1} threw:`, err);
+      console.error(`[coaching] brief attempt ${attempt + 1} threw:`, safeErrorSummary(err));
     }
   }
 

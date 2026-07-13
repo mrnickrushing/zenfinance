@@ -87,6 +87,15 @@ export function createAdminRouter(): ReturnType<typeof Router> {
       error: { code: 'rate_limited', message: 'Too many login attempts, try again later' },
     },
   });
+  const sessionLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+      error: { code: 'rate_limited', message: 'Too many session requests, try again later' },
+    },
+  });
 
   function setRefreshCookie(res: Response, token: string): void {
     res.cookie(REFRESH_COOKIE, token, {
@@ -114,7 +123,7 @@ export function createAdminRouter(): ReturnType<typeof Router> {
     },
   );
 
-  adminRouter.post('/api/admin/refresh', async (req, res) => {
+  adminRouter.post('/api/admin/refresh', sessionLimiter, async (req, res) => {
     const presented = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
     if (!presented) {
       res.status(401).json({ error: { code: 'unauthorized', message: 'Missing refresh token' } });
@@ -130,7 +139,7 @@ export function createAdminRouter(): ReturnType<typeof Router> {
     res.json({ accessToken: rotated.accessToken });
   });
 
-  adminRouter.post('/api/admin/logout', async (req, res) => {
+  adminRouter.post('/api/admin/logout', sessionLimiter, async (req, res) => {
     const presented = (req.cookies as Record<string, string | undefined>)[REFRESH_COOKIE];
     if (presented) await revokeRefreshToken(db, presented);
     res.clearCookie(REFRESH_COOKIE, { path: '/api/admin' });

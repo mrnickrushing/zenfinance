@@ -34,6 +34,38 @@ describe('GET /health', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ ok: true, db: 'up' });
   });
+
+  it('sets baseline security headers without advertising Express', async () => {
+    const res = await request(app).get('/health');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect(res.headers['x-powered-by']).toBeUndefined();
+  });
+
+  it('prevents API responses from being cached', async () => {
+    const res = await request(app).get('/api/content/launch-stats');
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+});
+
+describe('request body boundary', () => {
+  it('returns a safe 400 for malformed JSON', async () => {
+    const res = await request(app)
+      .post('/api/waitlist')
+      .set('Content-Type', 'application/json')
+      .send('{"email":');
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { code: 'invalid_json', message: 'Malformed JSON request body' } });
+  });
+
+  it('returns 413 for a JSON body above the configured limit', async () => {
+    const res = await request(app)
+      .post('/api/support')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ name: 'N', email: 'n@example.com', message: 'x'.repeat(140_000) }));
+    expect(res.status).toBe(413);
+    expect(res.body.error.code).toBe('payload_too_large');
+  });
 });
 
 describe('POST /api/waitlist', () => {

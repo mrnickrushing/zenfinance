@@ -23,6 +23,13 @@ import { createTransactionsRouter } from './routes/transactions.js';
 import { createVoiceBriefsRouter } from './routes/voiceBriefs.js';
 import { createWaitlistRouter } from './routes/waitlist.js';
 import { createWebhooksRouter } from './routes/webhooks.js';
+import { safeErrorSummary } from './lib/safeError.js';
+
+interface HttpBodyError extends Error {
+  status?: number;
+  statusCode?: number;
+  type?: string;
+}
 
 export function createApp(): express.Express {
   const app = express();
@@ -44,6 +51,12 @@ export function createApp(): express.Express {
     }),
   );
   app.use(cookieParser());
+  // Financial and session responses must not be retained by browser, proxy,
+  // or device HTTP caches. Public marketing assets are served elsewhere.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
 
   app.use(createHealthRouter());
   app.use(createWaitlistRouter());
@@ -73,8 +86,20 @@ export function createApp(): express.Express {
   });
 
   // Central error handler: consistent shape, no stack traces to clients.
-  app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-    console.error('[api] unhandled error:', err);
+  app.use((err: HttpBodyError, req: Request, res: Response, _next: NextFunction) => {
+    if (err.type === 'entity.too.large' || err.status === 413 || err.statusCode === 413) {
+      res.status(413).json({ error: { code: 'payload_too_large', message: 'Request body is too large' } });
+      return;
+    }
+    if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+      res.status(400).json({ error: { code: 'invalid_json', message: 'Malformed JSON request body' } });
+      return;
+    }
+    if (err.status === 415 || err.statusCode === 415) {
+      res.status(415).json({ error: { code: 'unsupported_media_type', message: 'Unsupported request encoding' } });
+      return;
+    }
+    console.error('[api] unhandled error:', safeErrorSummary(err));
     Sentry.captureException(err, {
       tags: { route: req.path, method: req.method },
     });

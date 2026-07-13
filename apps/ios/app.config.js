@@ -19,6 +19,10 @@ module.exports = {
       usesAppleSignIn: true,
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
+        NSAppTransportSecurity: {
+          NSAllowsArbitraryLoads: false,
+          NSAllowsLocalNetworking: false,
+        },
       },
     },
     plugins: [
@@ -31,7 +35,14 @@ module.exports = {
           sounds: [],
         },
       ],
-      '@sentry/react-native',
+      [
+        '@sentry/react-native',
+        {
+          organization: 'rushing-technologies',
+          project: 'zenfinance',
+          url: 'https://sentry.io/',
+        },
+      ],
       './withFollyCoroutineFix',
     ],
     // 'appVersion' ties the OTA runtime version to the `version` field above

@@ -49,6 +49,13 @@ export function createAuthRouter(): ReturnType<typeof Router> {
     legacyHeaders: false,
     message: { error: { code: 'rate_limited', message: 'Too many attempts, try again later' } },
   });
+  const sessionLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    limit: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: { code: 'rate_limited', message: 'Too many session requests, try again later' } },
+  });
 
   async function issueTokens(userId: number) {
     return {
@@ -228,7 +235,7 @@ export function createAuthRouter(): ReturnType<typeof Router> {
     },
   );
 
-  authRouter.post('/api/auth/refresh', validateBody(refreshSchema), async (_req, res) => {
+  authRouter.post('/api/auth/refresh', sessionLimiter, validateBody(refreshSchema), async (_req, res) => {
     const input = res.locals.body as RefreshInput;
     const rotated = await rotateUserRefreshToken(db, input.refreshToken);
     if (!rotated) {
@@ -238,7 +245,7 @@ export function createAuthRouter(): ReturnType<typeof Router> {
     res.json({ accessToken: rotated.accessToken, refreshToken: rotated.refreshToken });
   });
 
-  authRouter.post('/api/auth/logout', validateBody(refreshSchema), async (_req, res) => {
+  authRouter.post('/api/auth/logout', sessionLimiter, validateBody(refreshSchema), async (_req, res) => {
     const input = res.locals.body as RefreshInput;
     await revokeUserRefreshToken(db, input.refreshToken);
     res.json({ ok: true });

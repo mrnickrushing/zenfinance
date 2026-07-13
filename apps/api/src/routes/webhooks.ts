@@ -6,6 +6,7 @@ import { items } from '../db/schema.js';
 import { env } from '../env.js';
 import { getProvider } from '../providers/index.js';
 import { enqueueItemSync } from '../queue/index.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 
 const SYNC_CODES = new Set(['SYNC_UPDATES_AVAILABLE', 'DEFAULT_UPDATE', 'INITIAL_UPDATE', 'HISTORICAL_UPDATE']);
 const LOGIN_REQUIRED_ITEM_CODES = new Set(['ERROR', 'PENDING_EXPIRATION', 'PENDING_DISCONNECT']);
@@ -83,7 +84,7 @@ export function createWebhooksRouter(): ReturnType<typeof Router> {
         await enqueueItemSync(item.id);
       }
     } catch (err) {
-      console.error('[webhook] plaid webhook processing failed:', err);
+      console.error('[webhook] plaid webhook processing failed:', safeErrorSummary(err));
     }
 
     res.json({ ok: true });

@@ -49,6 +49,7 @@ import {
 import { env } from '../env.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
 import { decryptToken } from '../lib/crypto.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 import { getProvider } from '../providers/index.js';
 import { moneyPhysicalReportsForExport } from '../moneyPhysical/service.js';
 
@@ -445,7 +446,7 @@ export async function deleteUserAccount(db: Db, userId: number): Promise<Privacy
       await getProvider().removeItem(decryptToken(item.encryptedAccessToken));
     } catch (err) {
       failures += 1;
-      console.error(`[privacy] provider removeItem failed for item ${item.id}:`, err);
+      console.error(`[privacy] provider removeItem failed for item ${item.id}:`, safeErrorSummary(err));
       revocationJobs.push({
         provider: item.provider,
         encryptedAccessToken: item.encryptedAccessToken,

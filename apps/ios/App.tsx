@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
+import { resolveApiUrl, safeAppStoreSubscriptionUrl } from './src/security';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
@@ -52,6 +53,7 @@ import {
   AccessibilityInfo,
   Animated,
   Alert,
+  AppState as NativeAppState,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -117,16 +119,31 @@ import type {
   WhatIfResultView,
 } from '@zenfinance/shared';
 
-const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'https://api.zenfinance.rushingtechnologies.com';
+const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
 const OTA_DIAGNOSTIC_LABEL = 'Finance shell UI cleanup · 2026-07-12.2';
+const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
+  ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
+  : undefined;
 
 if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
     sendDefaultPii: false,
+    attachScreenshot: false,
+    attachViewHierarchy: false,
     tracesSampleRate: 0.2,
+    beforeSend(event) {
+      event.user = undefined;
+      if (event.request) {
+        event.request.cookies = undefined;
+        event.request.data = undefined;
+        event.request.headers = undefined;
+        event.request.query_string = undefined;
+      }
+      return event;
+    },
   });
 }
 
@@ -258,8 +275,8 @@ async function persistTokens(tokens: AuthTokens | null): Promise<void> {
     await SecureStore.deleteItemAsync('refreshToken');
     return;
   }
-  await SecureStore.setItemAsync('accessToken', tokens.accessToken);
-  await SecureStore.setItemAsync('refreshToken', tokens.refreshToken);
+  await SecureStore.setItemAsync('accessToken', tokens.accessToken, DEVICE_BOUND_STORE_OPTIONS);
+  await SecureStore.setItemAsync('refreshToken', tokens.refreshToken, DEVICE_BOUND_STORE_OPTIONS);
 }
 
 let refreshPromise: Promise<AuthTokens | null> | null = null;
@@ -769,6 +786,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 export default function App() {
   const { accessToken, loading, setTokens, setLoading } = useAppStore();
   const theme = useTheme();
+  const [privacyShielded, setPrivacyShielded] = useState(NativeAppState.currentState !== 'active');
   const [fontsLoaded, fontError] = useFonts({
     Inter_300Light,
     Inter_400Regular,
@@ -785,7 +803,9 @@ export default function App() {
           SecureStore.getItemAsync('accessToken'),
           SecureStore.getItemAsync('refreshToken'),
         ]);
-        setTokens(access && refresh ? { accessToken: access, refreshToken: refresh } : null);
+        const tokens = access && refresh ? { accessToken: access, refreshToken: refresh } : null;
+        if (tokens) await persistTokens(tokens);
+        setTokens(tokens);
       } catch (err) {
         Sentry.captureException(err);
         setTokens(null);
@@ -795,6 +815,13 @@ export default function App() {
     })();
   }, [setLoading, setTokens]);
 
+  useEffect(() => {
+    const subscription = NativeAppState.addEventListener('change', (state) => {
+      setPrivacyShielded(state !== 'active');
+    });
+    return () => subscription.remove();
+  }, []);
+
   if (loading || (!fontsLoaded && !fontError)) {
     return (
       <SafeAreaView style={[styles.center, { backgroundColor: theme.bg }]}>
@@ -803,7 +830,18 @@ export default function App() {
     );
   }
 
-  return <AppErrorBoundary>{accessToken ? <ProductShell /> : <AuthScreen />}</AppErrorBoundary>;
+  return (
+    <View style={styles.flex}>
+      <AppErrorBoundary>{accessToken ? <ProductShell /> : <AuthScreen />}</AppErrorBoundary>
+      {accessToken && privacyShielded ? (
+        <View
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={styles.privacyShield}
+        />
+      ) : null}
+    </View>
+  );
 }
 
 function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
@@ -2171,7 +2209,7 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   }, []);
 
   const persistBudget = useCallback((next: BudgetConfig) => {
-    void SecureStore.setItemAsync(BUDGET_CONFIG_KEY, JSON.stringify(next)).catch(() => {
+    void SecureStore.setItemAsync(BUDGET_CONFIG_KEY, JSON.stringify(next), DEVICE_BOUND_STORE_OPTIONS).catch(() => {
       Alert.alert('Budget not saved', 'Your device could not securely save these settings.');
     });
   }, []);
@@ -3205,7 +3243,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         method: 'POST',
         body: JSON.stringify({ token: token.data, platform: Platform.OS === 'ios' ? 'ios' : 'android' }),
       });
-      await SecureStore.setItemAsync('expoPushToken', token.data);
+      await SecureStore.setItemAsync('expoPushToken', token.data, DEVICE_BOUND_STORE_OPTIONS);
       setPrefs(next);
     } catch (err) {
       Sentry.captureException(err);
@@ -3461,12 +3499,14 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }
 
   function manageSubscription() {
-    const url = billing.entitlement?.managementUrl;
+    const url = safeAppStoreSubscriptionUrl(billing.entitlement?.managementUrl);
     if (!url) {
       Alert.alert('Subscription management', 'Manage your subscription from the App Store account used for purchase.');
       return;
     }
-    void Linking.openURL(url);
+    void Linking.openURL(url).catch(() => {
+      Alert.alert('Subscription management', 'Unable to open App Store subscription settings.');
+    });
   }
 
   async function deleteAccount() {
@@ -4065,6 +4105,7 @@ function SecondaryButton({
 }
 
 const styles = StyleSheet.create({
+  privacyShield: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000, elevation: 10000, backgroundColor: '#0B0E14' },
   globalText: { fontFamily: 'Inter_400Regular', letterSpacing: 0 },
   flex: { flex: 1 },
   flexShrink: { flex: 1, minWidth: 0 },

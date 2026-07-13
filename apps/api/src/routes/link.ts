@@ -9,6 +9,7 @@ import { FREE_LIMITS, userHasPremium } from '../billing/service.js';
 import { db } from '../db/client.js';
 import { accounts, items } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 import { userRateLimit } from '../middleware/userRateLimit.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
@@ -128,7 +129,7 @@ export function createLinkRouter(): ReturnType<typeof Router> {
       await getProvider().removeItem(decryptToken(item.encryptedAccessToken));
     } catch (err) {
       // Provider revocation failing must not block the user's deletion right.
-      console.error(`[link] provider removeItem failed for item ${item.id}:`, err);
+      console.error(`[link] provider removeItem failed for item ${item.id}:`, safeErrorSummary(err));
     }
     await db.delete(items).where(eq(items.id, item.id));
     res.json({ ok: true });

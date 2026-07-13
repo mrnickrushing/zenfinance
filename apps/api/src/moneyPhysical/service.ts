@@ -358,6 +358,7 @@ export async function validateMoneyPhysicalRevenueCatPurchase(
       Authorization: `Bearer ${env.REVENUECAT_SECRET_API_KEY}`,
       Accept: 'application/json',
     },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) {
     throw new Error(`RevenueCat subscriber refresh failed (${res.status})`);

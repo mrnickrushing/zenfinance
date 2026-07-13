@@ -2,6 +2,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { pushTokens } from '../db/schema.js';
 import { env } from '../env.js';
+import { safeErrorSummary } from './safeError.js';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 
@@ -59,6 +60,7 @@ export async function sendPushToUser(db: Db, userId: number, payload: PushPayloa
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify(messages),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       console.error(`[push] Expo responded ${res.status} for user ${userId}`);
@@ -66,7 +68,7 @@ export async function sendPushToUser(db: Db, userId: number, payload: PushPayloa
     }
     return messages.length;
   } catch (err) {
-    console.error(`[push] failed to send to user ${userId}:`, err);
+    console.error(`[push] failed to send to user ${userId}:`, safeErrorSummary(err));
     return 0;
   }
 }
