@@ -42,6 +42,7 @@ import {
   Square,
   Target,
   Trash2,
+  TrendingUp,
   UserRound,
   UserPlus,
   Users,
@@ -483,17 +484,11 @@ const LOTUS_PETALS = [
 const LOTUS_PETAL = 'M0 0 C -10 -14 -9 -29 0 -42 C 9 -29 10 -14 0 0 Z';
 const LOTUS_VEIN = 'M0 -3 C -1.6 -15 -1.2 -29 0 -38';
 
-function ZenLotus({ size = 18 }: { size?: number }) {
-  // "The First Breath" (animation spec): scale 1→1.08, opacity 0.7→1 over a 4s
-  // yoyo cycle on the standard bezier(0.4,0,0.2,1) curve.
+// "The First Breath" (animation spec): scale 1→1.08, opacity 0.7→1 over a 4s
+// yoyo cycle on the standard bezier(0.4,0,0.2,1) curve. Shared by every mark
+// that should "breathe" — the lotus itself, and the Coach's avatar icon.
+function useZenBreath() {
   const breathe = useRef(new Animated.Value(0)).current;
-  // Unique gradient ids per instance so multiple lotuses on one screen (e.g.
-  // profile avatar + score pill) don't collide on a shared def id.
-  const uid = useRef(Math.random().toString(36).slice(2, 8)).current;
-  const sid = `zl-s-${uid}`;
-  const fid = `zl-f-${uid}`;
-  const aid = `zl-a-${uid}`;
-
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -505,8 +500,20 @@ function ZenLotus({ size = 18 }: { size?: number }) {
     return () => animation.stop();
   }, [breathe]);
 
-  const opacity = breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] });
-  const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] });
+  return {
+    opacity: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
+    scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.08] }),
+  };
+}
+
+function ZenLotus({ size = 18 }: { size?: number }) {
+  const { opacity, scale } = useZenBreath();
+  // Unique gradient ids per instance so multiple lotuses on one screen (e.g.
+  // profile avatar + score pill) don't collide on a shared def id.
+  const uid = useRef(Math.random().toString(36).slice(2, 8)).current;
+  const sid = `zl-s-${uid}`;
+  const fid = `zl-f-${uid}`;
+  const aid = `zl-a-${uid}`;
 
   return (
     <Animated.View
@@ -1089,7 +1096,7 @@ function ProductShell() {
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
-    if (tab === 'coach') return <CoachScreen />;
+    if (tab === 'coach') return <CoachScreen score={home.zenScore.score} />;
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
@@ -1892,11 +1899,17 @@ function InsightPanel({ insight }: { insight: InsightView }) {
   );
 }
 
-function CoachScreen() {
+type CoachTurn = { id: string; question: string; askedAt: string; answer: ChatAnswerView };
+
+function timeLabel(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+function CoachScreen({ score }: { score: number | null }) {
   const theme = useTheme();
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
-  const [answers, setAnswers] = useState<ChatAnswerView[]>([]);
+  const [turns, setTurns] = useState<CoachTurn[]>([]);
 
   async function ask() {
     const trimmed = question.trim();
@@ -1908,7 +1921,7 @@ function CoachScreen() {
         method: 'POST',
         body: JSON.stringify({ question: trimmed }),
       });
-      setAnswers((items) => [...items, answer]);
+      setTurns((items) => [...items, { id: answer.id, question: trimmed, askedAt: new Date().toISOString(), answer }]);
       await requestApi('/api/app-events', {
         method: 'POST',
         body: JSON.stringify({ name: 'coach:asked_question' }),
@@ -1922,25 +1935,47 @@ function CoachScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <View style={styles.coachScreenHeader}><View><Text style={styles.zenPageTitle}>Zen AI Coach</Text><Text style={styles.zenPageSubtitle}>A calm place to ask anything about your money</Text></View><View style={styles.chatStatus}><View style={styles.zenScoreDot} /><Text style={styles.chatStatusText}>Online</Text></View></View>
+      <View style={styles.coachScreenHeader}>
+        <View>
+          <Text style={styles.zenPageTitle}>Zen AI Coach</Text>
+          <View style={styles.coachHeaderCaption}>
+            <View style={styles.coachHeaderDot} />
+            <Text style={styles.coachHeaderCaptionText}>MINDFUL PRESENCE</Text>
+          </View>
+        </View>
+        <ZenGlass style={styles.coachScoreBadge}>
+          <Text style={styles.coachScoreBadgeText}>{score ?? '—'}</Text>
+        </ZenGlass>
+      </View>
       <FlatList
-        data={answers}
+        data={turns}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatList}
         ListEmptyComponent={
           <CoachPromptBoard onPress={setQuestion} />
         }
-        renderItem={({ item }) => <ChatBubble answer={item} />}
+        renderItem={({ item }) => (
+          <View style={styles.chatTurn}>
+            <UserMessageBubble text={item.question} time={timeLabel(item.askedAt)} />
+            <ChatBubble answer={item.answer} />
+          </View>
+        )}
       />
-      <View style={[styles.quickPromptRail, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-        <QuickPromptChip label="Can I afford..." value="Can I afford $600 this month?" onPress={setQuestion} />
-        <QuickPromptChip label="Find waste" value="Which subscriptions should I cancel?" onPress={setQuestion} />
-        <QuickPromptChip label="Explain charge" value="Explain my largest unusual charge this month." onPress={setQuestion} />
-      </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.quickPromptRail, { borderColor: theme.border, backgroundColor: theme.surface }]}
+        contentContainerStyle={styles.quickPromptRailContent}
+      >
+        <QuickPromptChip icon={TrendingUp} label="Can I afford this?" value="Can I afford $600 this month?" onPress={setQuestion} />
+        <QuickPromptChip icon={CreditCard} label="Review subscriptions" value="Which subscriptions should I cancel?" onPress={setQuestion} />
+        <QuickPromptChip icon={PiggyBank} label="Optimize savings" value="How can I optimize my savings this month?" onPress={setQuestion} />
+        <QuickPromptChip icon={Sparkles} label="Zen Wisdom" value="Give me one calm, mindful money tip for today." onPress={setQuestion} />
+      </ScrollView>
       <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
         <TextInput
           style={[styles.composerInput, { color: theme.ink }]}
-          placeholder="Ask the coach"
+          placeholder="Ask Zen..."
           placeholderTextColor={theme.muted}
           value={question}
           onChangeText={setQuestion}
@@ -1955,14 +1990,35 @@ function CoachScreen() {
   );
 }
 
+function AiAvatarLabel({ label = 'Zen Coach' }: { label?: string }) {
+  const theme = useTheme();
+  const { opacity, scale } = useZenBreath();
+  return (
+    <View style={styles.chatBubbleHeader}>
+      <Animated.View style={[styles.chatBubbleIcon, { opacity, transform: [{ scale }] }]}>
+        <Bot color={theme.accent} size={14} />
+      </Animated.View>
+      <Text style={styles.chatBubbleKicker}>{label}</Text>
+    </View>
+  );
+}
+
+function UserMessageBubble({ text, time }: { text: string; time: string }) {
+  return (
+    <View style={styles.userMessageWrap}>
+      <View style={styles.userBubble}>
+        <Text style={styles.userBubbleText}>{text}</Text>
+      </View>
+      <Text style={styles.userBubbleTime}>{time}</Text>
+    </View>
+  );
+}
+
 function ChatBubble({ answer }: { answer: ChatAnswerView }) {
   const theme = useTheme();
   return (
     <CoachCard>
-      <View style={styles.chatBubbleHeader}>
-        <View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View>
-        <Text style={styles.chatBubbleKicker}>ZEN AI</Text>
-      </View>
+      <AiAvatarLabel />
       <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
       <InsightLedger facts={answer.facts} />
       {answer.actions.map((action) => (
@@ -2000,11 +2056,11 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
   return (
     <View style={styles.promptBoard}>
       <ZenGlass style={styles.chatMessageBubble}>
-        <View style={styles.chatBubbleHeader}><View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View><Text style={styles.chatBubbleKicker}>ZEN AI</Text></View>
+        <AiAvatarLabel />
         <Text style={styles.chatMessageText}>Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.</Text>
       </ZenGlass>
       <ZenGlass style={styles.chatMessageBubble}>
-        <View style={styles.chatBubbleHeader}><View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View><Text style={styles.chatBubbleKicker}>ZEN AI</Text></View>
+        <AiAvatarLabel />
         <Text style={styles.chatMessageText}>Ask me about a charge, a goal, or what you can comfortably spend next.</Text>
       </ZenGlass>
       <ZenGlass style={styles.coachInsightsCard}>
@@ -2034,10 +2090,21 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
   );
 }
 
-function QuickPromptChip({ label, value, onPress }: { label: string; value: string; onPress: (value: string) => void }) {
+function QuickPromptChip({
+  icon: Icon,
+  label,
+  value,
+  onPress,
+}: {
+  icon: IconComponent;
+  label: string;
+  value: string;
+  onPress: (value: string) => void;
+}) {
   const theme = useTheme();
   return (
     <Pressable style={[styles.quickPromptChip, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} onPress={() => onPress(value)}>
+      <Icon color={theme.ink} size={15} />
       <Text style={[styles.quickPromptText, { color: theme.ink }]} numberOfLines={1}>
         {label}
       </Text>
@@ -3289,9 +3356,8 @@ function MoneyMetric({ label, value, icon: Icon }: { label: string; value: strin
 }
 
 function CoachCard({ children }: { children: ReactNode }) {
-  const theme = useTheme();
   return (
-    <ZenGlass style={[styles.coachCard, styles.violetChatGlow, { borderColor: theme.violet }]}>
+    <ZenGlass style={[styles.coachCard, { borderColor: '#48EFEF4D' }]}>
       {children}
     </ZenGlass>
   );
@@ -3827,17 +3893,24 @@ const styles = StyleSheet.create({
   txnEmptyCta: { alignItems: 'center', gap: 8, padding: 20, marginTop: 8 },
   txnEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 4 },
   txnEmptyBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
-  chatList: { flexGrow: 1, padding: 20, gap: 10 },
-  coachCard: { borderWidth: 1, borderRadius: 24, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#8E44AD', shadowOpacity: 0.38, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  violetChatGlow: { backgroundColor: '#8E44AD14' },
+  chatList: { flexGrow: 1, padding: 20, gap: 14 },
+  chatTurn: { gap: 10 },
+  coachCard: { padding: 14, gap: 8, borderTopLeftRadius: 6 },
   chatBubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  chatBubbleIcon: { width: 26, height: 26, borderRadius: 9, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
+  chatBubbleIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#48EFEF1A', borderWidth: 1, borderColor: '#48EFEF4D', alignItems: 'center', justifyContent: 'center' },
   chatBubbleKicker: { color: '#FFFFFFB3', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 },
   chatPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  chatStatusText: { color: '#79E6B0', fontFamily: 'Inter_400Regular', fontSize: 10 },
-  chatMessageBubble: { alignSelf: 'stretch', gap: 8, borderColor: '#8E44AD66', backgroundColor: '#8E44AD14', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 24 },
+  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  coachHeaderCaption: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  coachHeaderDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#48EFEF' },
+  coachHeaderCaptionText: { color: '#FFFFFF99', fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 1.5 },
+  coachScoreBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', padding: 0 },
+  coachScoreBadgeText: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 13 },
+  userMessageWrap: { alignItems: 'flex-end', gap: 4 },
+  userBubble: { maxWidth: '85%', backgroundColor: '#6F258E33', borderWidth: 1, borderColor: '#ECB2FF1A', borderRadius: 22, borderTopRightRadius: 6, paddingVertical: 12, paddingHorizontal: 16 },
+  userBubbleText: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
+  userBubbleTime: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginRight: 4 },
+  chatMessageBubble: { alignSelf: 'stretch', gap: 8, borderColor: '#48EFEF4D', borderTopLeftRadius: 6 },
   chatMessageText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
   chatPromptLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
   coachInsightsCard: { alignSelf: 'stretch', gap: 8, borderColor: '#00D2D34D' },
@@ -3849,9 +3922,10 @@ const styles = StyleSheet.create({
   coachInsightCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 },
   promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
   promptGroup: { borderWidth: 1, borderRadius: 18, padding: 12, gap: 8, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
-  quickPromptChip: { flex: 1, minHeight: 36, borderWidth: 1, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26' },
-  quickPromptText: { fontSize: 12, lineHeight: 16, fontWeight: '800', textAlign: 'center' },
+  quickPromptRail: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
+  quickPromptRailContent: { flexDirection: 'row', gap: 8, paddingRight: 12 },
+  quickPromptChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26' },
+  quickPromptText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
   insightLedger: { borderWidth: 1, borderRadius: 18, padding: 10, gap: 6, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   ledgerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   ledgerLabel: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
@@ -3861,7 +3935,7 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  sendButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
+  sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#00D2D3', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   progressTrack: { height: 10, borderRadius: 10, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 10 },
   scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
