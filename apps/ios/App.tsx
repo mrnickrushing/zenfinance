@@ -54,6 +54,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -2140,15 +2141,22 @@ function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryVie
   );
 }
 
-function ZenMilestoneCard({ goal }: { goal: GoalView }) {
+function MilestoneModal({ goal, onDismiss }: { goal: GoalView; onDismiss: () => void }) {
+  const percent = Math.round(goal.pacing.progressRatio * 100);
   return (
-    <ZenGlass style={styles.milestoneCard}>
-      <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
-      <Text style={styles.milestoneSubtitle}>{goal.name}</Text>
-      <View style={styles.milestoneLotus}><ZenLotusPhoto variant="milestone" width={140} /></View>
-      <Text style={styles.milestoneBody}>You’re making steady progress. Take a breath and celebrate this step.</Text>
-      <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={() => {}} />
-    </ZenGlass>
+    <Modal visible transparent animationType="fade" onRequestClose={onDismiss}>
+      <View style={styles.milestoneBackdrop}>
+        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+        <ZenGlass style={styles.milestoneCard}>
+          <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
+          <View style={styles.milestoneLotus}><ZenLotusPhoto variant="milestone" width={140} /></View>
+          <Text style={styles.milestoneBody}>
+            You just hit {percent}% of your {goal.name} goal. Take a breath and celebrate!
+          </Text>
+          <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={onDismiss} />
+        </ZenGlass>
+      </View>
+    </Modal>
   );
 }
 
@@ -2582,7 +2590,9 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   const [saving, setSaving] = useState(false);
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [dismissedMilestoneId, setDismissedMilestoneId] = useState<number | null>(null);
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
+  const milestoneGoal = goals.find((goal) => goal.pacing.progressRatio >= 0.5 && goal.id !== dismissedMilestoneId);
 
   async function addGoal() {
     const dollars = Number(target);
@@ -2627,7 +2637,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
         <Text style={styles.mindfulSavingsCaption}>Total Saved</Text>
       </ZenGlass>
       <SectionHeader title="Your Goals" />
-      {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
+      {milestoneGoal ? <MilestoneModal goal={milestoneGoal} onDismiss={() => setDismissedMilestoneId(milestoneGoal.id)} /> : null}
       {goals.map((goal) => (
         <ZenGlass key={goal.id} style={styles.goalCardGlass}>
           <View style={styles.goalCardHeaderRow}>
@@ -4077,11 +4087,11 @@ const styles = StyleSheet.create({
   budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetEntryBody: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 3 },
   budgetEntryButton: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
-  milestoneCard: { alignItems: 'center', gap: 8, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.45, shadowRadius: 30 },
-  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 24, textAlign: 'center' },
-  milestoneSubtitle: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center' },
-  milestoneLotus: { width: 130, height: 130, borderRadius: 65, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8E44AD26', marginVertical: 8 },
-  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  milestoneBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+  milestoneCard: { alignItems: 'center', gap: 10, width: '100%', maxWidth: 340, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.45, shadowRadius: 30 },
+  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24, textAlign: 'center' },
+  milestoneLotus: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginVertical: 4 },
+  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, textAlign: 'center' },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
   heroTitleV2: { color: '#FFFFFF', fontSize: 36, lineHeight: 39, fontWeight: '300', textAlign: 'left', marginTop: 18 },
