@@ -76,6 +76,48 @@ describe('Phase 4 mobile product API', () => {
     expect(res.body.actions.length).toBeGreaterThan(0);
   });
 
+  it('answers the goal and budget prompts shown by the iOS coach', async () => {
+    const email = 'chat-prompts@example.com';
+    const { access } = await registerAndLink(email);
+    await grantPremium(email);
+    await request(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ name: 'Emergency fund', targetAmountCents: 300000, currentAmountCents: 50000, targetDate: '2027-12-31' });
+
+    const goal = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'Am I on pace for my top goal?' });
+    expect(goal.status).toBe(201);
+    expect(goal.body.answer).toContain('Emergency fund');
+    expect(goal.body.facts.some((fact: { source: string }) => fact.source === 'goal')).toBe(true);
+
+    const budget = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'Help me set a new budget limit.' });
+    expect(budget.status).toBe(201);
+    expect(budget.body.answer).not.toContain('could not safely tailor');
+    expect(budget.body.actions.length).toBeGreaterThan(0);
+
+    const explicitLimit = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'Set a $100 spending limit.' });
+    expect(explicitLimit.status).toBe(201);
+    expect(explicitLimit.body.answer).toContain('$100.00');
+    expect(explicitLimit.body.actions.some((action: string) => action.includes('$100.00'))).toBe(true);
+
+    const accelerated = await request(app)
+      .post('/api/chat')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ question: 'What would move my goal up by two weeks?' });
+    expect(accelerated.status).toBe(201);
+    expect(accelerated.body.answer).toContain('2 weeks');
+    expect(accelerated.body.answer).toContain('weekly savings');
+  });
+
   it('streams chat answers over server-sent events', async () => {
     const { access } = await registerAndLink('chat-stream@example.com');
     await grantPremium('chat-stream@example.com');

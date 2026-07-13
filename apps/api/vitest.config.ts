@@ -17,6 +17,7 @@ export default defineConfig({
       TRANSACTION_PROVIDER: 'mock',
       ENRICHMENT_PROVIDER: 'mock',
       INSIGHT_PROVIDER: 'mock',
+      CHAT_PROVIDER: 'mock',
       REVENUECAT_WEBHOOK_AUTH: 'test-revenuecat-webhook-auth',
       REVENUECAT_WEBHOOK_SIGNING_SECRET: 'test-revenuecat-signing-secret',
     },
