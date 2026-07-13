@@ -823,8 +823,22 @@ export interface HouseholdInviteCreatedView {
 
 // ---------- Mobile app product surface (Phase 4 + Phase 5) ----------
 
+export interface ZenScoreComponent {
+  key: 'mindful_spending' | 'growth_savings' | 'consistency';
+  label: string;
+  value: number | null; // 0..100, null when there isn't enough data yet
+  detail: string;
+}
+
+export interface ZenScoreView {
+  score: number | null; // 0..100 overall, null until there's data to score
+  caption: string;
+  components: ZenScoreComponent[];
+}
+
 export interface MobileHomeSummaryView {
   billing: BillingStatusView;
+  zenScore: ZenScoreView;
   items: LinkedItem[];
   transactionCount: number;
   firstLook: InsightView | null;

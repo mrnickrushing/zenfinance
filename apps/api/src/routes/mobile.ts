@@ -29,6 +29,7 @@ import { assertPremium, getBillingStatus } from '../billing/service.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { getMoneyWinsSummary } from '../coaching/moneyWins.js';
+import { computeZenScore } from '../coaching/zenScore.js';
 import { db } from '../db/client.js';
 import {
   accounts,
@@ -614,9 +615,10 @@ export function createMobileRouter(): ReturnType<typeof Router> {
 
   router.get('/api/mobile/home', requireUser, async (_req, res) => {
     const userId = res.locals.userId as number;
-    const [billing, linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, moneyPhysical, anomaliesList, txns] =
+    const [billing, zenScore, linked, txCount, firstLook, weeklyBrief, goalViews, subscriptionAudit, moneyWins, moneyPhysical, anomaliesList, txns] =
       await Promise.all([
         getBillingStatus(db, userId),
+        computeZenScore(db, userId),
         linkedItems(userId),
         transactionCount(userId),
         latestInsight(userId, 'first_look'),
@@ -631,6 +633,7 @@ export function createMobileRouter(): ReturnType<typeof Router> {
 
     const body: MobileHomeSummaryView = {
       billing,
+      zenScore,
       items: linked,
       transactionCount: txCount,
       firstLook,
