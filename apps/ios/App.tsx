@@ -13,7 +13,6 @@ import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import {
   Bell,
-  Bot,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -43,7 +42,6 @@ import {
   Square,
   Target,
   Trash2,
-  TrendingUp,
   UserRound,
   UserPlus,
   Users,
@@ -71,6 +69,7 @@ import {
   TextInput,
   type TextProps,
   useColorScheme,
+  useWindowDimensions,
   View,
   Easing,
 } from 'react-native';
@@ -432,8 +431,36 @@ function MaterialSymbol({
   );
 }
 
+// Deterministic star field (blueprint: "particles — small white dots at 10%
+// opacity — moving slowly upwards"). Seeded PRNG so positions are stable
+// across renders instead of reshuffling every time ZenBackdrop mounts.
+function seededStars(seed: number, count: number) {
+  let s = seed;
+  const rand = () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  return Array.from({ length: count }, () => ({
+    x: rand() * 100,
+    y: rand() * 100,
+    r: 0.4 + rand() * 1.1,
+    o: 0.12 + rand() * 0.28,
+  }));
+}
+const ZEN_STARS = seededStars(42, 40);
+// Two vertically-tiled copies of the same star pattern so the upward drift
+// loops seamlessly — as the top copy scrolls off, the bottom one is identical.
+const ZEN_STAR_DOTS = ZEN_STARS.flatMap((star, i) => [
+  { key: `${i}-a`, cx: star.x, cy: star.y, r: star.r, o: star.o },
+  { key: `${i}-b`, cx: star.x, cy: star.y + 100, r: star.r, o: star.o },
+]);
+
 function ZenBackdrop() {
   const phase = useRef(new Animated.Value(0)).current;
+  const starDrift = useRef(new Animated.Value(0)).current;
+  const { height: screenHeight } = useWindowDimensions();
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -442,6 +469,18 @@ function ZenBackdrop() {
     animation.start();
     return () => animation.stop();
   }, [phase]);
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(starDrift, { toValue: 1, duration: 50000, easing: Easing.linear, useNativeDriver: true }),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [starDrift]);
+
+  const starTransform = {
+    transform: [{ translateY: starDrift.interpolate({ inputRange: [0, 1], outputRange: [0, -screenHeight] }) }],
+  };
 
   const tealTransform = {
     transform: [
@@ -483,6 +522,13 @@ function ZenBackdrop() {
       </Svg>
       <Animated.View style={[styles.meshTeal, tealTransform]} />
       <Animated.View style={[styles.meshViolet, violetTransform]} />
+      <Animated.View style={[StyleSheet.absoluteFill, starTransform]}>
+        <Svg width="100%" height="200%" viewBox="0 0 100 200" preserveAspectRatio="none">
+          {ZEN_STAR_DOTS.map((d) => (
+            <SvgCircle key={d.key} cx={d.cx} cy={d.cy} r={d.r} fill="#FFFFFF" opacity={d.o} />
+          ))}
+        </Svg>
+      </Animated.View>
     </View>
   );
 }
@@ -1150,7 +1196,7 @@ function ProductShell() {
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
-    if (tab === 'coach') return <CoachScreen score={home.zenScore.score} />;
+    if (tab === 'coach') return <CoachScreen />;
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
@@ -1953,13 +1999,9 @@ function InsightPanel({ insight }: { insight: InsightView }) {
   );
 }
 
-type CoachTurn = { id: string; question: string; askedAt: string; answer: ChatAnswerView };
+type CoachTurn = { id: string; question: string; answer: ChatAnswerView };
 
-function timeLabel(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
-
-function CoachScreen({ score }: { score: number | null }) {
+function CoachScreen() {
   const theme = useTheme();
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1975,7 +2017,7 @@ function CoachScreen({ score }: { score: number | null }) {
         method: 'POST',
         body: JSON.stringify({ question: trimmed }),
       });
-      setTurns((items) => [...items, { id: answer.id, question: trimmed, askedAt: new Date().toISOString(), answer }]);
+      setTurns((items) => [...items, { id: answer.id, question: trimmed, answer }]);
       await requestApi('/api/app-events', {
         method: 'POST',
         body: JSON.stringify({ name: 'coach:asked_question' }),
@@ -1990,16 +2032,7 @@ function CoachScreen({ score }: { score: number | null }) {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.coachScreenHeader}>
-        <View>
-          <Text style={styles.zenPageTitle}>Zen AI Coach</Text>
-          <View style={styles.coachHeaderCaption}>
-            <View style={styles.coachHeaderDot} />
-            <Text style={styles.coachHeaderCaptionText}>MINDFUL PRESENCE</Text>
-          </View>
-        </View>
-        <ZenGlass style={styles.coachScoreBadge}>
-          <Text style={styles.coachScoreBadgeText}>{score ?? '—'}</Text>
-        </ZenGlass>
+        <Text style={styles.coachHeaderTitle}>Zen AI Coach</Text>
       </View>
       <FlatList
         data={turns}
@@ -2010,7 +2043,7 @@ function CoachScreen({ score }: { score: number | null }) {
         }
         renderItem={({ item }) => (
           <View style={styles.chatTurn}>
-            <UserMessageBubble text={item.question} time={timeLabel(item.askedAt)} />
+            <UserMessageBubble text={item.question} />
             <ChatBubble answer={item.answer} />
           </View>
         )}
@@ -2021,49 +2054,50 @@ function CoachScreen({ score }: { score: number | null }) {
         style={[styles.quickPromptRail, { borderColor: theme.border, backgroundColor: theme.surface }]}
         contentContainerStyle={styles.quickPromptRailContent}
       >
-        <QuickPromptChip icon={TrendingUp} label="Can I afford this?" value="Can I afford $600 this month?" onPress={setQuestion} />
-        <QuickPromptChip icon={CreditCard} label="Review subscriptions" value="Which subscriptions should I cancel?" onPress={setQuestion} />
-        <QuickPromptChip icon={PiggyBank} label="Optimize savings" value="How can I optimize my savings this month?" onPress={setQuestion} />
-        <QuickPromptChip icon={Sparkles} label="Zen Wisdom" value="Give me one calm, mindful money tip for today." onPress={setQuestion} />
+        <QuickPromptChip label="Can I afford this?" value="Can I afford $600 this month?" onPress={setQuestion} />
+        <QuickPromptChip label="Review subscriptions" value="Which subscriptions should I cancel?" onPress={setQuestion} />
+        <QuickPromptChip label="Set budget limit" value="Help me set a new budget limit." onPress={setQuestion} />
       </ScrollView>
       <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
         <TextInput
           style={[styles.composerInput, { color: theme.ink }]}
-          placeholder="Ask Zen..."
+          placeholder="Type your financial question..."
           placeholderTextColor={theme.muted}
           value={question}
           onChangeText={setQuestion}
           returnKeyType="send"
           onSubmitEditing={ask}
         />
-        <Pressable style={[styles.sendButton, { backgroundColor: theme.accent }]} disabled={busy} onPress={ask}>
-          {busy ? <ActivityIndicator color="#fff" /> : <Send color="#fff" size={18} />}
+        <Pressable style={[styles.askZenButton, { backgroundColor: theme.accent }]} disabled={busy} onPress={ask}>
+          {busy ? <ActivityIndicator color="#003737" /> : <Text style={styles.askZenArrow}>↑</Text>}
+          <Text style={styles.askZenText}>Ask Zen</Text>
         </Pressable>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
-function AiAvatarLabel({ label = 'Zen Coach' }: { label?: string }) {
-  const theme = useTheme();
+// The small "Z" monogram avatar Stitch used for every Zen AI message, instead
+// of a stand-in icon — sits at the bottom-left of the bubble, breathing on
+// the same "First Breath" cadence as the lotus.
+function ZenAiAvatar() {
   const { opacity, scale } = useZenBreath();
   return (
-    <View style={styles.chatBubbleHeader}>
-      <Animated.View style={[styles.chatBubbleIcon, { opacity, transform: [{ scale }] }]}>
-        <Bot color={theme.accent} size={14} />
-      </Animated.View>
-      <Text style={styles.chatBubbleKicker}>{label}</Text>
-    </View>
+    <Animated.View style={[styles.chatBubbleIcon, { opacity, transform: [{ scale }] }]}>
+      <Text style={styles.chatBubbleIconGlyph}>Z</Text>
+    </Animated.View>
   );
 }
 
-function UserMessageBubble({ text, time }: { text: string; time: string }) {
+function UserMessageBubble({ text }: { text: string }) {
   return (
     <View style={styles.userMessageWrap}>
       <View style={styles.userBubble}>
-        <Text style={styles.userBubbleText}>{text}</Text>
+        <Text style={styles.userBubbleText}>
+          <Text style={styles.userBubblePrefix}>User: </Text>
+          {text}
+        </Text>
       </View>
-      <Text style={styles.userBubbleTime}>{time}</Text>
     </View>
   );
 }
@@ -2071,14 +2105,19 @@ function UserMessageBubble({ text, time }: { text: string; time: string }) {
 function ChatBubble({ answer }: { answer: ChatAnswerView }) {
   const theme = useTheme();
   return (
-    <CoachCard>
-      <AiAvatarLabel />
-      <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
-      <InsightLedger facts={answer.facts} />
-      {answer.actions.map((action) => (
-        <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
-      ))}
-    </CoachCard>
+    <View style={styles.aiMessageRow}>
+      <ZenAiAvatar />
+      <CoachCard>
+        <Text style={[styles.panelBody, { color: theme.ink }]}>
+          <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
+          {answer.answer}
+        </Text>
+        <InsightLedger facts={answer.facts} />
+        {answer.actions.map((action) => (
+          <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
+        ))}
+      </CoachCard>
+    </View>
   );
 }
 
@@ -2109,14 +2148,24 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
 
   return (
     <View style={styles.promptBoard}>
-      <ZenGlass style={styles.chatMessageBubble}>
-        <AiAvatarLabel />
-        <Text style={styles.chatMessageText}>Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.</Text>
-      </ZenGlass>
-      <ZenGlass style={styles.chatMessageBubble}>
-        <AiAvatarLabel />
-        <Text style={styles.chatMessageText}>Ask me about a charge, a goal, or what you can comfortably spend next.</Text>
-      </ZenGlass>
+      <View style={styles.aiMessageRow}>
+        <ZenAiAvatar />
+        <ZenGlass style={styles.chatMessageBubble}>
+          <Text style={styles.chatMessageText}>
+            <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
+            Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.
+          </Text>
+        </ZenGlass>
+      </View>
+      <View style={styles.aiMessageRow}>
+        <ZenAiAvatar />
+        <ZenGlass style={styles.chatMessageBubble}>
+          <Text style={styles.chatMessageText}>
+            <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
+            Ask me about a charge, a goal, or what you can comfortably spend next.
+          </Text>
+        </ZenGlass>
+      </View>
       <ZenGlass style={styles.coachInsightsCard}>
         <Text style={styles.coachInsightsTitle}>Your Path to Zen</Text>
         <Text style={styles.coachInsightsSubtitle}>Recent milestones</Text>
@@ -2144,21 +2193,10 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
   );
 }
 
-function QuickPromptChip({
-  icon: Icon,
-  label,
-  value,
-  onPress,
-}: {
-  icon: IconComponent;
-  label: string;
-  value: string;
-  onPress: (value: string) => void;
-}) {
+function QuickPromptChip({ label, value, onPress }: { label: string; value: string; onPress: (value: string) => void }) {
   const theme = useTheme();
   return (
     <Pressable style={[styles.quickPromptChip, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} onPress={() => onPress(value)}>
-      <Icon color={theme.ink} size={15} />
       <Text style={[styles.quickPromptText, { color: theme.ink }]} numberOfLines={1}>
         {label}
       </Text>
@@ -3949,23 +3987,25 @@ const styles = StyleSheet.create({
   txnEmptyBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
   chatList: { flexGrow: 1, padding: 20, gap: 14 },
   chatTurn: { gap: 10 },
-  coachCard: { padding: 14, gap: 8, borderTopLeftRadius: 6 },
+  coachCard: { flex: 1, padding: 14, gap: 8 },
   chatBubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  chatBubbleIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#48EFEF1A', borderWidth: 1, borderColor: '#48EFEF4D', alignItems: 'center', justifyContent: 'center' },
+  aiMessageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  chatBubbleIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#10131aB3', borderWidth: 1, borderColor: '#48EFEF80', alignItems: 'center', justifyContent: 'center' },
+  chatBubbleIconGlyph: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 15, fontStyle: 'italic' },
   chatBubbleKicker: { color: '#FFFFFFB3', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 },
   chatPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  coachHeaderCaption: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
-  coachHeaderDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#48EFEF' },
-  coachHeaderCaptionText: { color: '#FFFFFF99', fontFamily: 'Inter_500Medium', fontSize: 10, letterSpacing: 1.5 },
-  coachScoreBadge: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', padding: 0 },
-  coachScoreBadgeText: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 13 },
-  userMessageWrap: { alignItems: 'flex-end', gap: 4 },
-  userBubble: { maxWidth: '85%', backgroundColor: '#6F258E33', borderWidth: 1, borderColor: '#ECB2FF1A', borderRadius: 22, borderTopRightRadius: 6, paddingVertical: 12, paddingHorizontal: 16 },
+  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, alignItems: 'center' },
+  coachHeaderTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 19 },
+  aiBubblePrefix: { color: '#48EFEF', fontFamily: 'Inter_700Bold' },
+  userBubblePrefix: { color: '#FFFFFF', fontFamily: 'Inter_700Bold' },
+  userMessageWrap: { alignItems: 'flex-end' },
+  userBubble: { maxWidth: '85%', backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1F', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 16 },
   userBubbleText: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
-  userBubbleTime: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginRight: 4 },
-  chatMessageBubble: { alignSelf: 'stretch', gap: 8, borderColor: '#48EFEF4D', borderTopLeftRadius: 6 },
+  chatMessageBubble: { flex: 1, gap: 8, borderColor: '#48EFEF4D' },
   chatMessageText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
+  askZenButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 44, borderRadius: 22, shadowColor: '#00D2D3', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
+  askZenArrow: { color: '#003737', fontSize: 16, fontWeight: '800' },
+  askZenText: { color: '#003737', fontFamily: 'Inter_700Bold', fontSize: 14 },
   chatPromptLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
   coachInsightsCard: { alignSelf: 'stretch', gap: 8, borderColor: '#00D2D34D' },
   coachInsightsTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17 },
@@ -3989,7 +4029,6 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  sendButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', shadowColor: '#00D2D3', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   progressTrack: { height: 10, borderRadius: 10, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 10 },
   scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
