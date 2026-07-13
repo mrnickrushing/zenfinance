@@ -19,7 +19,6 @@ import {
   CircleDollarSign,
   CreditCard,
   Crown,
-  Coffee,
   Gift,
   Home,
   Landmark,
@@ -34,9 +33,7 @@ import {
   RotateCcw,
   CloudOff,
   Send,
-  ShoppingCart,
   ShieldCheck,
-  Sprout,
   SlidersHorizontal,
   Sparkles,
   Square,
@@ -1538,14 +1535,14 @@ function BriefScreen({
       <SectionHeader title="Recent Money Movement" />
       {home.recentTransactions.slice(0, 6).map((txn) => {
         const category = formatActivityCategory(txn);
-        const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+        const { icon: iconName, color, backgroundColor } = activityIconForCategory(category);
         const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
         const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
         const date = dateLabel(txn.postedDate);
         return (
           <ZenGlass key={txn.id} style={styles.activityTile}>
             <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
-              <Icon color={color} size={20} strokeWidth={1.9} />
+              <MaterialSymbol name={iconName} color={color} size={20} />
             </View>
             <View style={styles.activityCopy}>
               <Text style={styles.activityTitle}>{category}</Text>
@@ -1686,14 +1683,14 @@ function accountKindLabel(account: LinkedAccount): string {
   return 'Account';
 }
 
-function accountKindIcon(kind: string): typeof Landmark {
+function accountKindIcon(kind: string): MaterialSymbolName {
   switch (kind) {
     case 'Credit':
-      return CreditCard;
+      return 'credit_card';
     case 'Savings':
-      return PiggyBank;
+      return 'savings';
     default:
-      return Landmark;
+      return 'account_balance';
   }
 }
 
@@ -1715,18 +1712,18 @@ function formatActivityCategory(txn: EnrichedTransactionView): string {
     .join(' ');
 }
 
-function activityIconForCategory(category: string): { icon: typeof Sprout; color: string; backgroundColor: string } {
+function activityIconForCategory(category: string): { icon: MaterialSymbolName; color: string; backgroundColor: string } {
   switch (category) {
     case 'Growth/Investments':
-      return { icon: Sprout, color: '#75D38F', backgroundColor: '#75D38F24' };
+      return { icon: 'eco', color: '#75D38F', backgroundColor: '#75D38F24' };
     case 'Dining':
-      return { icon: Coffee, color: '#E1AF7F', backgroundColor: '#E1AF7F24' };
+      return { icon: 'local_cafe', color: '#E1AF7F', backgroundColor: '#E1AF7F24' };
     case 'Shopping':
-      return { icon: ShoppingCart, color: '#AE8AEF', backgroundColor: '#AE8AEF24' };
+      return { icon: 'shopping_cart', color: '#AE8AEF', backgroundColor: '#AE8AEF24' };
     case 'Utilities':
-      return { icon: Home, color: '#79B8F3', backgroundColor: '#79B8F324' };
+      return { icon: 'home', color: '#79B8F3', backgroundColor: '#79B8F324' };
     default:
-      return { icon: CircleDollarSign, color: '#8FD8DA', backgroundColor: '#8FD8DA24' };
+      return { icon: 'account_balance_wallet', color: '#8FD8DA', backgroundColor: '#8FD8DA24' };
   }
 }
 
@@ -1772,7 +1769,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRail}>
         {displayedCards.map(({ item, account, key }, index) => {
           const kind = accountKindLabel(account);
-          const Icon = accountKindIcon(kind);
+          const iconName = accountKindIcon(kind);
           const displayName = account.name || item.institutionName || kind;
           const ending = account.mask ? `Ending in ${account.mask}` : item.institutionName ? item.institutionName : 'Connected account';
           const balance = account.currentBalanceCents == null ? '$0.00' : usd(account.currentBalanceCents, true);
@@ -1781,7 +1778,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
             <ZenGlass key={key} style={[styles.accountCard, featured ? styles.accountCardFeatured : null]}>
               <Text style={styles.accountCardEyebrow}>{kind}</Text>
               <View style={[styles.accountCardIcon, featured ? styles.accountCardIconFeatured : null]}>
-                <Icon color={featured ? theme.accent : theme.ink} size={26} strokeWidth={1.75} />
+                <MaterialSymbol name={iconName} color={featured ? theme.accent : theme.ink} size={24} />
               </View>
               <Text style={styles.accountCardName}>{kind}</Text>
               <Text style={styles.accountCardSubtitle}>{displayName}</Text>
@@ -1800,14 +1797,14 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
       <View style={styles.transactionList}>
         {activityRows.map((txn) => {
           const category = formatActivityCategory(txn);
-          const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+          const { icon: iconName, color, backgroundColor } = activityIconForCategory(category);
           const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
           const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
           const date = dateLabel(txn.postedDate);
           return (
             <ZenGlass key={txn.id} style={styles.activityTile}>
               <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
-                <Icon color={color} size={20} strokeWidth={1.9} />
+                <MaterialSymbol name={iconName} color={color} size={20} />
               </View>
               <View style={styles.activityCopy}>
                 <Text style={styles.activityTitle} numberOfLines={1}>{category}</Text>
