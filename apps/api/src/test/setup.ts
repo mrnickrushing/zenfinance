@@ -15,6 +15,7 @@ import {
   households,
   privacyDeletionEvents,
   pricingExperiments,
+  providerRevocationJobs,
   moneyPhysicalReports,
   referralCodes,
   referralCredits,
@@ -40,6 +41,7 @@ export async function migrateOnce(): Promise<void> {
 
 export async function truncateAll(): Promise<void> {
   await db.delete(adminRefreshTokens);
+  await db.delete(providerRevocationJobs);
   await db.delete(moneyPhysicalReports);
   await db.delete(voiceBriefs);
   await db.delete(referralCredits);

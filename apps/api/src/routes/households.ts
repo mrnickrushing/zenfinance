@@ -20,7 +20,7 @@ import {
   type HouseholdStatusView,
   type HouseholdView,
 } from '@zenfinance/shared';
-import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { assertPremium } from '../billing/service.js';
 import { db } from '../db/client.js';
@@ -37,6 +37,16 @@ import { validateBody } from '../middleware/validate.js';
 
 const HOUSEHOLD_SEAT_LIMIT = 2;
 const INVITE_TTL_DAYS = 14;
+
+class HouseholdConflict extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 function tokenHash(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -236,11 +246,17 @@ export function createHouseholdsRouter(): ReturnType<typeof Router> {
       return;
     }
     const input = res.locals.body as HouseholdCreateInput;
-    const [household] = await db
-      .insert(households)
-      .values({ name: input.name ?? 'Household', seatLimit: HOUSEHOLD_SEAT_LIMIT, createdByUserId: userId })
-      .returning();
-    await db.insert(householdMembers).values({ householdId: household!.id, userId, role: 'owner', privacyMode: 'individual' });
+    const household = await db.transaction(async (tx) => {
+      // The unique membership index remains the concurrency guard; keeping
+      // both inserts in one transaction prevents an orphan household if a
+      // concurrent create wins that guard.
+      const [created] = await tx
+        .insert(households)
+        .values({ name: input.name ?? 'Household', seatLimit: HOUSEHOLD_SEAT_LIMIT, createdByUserId: userId })
+        .returning();
+      await tx.insert(householdMembers).values({ householdId: created!.id, userId, role: 'owner', privacyMode: 'individual' });
+      return created!;
+    });
     res.status(201).json({ household: await householdView(household!.id, userId) });
   });
 
@@ -276,22 +292,58 @@ export function createHouseholdsRouter(): ReturnType<typeof Router> {
       return;
     }
 
-    await db
-      .update(householdInvites)
-      .set({ status: 'revoked', updatedAt: new Date() })
-      .where(and(eq(householdInvites.householdId, owned.householdId), eq(householdInvites.email, input.email), eq(householdInvites.status, 'pending')));
-
     const acceptToken = newInviteToken();
-    const [invite] = await db
-      .insert(householdInvites)
-      .values({
-        householdId: owned.householdId,
-        invitedByUserId: userId,
-        email: input.email,
-        tokenHash: tokenHash(acceptToken),
-        expiresAt: addDays(new Date(), INVITE_TTL_DAYS),
-      })
-      .returning();
+    let invite: typeof householdInvites.$inferSelect;
+    try {
+      invite = await db.transaction(async (tx) => {
+        // A shared household-row lock serializes invite reservations and
+        // accepts, including requests operating on different invite rows.
+        await tx.execute(sql`select id from ${households} where id = ${owned.householdId} for update`);
+        const [memberTotal] = await tx
+          .select({ n: count() })
+          .from(householdMembers)
+          .where(eq(householdMembers.householdId, owned.householdId));
+        const [alreadyMember] = await tx
+          .select({ id: householdMembers.id })
+          .from(householdMembers)
+          .innerJoin(users, eq(users.id, householdMembers.userId))
+          .where(and(eq(householdMembers.householdId, owned.householdId), eq(users.email, input.email)))
+          .limit(1);
+        if (alreadyMember) throw new HouseholdConflict(400, 'invalid_invite', 'That person is already in this household.');
+        await tx
+          .update(householdInvites)
+          .set({ status: 'revoked', updatedAt: new Date() })
+          .where(and(eq(householdInvites.householdId, owned.householdId), eq(householdInvites.email, input.email), eq(householdInvites.status, 'pending')));
+        const [pendingTotal] = await tx
+          .select({ n: count() })
+          .from(householdInvites)
+          .where(and(
+            eq(householdInvites.householdId, owned.householdId),
+            eq(householdInvites.status, 'pending'),
+            gt(householdInvites.expiresAt, new Date()),
+          ));
+        if (Number(memberTotal?.n ?? 0) + Number(pendingTotal?.n ?? 0) >= HOUSEHOLD_SEAT_LIMIT) {
+          throw new HouseholdConflict(400, 'household_full', 'All household seats are occupied or reserved by a pending invite.');
+        }
+        const [created] = await tx
+          .insert(householdInvites)
+          .values({
+            householdId: owned.householdId,
+            invitedByUserId: userId,
+            email: input.email,
+            tokenHash: tokenHash(acceptToken),
+            expiresAt: addDays(new Date(), INVITE_TTL_DAYS),
+          })
+          .returning();
+        return created!;
+      });
+    } catch (err) {
+      if (err instanceof HouseholdConflict) {
+        res.status(err.status).json({ error: { code: err.code, message: err.message } });
+        return;
+      }
+      throw err;
+    }
     const view: HouseholdInviteView = {
       id: invite!.id,
       email: invite!.email,
@@ -334,11 +386,34 @@ export function createHouseholdsRouter(): ReturnType<typeof Router> {
       return;
     }
 
-    await db.insert(householdMembers).values({ householdId: invite.householdId, userId, role: 'member', privacyMode: 'individual' });
-    await db
-      .update(householdInvites)
-      .set({ status: 'accepted', acceptedByUserId: userId, acceptedAt: new Date(), updatedAt: new Date() })
-      .where(eq(householdInvites.id, invite.id));
+    try {
+      await db.transaction(async (tx) => {
+      await tx.execute(sql`select id from ${households} where id = ${invite.householdId} for update`);
+      await tx.execute(sql`select id from ${householdInvites} where id = ${invite.id} for update`);
+      const [fresh] = await tx
+        .select({ status: householdInvites.status })
+        .from(householdInvites)
+        .where(eq(householdInvites.id, invite.id))
+        .limit(1);
+      if (fresh?.status !== 'pending') throw new HouseholdConflict(409, 'invite_used', 'Household invite was already used.');
+      const [capacity] = await tx
+        .select({ n: count() })
+        .from(householdMembers)
+        .where(eq(householdMembers.householdId, invite.householdId));
+      if (Number(capacity?.n ?? 0) >= HOUSEHOLD_SEAT_LIMIT) throw new HouseholdConflict(400, 'household_full', 'Household is full.');
+      await tx.insert(householdMembers).values({ householdId: invite.householdId, userId, role: 'member', privacyMode: 'individual' });
+      await tx
+        .update(householdInvites)
+        .set({ status: 'accepted', acceptedByUserId: userId, acceptedAt: new Date(), updatedAt: new Date() })
+        .where(eq(householdInvites.id, invite.id));
+      });
+    } catch (err) {
+      if (err instanceof HouseholdConflict) {
+        res.status(err.status).json({ error: { code: err.code, message: err.message } });
+        return;
+      }
+      throw err;
+    }
     res.json({ household: await householdView(invite.householdId, userId) });
   });
 

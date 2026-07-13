@@ -10,6 +10,8 @@ import {
   startSyncWorker,
   startWeeklyBriefWorker,
 } from './queue/index.js';
+import { db } from './db/client.js';
+import { processPendingProviderRevocations } from './privacy/service.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -58,3 +60,22 @@ void startWeeklyBriefWorker().then(() => {
 });
 void scheduleNightlyRollupJob();
 void scheduleWeeklyBriefJob();
+
+// Processor revocation retries are deliberately database-backed so a deploy
+// or Redis interruption cannot lose the only credential capable of revoking
+// a user's Plaid item.
+let revocationSweepRunning = false;
+async function runRevocationSweep(): Promise<void> {
+  if (revocationSweepRunning) return;
+  revocationSweepRunning = true;
+  try {
+    await processPendingProviderRevocations(db);
+  } catch (err) {
+    console.error('[privacy] provider revocation sweep failed:', err);
+    Sentry.captureException(err);
+  } finally {
+    revocationSweepRunning = false;
+  }
+}
+void runRevocationSweep();
+setInterval(() => void runRevocationSweep(), 60_000).unref();

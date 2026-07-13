@@ -11,6 +11,7 @@ import { Router } from 'express';
 import { assertPremium } from '../billing/service.js';
 import { db } from '../db/client.js';
 import { accounts, freelancerProfiles, items, transactionEnrichments, transactions } from '../db/schema.js';
+import { isIncomeTransaction, spendingContribution } from '../finance/classify.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { validateBody } from '../middleware/validate.js';
 
@@ -158,6 +159,7 @@ async function buildSummary(userId: number): Promise<FreelancerSummaryView> {
         amountCents: transactions.amountCents,
         postedDate: transactions.postedDate,
         category: transactionEnrichments.category,
+        providerCategory: transactions.providerCategory,
         isDiscretionary: transactionEnrichments.isDiscretionary,
       })
       .from(transactions)
@@ -180,15 +182,16 @@ async function buildSummary(userId: number): Promise<FreelancerSummaryView> {
     for (const row of rows) {
       const month = byMonth.get(monthKey(dateFromMonthKey(row.postedDate.slice(0, 7))));
       if (!month) continue;
-      if (row.amountCents < 0) {
+      if (isIncomeTransaction(row)) {
         month.incomeCents += Math.abs(row.amountCents);
-      } else if (row.amountCents > 0 && isEssentialSpend(row.category, row.isDiscretionary)) {
-        month.essentialSpendCents += row.amountCents;
+      } else if (isEssentialSpend(row.category, row.isDiscretionary)) {
+        month.essentialSpendCents += spendingContribution(row);
       }
     }
   }
 
   for (const month of months) {
+    month.essentialSpendCents = Math.max(0, month.essentialSpendCents);
     month.netCents = month.incomeCents - month.essentialSpendCents;
   }
 

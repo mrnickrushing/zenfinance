@@ -23,6 +23,7 @@ import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
 import { getMoneyWinsSummary } from '../coaching/moneyWins.js';
 import { getRecentWeeklyNetCents } from '../features/rollup.js';
+import { isIncomeTransaction, spendingContribution } from '../finance/classify.js';
 
 type PurchaseSource = 'revenuecat_webhook' | 'client_restore' | 'manual_test';
 
@@ -42,6 +43,7 @@ interface ReportTransaction {
   name: string;
   merchantName: string | null;
   category: string | null;
+  providerCategory: string | null;
   merchantClean: string | null;
 }
 
@@ -134,6 +136,7 @@ async function reportTransactions(db: Db, accountIds: number[], start: string, e
       name: transactions.name,
       merchantName: transactions.merchantName,
       category: transactionEnrichments.category,
+      providerCategory: transactions.providerCategory,
       merchantClean: transactionEnrichments.merchantClean,
     })
     .from(transactions)
@@ -158,14 +161,16 @@ async function reportTransactions(db: Db, accountIds: number[], start: string, e
 function topCategories(txns: ReportTransaction[], spendingCents: number): MoneyPhysicalCategoryBreakdown[] {
   const byCategory = new Map<string, { amountCents: number; transactionCount: number }>();
   for (const txn of txns) {
-    if (txn.amountCents <= 0) continue;
+    const contribution = spendingContribution(txn);
+    if (contribution === 0) continue;
     const category = txn.category ?? 'uncategorized';
     const current = byCategory.get(category) ?? { amountCents: 0, transactionCount: 0 };
-    current.amountCents += txn.amountCents;
+    current.amountCents += contribution;
     current.transactionCount += 1;
     byCategory.set(category, current);
   }
   return [...byCategory.entries()]
+    .filter(([, value]) => value.amountCents > 0)
     .map(([category, value]) => ({
       category,
       amountCents: value.amountCents,
@@ -257,8 +262,8 @@ async function buildReport(db: Db, userId: number, purchase: MoneyPhysicalPurcha
     getMoneyWinsSummary(db, userId),
   ]);
 
-  const incomeCents = txns.filter((txn) => txn.amountCents < 0).reduce((sum, txn) => sum + Math.abs(txn.amountCents), 0);
-  const spendingCents = txns.filter((txn) => txn.amountCents > 0).reduce((sum, txn) => sum + txn.amountCents, 0);
+  const incomeCents = txns.filter(isIncomeTransaction).reduce((sum, txn) => sum + Math.abs(txn.amountCents), 0);
+  const spendingCents = Math.max(0, txns.reduce((sum, txn) => sum + spendingContribution(txn), 0));
   const netCashFlowCents = incomeCents - spendingCents;
   const sections: MoneyPhysicalReportSectionsView = {
     cashFlow: {
@@ -269,7 +274,7 @@ async function buildReport(db: Db, userId: number, purchase: MoneyPhysicalPurcha
     },
     spending: {
       topCategories: topCategories(txns, spendingCents),
-      largestTransactionCents: txns.filter((txn) => txn.amountCents > 0).sort((a, b) => b.amountCents - a.amountCents)[0]?.amountCents ?? null,
+      largestTransactionCents: txns.map(spendingContribution).filter((amount) => amount > 0).sort((a, b) => b - a)[0] ?? null,
     },
     goals: goalStats,
     recurring: {

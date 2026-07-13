@@ -13,6 +13,7 @@ import {
   timestamp,
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const supportStatusEnum = pgEnum('support_status', ['open', 'resolved']);
 
@@ -218,7 +219,7 @@ export const transactionEnrichments = pgTable(
   },
   (t) => [
     index('txn_enrich_txn_idx').on(t.transactionId),
-    index('txn_enrich_current_idx').on(t.transactionId, t.supersededAt),
+    uniqueIndex('txn_enrich_one_current_idx').on(t.transactionId).where(sql`${t.supersededAt} is null`),
   ],
 );
 
@@ -627,6 +628,24 @@ export const privacyDeletionEvents = pgTable(
   (t) => [index('privacy_deletion_user_idx').on(t.userId), index('privacy_deletion_requested_idx').on(t.requestedAt)],
 );
 
+// Minimal processor-cleanup queue. When Plaid is temporarily unavailable we
+// keep only the encrypted credential needed to retry revocation; it is erased
+// immediately after success and is not linked back to a user row.
+export const providerRevocationJobs = pgTable(
+  'provider_revocation_jobs',
+  {
+    id: serial('id').primaryKey(),
+    provider: text('provider').notNull(),
+    encryptedAccessToken: text('encrypted_access_token').notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    lastError: text('last_error'),
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('provider_revocation_pending_idx').on(t.completedAt, t.nextAttemptAt)],
+);
+
 // ---------- Phase 5: RevenueCat billing and entitlement gates ----------
 
 export const billingStatusEnum = pgEnum('billing_status', [
@@ -740,15 +759,11 @@ export const referralRedemptions = pgTable(
   'referral_redemptions',
   {
     id: serial('id').primaryKey(),
-    codeId: integer('code_id')
-      .notNull()
-      .references(() => referralCodes.userId, { onDelete: 'cascade' }),
+    codeId: integer('code_id').references(() => referralCodes.userId, { onDelete: 'set null' }),
     referrerUserId: integer('referrer_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'set null' }),
     referredUserId: integer('referred_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'set null' }),
     code: text('code').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -769,8 +784,7 @@ export const referralCredits = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     sourceUserId: integer('source_user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id, { onDelete: 'set null' }),
     days: integer('days').notNull(),
     status: text('status').notNull().default('applied'),
     appliedAt: timestamp('applied_at', { withTimezone: true }).notNull().defaultNow(),

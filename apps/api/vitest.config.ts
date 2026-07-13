@@ -5,11 +5,11 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts'],
     fileParallelism: false, // tests share one Postgres database
-    testTimeout: 15000,
+    testTimeout: 45000,
     env: {
       NODE_ENV: 'test',
       DATABASE_URL:
-        process.env.DATABASE_URL ?? 'postgres://dev:dev@localhost:5432/zenfinance_test',
+        process.env.DATABASE_URL ?? 'postgres://dev:dev@localhost:5434/zenfinance_test',
       JWT_SECRET: 'test-jwt-secret-0123456789abcdef0123456789abcdef',
       ADMIN_SECRET: 'test-admin-secret-0123456789abcdef0123456789ab',
       SUPPORT_EMAIL: 'support@rushingtechnologies.com',

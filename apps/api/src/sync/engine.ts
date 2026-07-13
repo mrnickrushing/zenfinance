@@ -24,6 +24,38 @@ export async function syncItem(
   if (!item || item.status === 'disconnected') return null;
 
   const accessToken = decryptToken(item.encryptedAccessToken);
+  // Refresh and upsert the account set before consuming transaction pages.
+  // Providers may add an account to an existing Item after its first link;
+  // its transactions must have a local account id during this same sync.
+  const providerAccounts = await provider.fetchAccounts(accessToken);
+  for (const providerAccount of providerAccounts) {
+    await db
+      .insert(accounts)
+      .values({
+        itemId: item.id,
+        providerAccountId: providerAccount.providerAccountId,
+        name: providerAccount.name,
+        officialName: providerAccount.officialName,
+        type: providerAccount.type,
+        subtype: providerAccount.subtype,
+        mask: providerAccount.mask,
+        currentBalanceCents: providerAccount.currentBalanceCents,
+        isoCurrency: providerAccount.isoCurrency,
+      })
+      .onConflictDoUpdate({
+        target: [accounts.itemId, accounts.providerAccountId],
+        set: {
+          name: providerAccount.name,
+          officialName: providerAccount.officialName,
+          type: providerAccount.type,
+          subtype: providerAccount.subtype,
+          mask: providerAccount.mask,
+          currentBalanceCents: providerAccount.currentBalanceCents,
+          isoCurrency: providerAccount.isoCurrency,
+          updatedAt: new Date(),
+        },
+      });
+  }
   const accountRows = await db.select().from(accounts).where(eq(accounts.itemId, item.id));
   const accountIdByProvider = new Map(accountRows.map((a) => [a.providerAccountId, a.id]));
   const accountIds = accountRows.map((a) => a.id);

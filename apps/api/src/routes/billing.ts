@@ -55,7 +55,11 @@ export function createBillingRouter(): ReturnType<typeof Router> {
     res.json(await getBillingStatus(db, userId));
   });
 
-  router.post('/api/billing/events', requireUser, validateBody(appEventSchema), async (_req, res) => {
+  router.post('/api/billing/events', requireUser, userRateLimit('billing-events', {
+    windowMs: 60 * 1000,
+    limit: 60,
+    message: 'Too many billing events.',
+  }), validateBody(appEventSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const input = res.locals.body as AppEventInput;
     await db.insert(appEvents).values({ userId, name: `billing:${input.name}`, properties: input.properties });

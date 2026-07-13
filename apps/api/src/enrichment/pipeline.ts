@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, categoryCorrections, items, transactionEnrichments, transactions } from '../db/schema.js';
 import { detectRecurringStreams } from '../recurring/detect.js';
@@ -26,19 +26,25 @@ interface EnrichmentWrite {
  */
 export async function applyEnrichment(db: Db, transactionId: number, write: EnrichmentWrite): Promise<void> {
   const category = isValidCategory(write.category) ? write.category : 'OTHER';
-  await db
-    .update(transactionEnrichments)
-    .set({ supersededAt: new Date() })
-    .where(and(eq(transactionEnrichments.transactionId, transactionId), isNull(transactionEnrichments.supersededAt)));
-  await db.insert(transactionEnrichments).values({
-    transactionId,
-    category,
-    merchantClean: write.merchantClean,
-    isRecurring: write.isRecurring,
-    isDiscretionary: write.isDiscretionary,
-    confidence: write.confidence,
-    source: write.source,
-    model: write.model,
+  await db.transaction(async (tx) => {
+    // Serialize writers for this transaction. The partial unique index is the
+    // final invariant; this lock prevents two workers from both superseding
+    // and then racing to insert the next current row.
+    await tx.execute(sql`select id from ${transactions} where id = ${transactionId} for update`);
+    await tx
+      .update(transactionEnrichments)
+      .set({ supersededAt: new Date() })
+      .where(and(eq(transactionEnrichments.transactionId, transactionId), isNull(transactionEnrichments.supersededAt)));
+    await tx.insert(transactionEnrichments).values({
+      transactionId,
+      category,
+      merchantClean: write.merchantClean,
+      isRecurring: write.isRecurring,
+      isDiscretionary: write.isDiscretionary,
+      confidence: write.confidence,
+      source: write.source,
+      model: write.model,
+    });
   });
 }
 
