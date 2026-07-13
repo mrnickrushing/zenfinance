@@ -1105,13 +1105,13 @@ function BriefScreen({
       />
       <SectionHeader title="Recent Money Movement" />
       {home.recentTransactions.slice(0, 6).map((txn) => (
-        <View key={txn.id} style={[styles.row, { borderColor: theme.border }]}>
+        <ZenGlass key={txn.id} style={styles.glassRow}>
           <View>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{txn.merchantClean ?? txn.merchantName ?? txn.name}</Text>
             <Text style={[styles.rowDetail, { color: theme.muted }]}>{dateLabel(txn.postedDate)} · {txn.category ?? 'uncategorized'}</Text>
           </View>
           <Text style={[styles.amount, { color: txn.amountCents > 0 ? theme.ink : theme.success }]}>{usd(txn.amountCents)}</Text>
-        </View>
+        </ZenGlass>
       ))}
       <SecondaryButton label={refreshing ? 'Refreshing...' : 'Refresh'} icon={RefreshCcw} onPress={onRefresh} />
     </ScrollView>
@@ -2171,7 +2171,7 @@ function WinsScreen({
         </Text>
       </ZenGlass>
       {wins.wins.map((win) => (
-        <View key={win.id} style={[styles.row, { borderColor: theme.border }]}>
+        <ZenGlass key={win.id} style={styles.glassRow}>
           <View style={styles.flexShrink}>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{win.description}</Text>
             <Text style={[styles.rowDetail, { color: theme.muted }]}>{win.status} · {dateLabel(win.createdAt)}</Text>
@@ -2180,11 +2180,11 @@ function WinsScreen({
             <Text style={[styles.amount, { color: win.status === 'verified' ? theme.success : theme.gold }]}>{usd(win.amountCents, true)}</Text>
             {win.status === 'estimated' ? <Pressable onPress={() => confirm(win.id)}><Text style={[styles.linkText, { color: theme.accent }]}>confirm</Text></Pressable> : null}
           </View>
-        </View>
+        </ZenGlass>
       ))}
       <SectionHeader title="Charge Alerts" />
       {anomalies.map((item) => (
-        <View key={item.id} style={[styles.row, { borderColor: theme.border }]}>
+        <ZenGlass key={item.id} style={styles.glassRow}>
           <View style={styles.flexShrink}>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.title}</Text>
             <Text style={[styles.rowDetail, { color: theme.muted }]}>{item.detail}</Text>
@@ -2192,7 +2192,7 @@ function WinsScreen({
           <Pressable onPress={() => recover(item.id)}>
             <Text style={[styles.linkText, { color: theme.accent }]}>recovered</Text>
           </Pressable>
-        </View>
+        </ZenGlass>
       ))}
     </ScrollView>
   );
@@ -2996,7 +2996,7 @@ function SectionHeader({ title }: { title: string }) {
 function ActionRow({ icon: Icon, title, detail, onPress }: { icon: IconComponent; title: string; detail: string; onPress?: () => void }) {
   const theme = useTheme();
   return (
-    <Pressable style={[styles.row, onPress ? styles.actionRowInteractive : null, { borderColor: theme.border }]} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
+    <Pressable style={[styles.glassRow, onPress ? styles.actionRowInteractive : null]} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
       <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
         <Icon color={theme.accent} size={18} />
       </View>
@@ -3385,6 +3385,7 @@ const styles = StyleSheet.create({
   voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
   actionBox: { borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: '#00D2D34D' },
   actionRowInteractive: { backgroundColor: '#FFFFFF0D', borderRadius: 16, paddingHorizontal: 10 },
+  glassRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
