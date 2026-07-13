@@ -721,14 +721,14 @@ function ProductShell() {
     }
     const hasLinkedItems = home.items.length > 0;
     if (tab === 'brief') {
-      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} onNavigate={setTab} /> : <LinkingScreen onLinked={refresh} />;
+      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} onNavigate={setTab} /> : <LinkingScreen onLinked={refresh} onBudget={() => setTab('budget')} />;
     }
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen />;
-    if (tab === 'transactions') return <TransactionsScreen home={home} onConnect={() => setTab('brief')} />;
-    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} onSettings={() => setTab('settings')} onScore={() => setTab('score')} />;
+    if (tab === 'transactions') return <TransactionsScreen home={home} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
+    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
     if (tab === 'score') return <ZenScoreDetailsScreen home={home} />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
@@ -811,7 +811,7 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
   );
 }
 
-function LinkingScreen({ onLinked }: { onLinked: () => void }) {
+function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);
 
@@ -861,6 +861,11 @@ function LinkingScreen({ onLinked }: { onLinked: () => void }) {
       </SectionBand>
       <Text style={styles.zenSectionLabel}>POPULAR BANKS</Text>
       <View style={styles.bankGrid}>{['Chase', 'Wells Fargo', 'Bank of America', 'Citibank', 'Capital One', 'US Bank'].map((name) => <Pressable key={name} style={styles.bankTile} onPress={linkBank}><Landmark color={theme.accent} size={18} /><Text style={styles.bankTileText}>{name}</Text></Pressable>)}</View>
+      <ZenGlass style={styles.budgetEntryCard}>
+        <View style={styles.budgetEntryIcon}><CircleDollarSign color={theme.violet} size={18} /></View>
+        <View style={styles.flexShrink}><Text style={styles.budgetEntryTitle}>Preview Smart Budgeting</Text><Text style={styles.budgetEntryBody}>Explore the calm spending view before linking an account.</Text></View>
+        <Pressable style={styles.budgetEntryButton} onPress={onBudget}><ChevronRight color="#0B0E14" size={16} /></Pressable>
+      </ZenGlass>
       <StatusRail>
         <MoneyMetric label="Access" value="Read-only" icon={ShieldCheck} />
         <MoneyMetric label="Coach" value="Briefs" icon={Sparkles} />
@@ -1010,16 +1015,19 @@ function BriefScreen({
         icon={Target}
         title={home.goals[0]?.name ?? 'Create one savings goal'}
         detail={home.goals[0] ? `${usd(home.goals[0].pacing.remainingAmountCents, true)} remaining` : 'Give the coach a target to pace against'}
+        onPress={() => onNavigate('goals')}
       />
       <ActionRow
         icon={CreditCard}
         title="Subscription audit"
         detail={`${usd(home.subscriptionAudit.cancelCandidateMonthlyCents, true)}/mo can be reviewed now`}
+        onPress={() => onNavigate('subs')}
       />
       <ActionRow
         icon={Bell}
         title="Open alerts"
         detail={`${home.openAnomalies.length} charge${home.openAnomalies.length === 1 ? '' : 's'} need a decision`}
+        onPress={() => onNavigate('wins')}
       />
       <SectionHeader title="Recent Money Movement" />
       {home.recentTransactions.slice(0, 6).map((txn) => (
@@ -1149,7 +1157,7 @@ function ZenDailyWidget({ brief }: { brief: InsightView }) {
   );
 }
 
-function TransactionsScreen({ home, onConnect }: { home: MobileHomeSummaryView; onConnect: () => void }) {
+function TransactionsScreen({ home, onConnect, onBudget }: { home: MobileHomeSummaryView; onConnect: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const items = home.items.length > 0 ? home.items : [{ id: 0, provider: 'plaid', institutionName: 'Connect a bank', accounts: [], status: 'active', lastSyncedAt: null } as LinkedItem];
   return (
@@ -1183,18 +1191,24 @@ function TransactionsScreen({ home, onConnect }: { home: MobileHomeSummaryView; 
         ))}
         {home.recentTransactions.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
       </ZenGlass>
+      <Pressable style={styles.transactionsBudgetLink} onPress={onBudget}>
+        <CircleDollarSign color={theme.violet} size={17} />
+        <Text style={styles.transactionsBudgetText}>Open Smart Budgeting</Text>
+        <ChevronRight color={theme.muted} size={16} />
+      </Pressable>
       <PrimaryButton label="Connect another account" icon={Landmark} onPress={onConnect} />
     </ScrollView>
   );
 }
 
-function ZenProfileScreen({ billing, onSettings, onScore }: { billing: BillingStatusView; onSettings: () => void; onScore: () => void }) {
+function ZenProfileScreen({ billing, onSettings, onScore, onBudget }: { billing: BillingStatusView; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const rows = [
     { label: 'Settings', icon: SlidersHorizontal, onPress: onSettings },
     { label: 'Security', icon: LockKeyhole, onPress: onSettings },
     { label: 'Linked Banks', icon: Landmark, onPress: onSettings },
     { label: 'Notifications', icon: Bell, onPress: onSettings },
+    { label: 'Smart Budgeting', icon: CircleDollarSign, onPress: onBudget },
   ];
   return (
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
@@ -2773,10 +2787,10 @@ function SectionHeader({ title }: { title: string }) {
   return <Text style={[styles.sectionTitle, { color: theme.ink }]}>{title}</Text>;
 }
 
-function ActionRow({ icon: Icon, title, detail }: { icon: IconComponent; title: string; detail: string }) {
+function ActionRow({ icon: Icon, title, detail, onPress }: { icon: IconComponent; title: string; detail: string; onPress?: () => void }) {
   const theme = useTheme();
   return (
-    <View style={[styles.row, { borderColor: theme.border }]}>
+    <Pressable style={[styles.row, onPress ? styles.actionRowInteractive : null, { borderColor: theme.border }]} onPress={onPress} disabled={!onPress} accessibilityRole={onPress ? 'button' : undefined}>
       <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
         <Icon color={theme.accent} size={18} />
       </View>
@@ -2785,7 +2799,7 @@ function ActionRow({ icon: Icon, title, detail }: { icon: IconComponent; title: 
         <Text style={[styles.rowDetail, { color: theme.muted }]}>{detail}</Text>
       </View>
       <ChevronRight color={theme.muted} size={18} />
-    </View>
+    </Pressable>
   );
 }
 
@@ -2969,6 +2983,8 @@ const styles = StyleSheet.create({
   transactionName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   transactionMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
   transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  transactionsBudgetLink: { minHeight: 48, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#8E44AD14', borderWidth: 1, borderColor: '#8E44AD4D', flexDirection: 'row', alignItems: 'center', gap: 8 },
+  transactionsBudgetText: { flex: 1, color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12 },
   zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
   profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
@@ -3027,6 +3043,11 @@ const styles = StyleSheet.create({
   bankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   bankTile: { width: '31%', minHeight: 70, borderRadius: 16, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 7 },
   bankTileText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'center' },
+  budgetEntryCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#8E44AD66' },
+  budgetEntryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
+  budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  budgetEntryBody: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 3 },
+  budgetEntryButton: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
   milestoneCard: { alignItems: 'center', gap: 8, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.45, shadowRadius: 30 },
   milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 24, textAlign: 'center' },
   milestoneSubtitle: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center' },
@@ -3107,6 +3128,7 @@ const styles = StyleSheet.create({
   evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
   voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
   actionBox: { borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: '#00D2D34D' },
+  actionRowInteractive: { backgroundColor: '#FFFFFF0D', borderRadius: 16, paddingHorizontal: 10 },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
