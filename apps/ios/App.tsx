@@ -82,7 +82,7 @@ import type {
   WhatIfResultView,
 } from '@zenfinance/shared';
 
-const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'http://localhost:3000';
+const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'https://api.zenfinance.rushingtechnologies.com';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
 const OTA_DIAGNOSTIC_LABEL = 'Lazyweb porcelain coach redesign · 2026-07-12.1';

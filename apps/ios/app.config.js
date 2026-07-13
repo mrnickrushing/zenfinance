@@ -46,7 +46,7 @@ module.exports = {
       fallbackToCacheTimeout: 30000,
     },
     extra: {
-      apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
+      apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://api.zenfinance.rushingtechnologies.com',
       sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN ?? '',
       revenueCatIosApiKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_API_KEY ?? '',
       eas: {
