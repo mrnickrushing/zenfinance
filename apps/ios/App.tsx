@@ -1397,15 +1397,26 @@ function BriefScreen({
         onPress={() => onNavigate('wins')}
       />
       <SectionHeader title="Recent Money Movement" />
-      {home.recentTransactions.slice(0, 6).map((txn) => (
-        <ZenGlass key={txn.id} style={styles.glassRow}>
-          <View>
-            <Text style={[styles.rowTitle, { color: theme.ink }]}>{txn.merchantClean ?? txn.merchantName ?? txn.name}</Text>
-            <Text style={[styles.rowDetail, { color: theme.muted }]}>{dateLabel(txn.postedDate)} · {txn.category ?? 'uncategorized'}</Text>
-          </View>
-          <Text style={[styles.amount, { color: txn.amountCents > 0 ? theme.ink : theme.success }]}>{usd(txn.amountCents)}</Text>
-        </ZenGlass>
-      ))}
+      {home.recentTransactions.slice(0, 6).map((txn) => {
+        const category = formatActivityCategory(txn);
+        const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+        const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
+        const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
+        const date = dateLabel(txn.postedDate);
+        return (
+          <ZenGlass key={txn.id} style={styles.activityTile}>
+            <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
+              <Icon color={color} size={20} strokeWidth={1.9} />
+            </View>
+            <View style={styles.activityCopy}>
+              <Text style={styles.activityTitle}>{category}</Text>
+              <Text style={styles.activityMerchant}>{merchant}</Text>
+              <Text style={styles.activityDate}>{date}</Text>
+            </View>
+            <Text style={[styles.activityAmount, { color: amountColor }]}>{usd(txn.amountCents)}</Text>
+          </ZenGlass>
+        );
+      })}
       <SecondaryButton label={refreshing ? 'Refreshing...' : 'Refresh'} icon={RefreshCcw} onPress={onRefresh} />
     </ScrollView>
   );
@@ -1645,7 +1656,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
         </Pressable>
       </View>
       <View style={styles.transactionList}>
-        {activityRows.map((txn, index) => {
+        {activityRows.map((txn) => {
           const category = formatActivityCategory(txn);
           const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
           const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
@@ -1659,7 +1670,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
               <View style={styles.activityCopy}>
                 <Text style={styles.activityTitle} numberOfLines={1}>{category}</Text>
                 <Text style={styles.activityMerchant}>{merchant}</Text>
-                <Text style={styles.activityDate}>{index === 2 ? `${date}\n${date}` : date}</Text>
+                <Text style={styles.activityDate}>{date}</Text>
               </View>
               <Text style={[styles.activityAmount, { color: amountColor }]}>{usd(txn.amountCents)}</Text>
             </ZenGlass>
@@ -3530,13 +3541,13 @@ const styles = StyleSheet.create({
   accountCardEnding: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 16 },
   accountCardAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 22, marginTop: 'auto' },
   transactionList: { gap: 10, marginTop: 2 },
-  activityTile: { minHeight: 86, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  activityIcon: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  activityTile: { minHeight: 102, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  activityIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   activityCopy: { flex: 1, minWidth: 0 },
-  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, lineHeight: 20 },
-  activityMerchant: { color: '#9DA8BA', fontFamily: 'Inter_500Medium', fontSize: 15, lineHeight: 19, marginTop: 2 },
-  activityDate: { color: '#8A95A3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 16, marginTop: 2 },
-  activityAmount: { fontFamily: 'Inter_500Medium', fontSize: 23, marginLeft: 10, textAlign: 'right' },
+  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, lineHeight: 21 },
+  activityMerchant: { color: '#9DA8BA', fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 18, marginTop: 2 },
+  activityDate: { color: '#8A95A3', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 15, marginTop: 2 },
+  activityAmount: { fontFamily: 'Inter_500Medium', fontSize: 22, marginLeft: 10, textAlign: 'right' },
   transactionPanel: { paddingVertical: 4 },
   transactionRow: { minHeight: 64, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
   transactionIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
