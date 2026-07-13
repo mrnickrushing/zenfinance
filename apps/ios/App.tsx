@@ -1433,7 +1433,7 @@ function InsightPanel({ insight }: { insight: InsightView }) {
     }).catch((err) => Alert.alert('Feedback failed', err instanceof Error ? err.message : 'Unknown error'));
   }
   return (
-    <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <ZenGlass style={styles.insightPanel}>
       <View style={styles.panelHeader}>
         <Sparkles color={theme.accent} size={20} />
         <Text style={[styles.panelKicker, { color: theme.accent }]}>{insight.kind === 'first_look' ? 'First look' : 'Weekly brief'}</Text>
@@ -1451,7 +1451,7 @@ function InsightPanel({ insight }: { insight: InsightView }) {
         <SecondaryButton label="Useful" onPress={() => feedback('up')} compact />
         <SecondaryButton label="Not useful" onPress={() => feedback('down')} compact />
       </View>
-    </View>
+    </ZenGlass>
   );
 }
 
@@ -2483,7 +2483,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Settings</Text><Text style={styles.zenPageSubtitle}>Keep your ZenFinance space in balance</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
       <SectionHeader title="Billing" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
           <Crown color={billing.isPremium ? theme.gold : theme.muted} size={20} />
           <Text style={[styles.panelKicker, { color: billing.isPremium ? theme.gold : theme.muted }]}>
@@ -2497,9 +2497,9 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         </Text>
         <SecondaryButton label={billingBusy ? 'Restoring...' : 'Restore purchases'} icon={RefreshCcw} disabled={billingBusy} onPress={restorePurchases} />
         {billing.isPremium ? <SecondaryButton label="Manage subscription" icon={CreditCard} onPress={manageSubscription} /> : null}
-      </View>
+      </ZenGlass>
       <SectionHeader title="Invite Credit" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
           <Gift color={theme.accent} size={20} />
           <Text style={[styles.panelKicker, { color: theme.accent }]}>
@@ -2532,9 +2532,9 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         ) : (
           <Text style={[styles.rowDetail, { color: theme.muted }]}>Redeemed code {referral.redeemedCode}</Text>
         )}
-      </View>
+      </ZenGlass>
       <SectionHeader title="Freelancer Mode" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
           <CircleDollarSign color={billing.isPremium ? theme.accent : theme.muted} size={20} />
           <Text style={[styles.panelKicker, { color: billing.isPremium ? theme.accent : theme.muted }]}>
@@ -2604,9 +2604,9 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
             Available with ZenFinance Coach.
           </Text>
         )}
-      </View>
+      </ZenGlass>
       <SectionHeader title="Household Sharing" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
           <Users color={household?.household ? theme.accent : theme.muted} size={20} />
           <Text style={[styles.panelKicker, { color: household?.household ? theme.accent : theme.muted }]}>
@@ -2619,7 +2619,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
               Shared goals are visible to household members. Bank accounts, transactions, chat, and personal goals stay individual.
             </Text>
             {household.household.members.map((member) => (
-              <View key={member.id} style={[styles.row, { borderColor: theme.border }]}>
+              <ZenGlass key={member.id} style={styles.settingsRowGlass}>
                 <View style={[styles.smallIcon, { backgroundColor: theme.accentSoft }]}>
                   <Users color={theme.accent} size={18} />
                 </View>
@@ -2627,7 +2627,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
                   <Text style={[styles.rowTitle, { color: theme.ink }]}>{member.email}</Text>
                   <Text style={[styles.rowDetail, { color: theme.muted }]}>{member.role} · individual privacy zone</Text>
                 </View>
-              </View>
+              </ZenGlass>
             ))}
             {household.household.currentUserRole === 'owner' &&
             household.household.members.length + household.household.invites.length < household.household.seatLimit ? (
@@ -2731,9 +2731,9 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
             />
           </>
         )}
-      </View>
+      </ZenGlass>
       <SectionHeader title="Notifications" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <PrimaryButton label={prefs?.pushEnabled ? 'Push enabled' : 'Enable push notifications'} icon={Bell} onPress={registerPush} />
         {prefs ? (
           <>
@@ -2742,10 +2742,10 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
             <Toggle label="Goal pacing" value={prefs.goalPacing} onValueChange={(v) => updatePrefs({ ...prefs, goalPacing: v })} />
           </>
         ) : null}
-      </View>
+      </ZenGlass>
       <SectionHeader title="Linked Banks" />
       {items.map((item) => (
-        <View key={item.id} style={[styles.row, { borderColor: theme.border }]}>
+        <ZenGlass key={item.id} style={styles.settingsRowGlass}>
           <View>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.institutionName ?? 'Bank'}</Text>
             <Text style={[styles.rowDetail, { color: theme.muted }]}>
@@ -2761,12 +2761,12 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           >
             <Trash2 color={theme.danger} size={20} />
           </Pressable>
-        </View>
+        </ZenGlass>
       ))}
       <SectionHeader title="Data Rights" />
       <SecondaryButton label="Export my data" icon={ShieldCheck} onPress={exportData} />
       <SectionHeader title="App Update" />
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={styles.settingsPanel}>
         <Text style={[styles.updateMeta, { color: theme.muted }]}>{updateMeta}</Text>
         <SecondaryButton
           label={updateBusy ? 'Checking...' : 'Check for update'}
@@ -2774,7 +2774,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           disabled={updateBusy}
           onPress={checkForUpdate}
         />
-      </View>
+      </ZenGlass>
       <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
       <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
     </ScrollView>
@@ -3150,6 +3150,9 @@ const styles = StyleSheet.create({
   transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   transactionsBudgetLink: { minHeight: 48, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#8E44AD14', borderWidth: 1, borderColor: '#8E44AD4D', flexDirection: 'row', alignItems: 'center', gap: 8 },
   transactionsBudgetText: { flex: 1, color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  insightPanel: { gap: 12 },
+  settingsPanel: { gap: 12 },
+  settingsRowGlass: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
   auditCard: { gap: 10 },
   zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
   profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
