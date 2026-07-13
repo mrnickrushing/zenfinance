@@ -13,6 +13,7 @@ import {
   CircleDollarSign,
   CreditCard,
   Crown,
+  Flower2,
   Gift,
   Home,
   Landmark,
@@ -35,9 +36,10 @@ import {
   Volume2,
   WalletCards,
 } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Alert,
   FlatList,
   KeyboardAvoidingView,
@@ -53,7 +55,17 @@ import {
   TextInput,
   useColorScheme,
   View,
+  Easing,
 } from 'react-native';
+import {
+  Circle as SvgCircle,
+  Defs,
+  Ellipse,
+  RadialGradient,
+  Rect,
+  Stop,
+  Svg,
+} from 'react-native-svg';
 import { create, open } from 'react-native-plaid-link-sdk';
 import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { create as createStore } from 'zustand';
@@ -158,37 +170,26 @@ const useAppStore = createStore<AppState>((set) => ({
   setLoading: (loading) => set({ loading }),
 }));
 
-const light = {
-  bg: '#eef3f5',
-  surface: '#ffffff',
-  surfaceAlt: '#e3ebef',
-  ink: '#111820',
-  muted: '#62717d',
-  border: '#cbd8de',
-  accent: '#05a77b',
-  accentBright: '#1fc99b',
-  accentSoft: '#dff6ee',
-  gold: '#b87817',
-  goldSoft: '#fff1d2',
-  danger: '#b42332',
-  success: '#148a57',
+const midnightZen = {
+  bg: '#0B0E14',
+  surface: '#FFFFFF14',
+  surfaceAlt: '#FFFFFF0D',
+  ink: '#FFFFFF',
+  muted: '#FFFFFFB3',
+  border: '#FFFFFF1A',
+  accent: '#00D2D3',
+  accentBright: '#8AFFFF',
+  accentSoft: '#00D2D326',
+  violet: '#8E44AD',
+  violetSoft: '#8E44AD26',
+  gold: '#F5D58A',
+  goldSoft: '#F5D58A26',
+  danger: '#FF7A9A',
+  success: '#79E6B0',
 };
 
-const dark = {
-  bg: '#05080d',
-  surface: '#101923',
-  surfaceAlt: '#182633',
-  ink: '#fbf7ee',
-  muted: '#9fb4be',
-  border: '#334751',
-  accent: '#4fd1c5',
-  accentBright: '#9df0e8',
-  accentSoft: '#0f3f3b',
-  gold: '#f4b860',
-  goldSoft: '#3b2b12',
-  danger: '#fb7185',
-  success: '#4ade80',
-};
+const light = midnightZen;
+const dark = midnightZen;
 
 function usd(cents: number | null | undefined, compact = false): string {
   if (cents === null || cents === undefined) return '$0';
@@ -370,7 +371,61 @@ function moneyPhysicalPayloadFromCustomerInfo(
 
 function useTheme() {
   useColorScheme();
-  return light;
+  return midnightZen;
+}
+
+function ZenBackdrop() {
+  return (
+    <View pointerEvents="none" style={styles.zenBackdrop}>
+      <Svg width="100%" height="100%" preserveAspectRatio="none">
+        <Defs>
+          <RadialGradient id="tealGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#00D2D3" stopOpacity="0.28" />
+            <Stop offset="1" stopColor="#00D2D3" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="violetGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#8E44AD" stopOpacity="0.32" />
+            <Stop offset="1" stopColor="#8E44AD" stopOpacity="0" />
+          </RadialGradient>
+          <RadialGradient id="blueGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#1D74B7" stopOpacity="0.22" />
+            <Stop offset="1" stopColor="#1D74B7" stopOpacity="0" />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill="#0B0E14" />
+        <Ellipse cx="10%" cy="18%" rx="58%" ry="32%" fill="url(#tealGlow)" />
+        <Ellipse cx="88%" cy="14%" rx="52%" ry="30%" fill="url(#violetGlow)" />
+        <Ellipse cx="78%" cy="72%" rx="64%" ry="38%" fill="url(#blueGlow)" />
+        <SvgCircle cx="20%" cy="82%" r="30%" fill="url(#violetGlow)" opacity="0.55" />
+      </Svg>
+    </View>
+  );
+}
+
+function ZenGlass({ children, style }: { children: ReactNode; style?: object }) {
+  const theme = useTheme();
+  return <View style={[styles.zenGlass, { borderColor: theme.border }, style]}>{children}</View>;
+}
+
+function ZenLotus({ size = 18 }: { size?: number }) {
+  const breathe = useRef(new Animated.Value(0.72)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0.72, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [breathe]);
+
+  return (
+    <Animated.View style={{ opacity: breathe }}>
+      <Flower2 color={midnightZen.accent} size={size} strokeWidth={1.6} />
+    </Animated.View>
+  );
 }
 
 type IconComponent = typeof Sparkles;
@@ -458,7 +513,7 @@ function AuthScreen() {
 
   return (
     <SafeAreaView style={[styles.authScreen, { backgroundColor: theme.bg }]}>
-      <StatusBar style="dark" />
+      <StatusBar style="light" />
       <ScrollView contentContainerStyle={styles.authContentV2} showsVerticalScrollIndicator={false}>
         <View style={styles.authBrandRow}>
           <View style={[styles.authLogo, { backgroundColor: theme.surface }]}>
@@ -591,32 +646,39 @@ function ProductShell() {
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
+  const isHome = tab === 'brief';
+
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
-      <StatusBar style={theme === dark ? 'light' : 'dark'} />
-      <View style={styles.topBar}>
-        <View style={styles.flexShrink}>
-          <View style={styles.appTitleRow}>
-            <View style={[styles.tinyLogo, { backgroundColor: theme.accentSoft }]}>
-              <Sparkles color={theme.accent} size={16} />
+      <StatusBar style="light" />
+      <ZenBackdrop />
+      <View style={styles.zenFrame}>
+        {!isHome ? (
+          <View style={styles.topBar}>
+            <View style={styles.flexShrink}>
+              <View style={styles.appTitleRow}>
+                <View style={[styles.tinyLogo, { backgroundColor: theme.accentSoft }]}>
+                  <Sparkles color={theme.accent} size={16} />
+                </View>
+                <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance Coach</Text>
+              </View>
+              <Text style={[styles.appSub, { color: theme.muted }]}>
+                {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
+              </Text>
             </View>
-            <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance Coach</Text>
+            <Pressable style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
+              {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
+            </Pressable>
           </View>
-          <Text style={[styles.appSub, { color: theme.muted }]}>
-            {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
-          </Text>
-        </View>
-        <Pressable style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
-          {refreshing ? <ActivityIndicator color={theme.accent} /> : <RefreshCcw color={theme.accent} size={19} />}
-        </Pressable>
+        ) : null}
+        {home && !isHome ? (
+          <View style={styles.shellRail}>
+            <ShellCoachConsole home={home} onAsk={() => setTab('coach')} />
+          </View>
+        ) : null}
+        <View style={styles.content}>{content}</View>
+        {home ? <TabBar active={tab} onChange={setTab} /> : null}
       </View>
-      {home ? (
-        <View style={styles.shellRail}>
-          <ShellCoachConsole home={home} onAsk={() => setTab('coach')} />
-        </View>
-      ) : null}
-      <View style={styles.content}>{content}</View>
-      {home ? <TabBar active={tab} onChange={setTab} /> : null}
     </SafeAreaView>
   );
 }
@@ -785,10 +847,28 @@ function BriefScreen({
 
   return (
     <ScrollView
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={styles.zenHomeScroll}
       refreshControl={undefined}
       showsVerticalScrollIndicator={false}
     >
+      <View style={styles.zenHomeHeader}>
+        <View style={styles.appTitleRow}>
+          <View style={styles.zenLotusMark}>
+            <ZenLotus size={18} />
+          </View>
+          <Text style={styles.zenBrand}>ZenFinance</Text>
+        </View>
+        <Pressable style={styles.zenHeaderAction} onPress={onRefresh} accessibilityLabel="Refresh home">
+          {refreshing ? <ActivityIndicator color={theme.accent} size="small" /> : <RefreshCcw color={theme.muted} size={17} />}
+        </Pressable>
+      </View>
+      <ZenGlass style={styles.zenScorePill}>
+        <View style={styles.zenScoreIcon}>
+          <ZenLotus size={15} />
+        </View>
+        <Text style={styles.zenScoreText}>Zen Score: 88/100</Text>
+        <View style={styles.zenScoreDot} />
+      </ZenGlass>
       {brief ? (
         <MoneyBriefHero
           home={home}
@@ -802,12 +882,23 @@ function BriefScreen({
       ) : (
         <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />
       )}
+      <StatusRail>
+        <View style={styles.zenStatCard}>
+          <Text style={styles.zenStatLabel}>Recent Activity</Text>
+          <Text style={styles.zenStatValue}>{home.transactionCount}</Text>
+          <Text style={styles.zenStatMeta}>transactions synced</Text>
+        </View>
+        <View style={styles.zenStatCard}>
+          <Text style={styles.zenStatLabel}>Savings Goal</Text>
+          <Text style={styles.zenStatValue}>{home.goals[0] ? `${Math.round(home.goals[0].pacing.progressRatio * 100)}%` : '0%'}</Text>
+          <Text style={styles.zenStatMeta}>{home.goals[0]?.name ?? 'Set your first goal'}</Text>
+        </View>
+      </StatusRail>
       <SectionHeader title="This Week" />
       <StatusRail>
         <MoneyMetric label="Saved" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
         <MoneyMetric label="At risk" value={String(home.openAnomalies.length)} icon={Bell} />
         <MoneyMetric label="Recurring" value={usd(home.subscriptionAudit.totalMonthlyCents, true)} icon={CreditCard} />
-        <MoneyMetric label="Goal pace" value={home.goals[0] ? `${Math.round(home.goals[0].pacing.progressRatio * 100)}%` : '0%'} icon={Target} />
       </StatusRail>
       <SectionHeader title="Next Best Actions" />
       <ActionRow
@@ -889,62 +980,40 @@ function MoneyBriefHero({
   }
 
   return (
-    <SectionBand>
-      <View style={styles.panelHeader}>
-        <Sparkles color={theme.accent} size={20} />
-        <Text style={[styles.panelKicker, { color: theme.accent }]}>
-          {brief.kind === 'first_look' ? 'First look' : 'Money brief'}
-        </Text>
+    <ZenGlass style={styles.zenInsightCard}>
+      <View style={styles.zenInsightHeader}>
+        <View style={styles.zenInsightIcon}>
+          <Sparkles color={theme.accent} size={18} />
+        </View>
+        <Text style={styles.zenInsightKicker}>AI COACH</Text>
+        <View style={styles.flexShrink} />
+        <Text style={styles.zenImpact}>{impact}</Text>
       </View>
-      <View style={styles.briefHeroTop}>
+      <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
+      <Text style={styles.zenInsightBody}>{brief.body}</Text>
+      <View style={styles.zenDailyFocus}>
         <View style={styles.flexShrink}>
-          <Text style={[styles.panelTitle, { color: theme.ink }]}>{brief.headline}</Text>
-          <Text style={[styles.panelBody, { color: theme.muted }]}>{brief.body}</Text>
+          <Text style={styles.zenDailyKicker}>DAILY FOCUS</Text>
+          <Text style={styles.zenDailyText}>{brief.action.description}</Text>
+          <Text style={styles.zenDailyMeta}>{brief.action.timeframe}</Text>
         </View>
-        <View style={[styles.impactPill, { backgroundColor: theme.accentSoft }]}>
-          <Text style={[styles.impactValue, { color: theme.accent }]}>{impact}</Text>
-          <Text style={[styles.impactLabel, { color: theme.muted }]}>impact</Text>
+        <Pressable style={styles.zenSwapButton} onPress={() => feedback('up')}>
+          <Text style={styles.zenSwapText}>View Move</Text>
+        </Pressable>
+      </View>
+      <View style={styles.zenInsightFooter}>
+        <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
+        <Pressable onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
+          <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={17} />
+        </Pressable>
+      </View>
+      {home.billing.isPremium && voiceBrief ? (
+        <View style={styles.zenVoiceRow}>
+          <Text style={styles.zenDailyMeta}>{speaking ? 'Playing voice brief' : voiceBusy ? 'Preparing audio summary...' : `${Math.round(voiceBrief.durationSeconds / 6) / 10} min audio summary`}</Text>
+          {speaking ? <Pressable onPress={onStopVoice}><Square color={theme.accent} size={16} /></Pressable> : null}
         </View>
-      </View>
-      <View style={[styles.actionBox, { backgroundColor: theme.accentSoft }]}>
-        <Text style={[styles.actionTitle, { color: theme.ink }]}>{brief.action.description}</Text>
-        <Text style={[styles.actionMeta, { color: theme.muted }]}>{brief.action.timeframe}</Text>
-      </View>
-      <View style={styles.evidenceRow}>
-        <EvidenceChip label={`${home.transactionCount} txns`} />
-        <EvidenceChip label={brief.action.timeframe} />
-        <EvidenceChip label={brief.kind === 'first_look' ? 'new signal' : 'weekly'} />
-      </View>
-      <View style={[styles.voiceInline, { borderColor: theme.border }]}>
-        <View style={styles.panelHeader}>
-          <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={18} />
-          <Text style={[styles.actionTitle, { color: theme.ink }]}>Voice brief</Text>
-        </View>
-        <Text style={[styles.actionMeta, { color: theme.muted }]}>
-          {home.billing.isPremium
-            ? voiceBrief
-              ? `${Math.round(voiceBrief.durationSeconds / 6) / 10} min · ${voiceBrief.headline}`
-              : 'Preparing audio summary...'
-            : 'Available with ZenFinance Coach.'}
-        </Text>
-        {home.billing.isPremium ? (
-          <View style={styles.inlineButtons}>
-            <SecondaryButton
-              label={speaking ? 'Playing' : voiceBusy ? 'Loading...' : 'Play'}
-              icon={Volume2}
-              compact
-              disabled={voiceBusy || !voiceBrief || speaking}
-              onPress={onPlayVoice}
-            />
-            <SecondaryButton label="Stop" icon={Square} compact disabled={!speaking} onPress={onStopVoice} />
-          </View>
-        ) : null}
-      </View>
-      <View style={styles.inlineButtons}>
-        <SecondaryButton label="Useful" onPress={() => feedback('up')} compact />
-        <SecondaryButton label="Not useful" onPress={() => feedback('down')} compact />
-      </View>
-    </SectionBand>
+      ) : null}
+    </ZenGlass>
   );
 }
 
@@ -2535,45 +2604,77 @@ const styles = StyleSheet.create({
   authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
   authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#cbd8de' },
-  authBrandText: { color: '#111820', fontSize: 16, fontWeight: '900' },
+  authLogo: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A', backgroundColor: '#FFFFFF0D' },
+  authBrandText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
   appScreen: { flex: 1 },
   content: { flex: 1 },
+  zenBackdrop: StyleSheet.absoluteFill,
+  zenFrame: { flex: 1, marginHorizontal: 12, marginTop: 8, marginBottom: 8, borderRadius: 28, borderWidth: 1, borderColor: '#FFFFFF26', overflow: 'hidden' },
+  zenHomeScroll: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24, gap: 14 },
+  zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
+  zenLotusMark: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  zenBrand: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  zenHeaderAction: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  zenScorePill: { alignSelf: 'center', minHeight: 34, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  zenScoreIcon: { width: 22, height: 22, borderRadius: 7, backgroundColor: '#FFFFFF33', alignItems: 'center', justifyContent: 'center' },
+  zenScoreText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
+  zenScoreDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#79E6B0' },
+  zenGlass: { backgroundColor: '#FFFFFF14', borderWidth: 1, borderRadius: 24, padding: 16, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  zenInsightCard: { gap: 12, borderColor: '#FFFFFF38' },
+  zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
+  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontWeight: '300' },
+  zenInsightBody: { color: '#FFFFFFB3', fontSize: 13, lineHeight: 18 },
+  zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
+  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
+  zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
+  zenSwapButton: { minHeight: 32, borderRadius: 16, paddingHorizontal: 11, justifyContent: 'center', backgroundColor: '#FFFFFFB3' },
+  zenSwapText: { color: '#0B0E14', fontSize: 10, fontWeight: '900' },
+  zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
+  zenVoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 2 },
+  zenStatLabel: { color: '#FFFFFFB3', fontSize: 10, fontWeight: '700' },
+  zenStatValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  zenStatMeta: { color: '#FFFFFF80', fontSize: 10 },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
-  heroTitleV2: { color: '#111820', fontSize: 36, lineHeight: 39, fontWeight: '900', textAlign: 'left', marginTop: 18 },
-  heroAccent: { color: '#111820' },
+  heroTitleV2: { color: '#FFFFFF', fontSize: 36, lineHeight: 39, fontWeight: '300', textAlign: 'left', marginTop: 18 },
+  heroAccent: { color: '#FFFFFF' },
   heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
-  heroCopyV2: { color: '#4b5b66', fontSize: 16, lineHeight: 24, textAlign: 'left', marginBottom: 4 },
+  heroCopyV2: { color: '#FFFFFFB3', fontSize: 16, lineHeight: 24, textAlign: 'left', marginBottom: 4 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
-  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#ffffff', padding: 14, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
-  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#cbd8de', backgroundColor: '#f8fbfc', color: '#111820', paddingHorizontal: 14, fontSize: 15 },
+  authPanelV2: { borderWidth: 1, borderRadius: 24, backgroundColor: '#FFFFFF14', borderColor: '#FFFFFF1A', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 14, borderColor: '#FFFFFF1A', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontSize: 15 },
   inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
-  disclosureV2: { color: '#62717d', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  demoPanel: { borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#ffffff', padding: 14, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  demoLabel: { color: '#111820', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#f8fbfc', color: '#111820', paddingHorizontal: 14, fontSize: 15 },
-  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#05a77b', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  demoButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  generatedBrief: { borderWidth: 1, borderColor: '#05a77b', borderRadius: 8, backgroundColor: '#dff6ee', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
-  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#05a77b', alignItems: 'center', justifyContent: 'center' },
-  generatedTitle: { color: '#111820', fontSize: 16, fontWeight: '900' },
-  generatedBody: { color: '#2f3742', fontSize: 14, lineHeight: 20, marginTop: 4 },
-  generatedImpact: { color: '#148a57', fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 2 },
+  disclosureV2: { color: '#FFFFFF99', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  demoPanel: { borderWidth: 1, borderColor: '#FFFFFF1A', borderRadius: 24, backgroundColor: '#FFFFFF14', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  demoLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
+  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#FFFFFF1A', borderRadius: 14, backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontSize: 15 },
+  demoButton: { minHeight: 48, borderRadius: 14, backgroundColor: '#00D2D3', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  demoButtonText: { color: '#0B0E14', fontSize: 15, fontWeight: '800' },
+  generatedBrief: { borderWidth: 1, borderColor: '#00D2D34D', borderRadius: 20, backgroundColor: '#00D2D326', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#00D2D3', alignItems: 'center', justifyContent: 'center' },
+  generatedTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
+  generatedBody: { color: '#FFFFFFB3', fontSize: 14, lineHeight: 20, marginTop: 4 },
+  generatedImpact: { color: '#00D2D3', fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 2 },
   authProofGrid: { flexDirection: 'row', gap: 10 },
-  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#ffffff', padding: 12 },
-  authProofKicker: { color: '#05a77b', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
-  authProofTitle: { color: '#111820', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
-  authProofBody: { color: '#4b5563', fontSize: 12, lineHeight: 17, marginTop: 6 },
-  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#cbd8de', backgroundColor: '#eef3f5' },
+  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#FFFFFF1A', borderRadius: 20, backgroundColor: '#FFFFFF14', padding: 12 },
+  authProofKicker: { color: '#00D2D3', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
+  authProofTitle: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
+  authProofBody: { color: '#FFFFFFB3', fontSize: 12, lineHeight: 17, marginTop: 6 },
+  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A', backgroundColor: '#0B0E14B3' },
   appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   tinyLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
-  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#cbd8de' },
-  shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#eef3f5', borderBottomWidth: 1, borderBottomColor: '#cbd8de' },
-  coachConsole: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  iconButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
+  shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#0B0E14B3', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A' },
+  coachConsole: { borderWidth: 1, borderRadius: 24, padding: 12, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   consoleHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   consoleStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   consoleChip: { minHeight: 30, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -2586,9 +2687,9 @@ const styles = StyleSheet.create({
   consoleActionText: { fontSize: 14, lineHeight: 20, fontWeight: '900' },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
-  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#05a77b', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  primaryButton: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
   primaryButtonText: { flexShrink: 1, fontWeight: '800', fontSize: 15, textAlign: 'center' },
-  secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
+  secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
   secondaryButtonText: { flexShrink: 1, fontWeight: '700', fontSize: 14, textAlign: 'center' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
@@ -2599,8 +2700,8 @@ const styles = StyleSheet.create({
   metric: { flex: 1, minHeight: 82, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
-  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#6c7b84', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  primaryPanel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  sectionBand: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
@@ -2613,7 +2714,7 @@ const styles = StyleSheet.create({
   evidenceChip: { maxWidth: '100%', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
   voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  actionBox: { borderRadius: 8, padding: 14, gap: 4, borderWidth: 1, borderColor: '#05a77b' },
+  actionBox: { borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: '#00D2D34D' },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
@@ -2632,9 +2733,9 @@ const styles = StyleSheet.create({
   updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { marginHorizontal: 14, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 8, flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 7, shadowColor: '#34424b', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
-  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
-  tabItemActive: { shadowColor: '#05a77b', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  tabBar: { marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 22, flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 7, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10, backgroundColor: '#FFFFFF14' },
+  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 16, borderWidth: 1, borderColor: 'transparent' },
+  tabItemActive: { shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   tabText: { fontSize: 11, fontWeight: '800' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
   coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
@@ -2652,7 +2753,7 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#05a77b', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  sendButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8 },
   scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
