@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveApiUrl, safeAppStoreSubscriptionUrl } from './security.js';
+import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './security.js';
 
 describe('iOS production security helpers', () => {
   it('rejects plaintext or malformed production API endpoints', () => {
@@ -16,5 +16,13 @@ describe('iOS production security helpers', () => {
     expect(safeAppStoreSubscriptionUrl('zenfinance://settings')).toBeNull();
     expect(safeAppStoreSubscriptionUrl('https://example.com/account/subscriptions')).toBeNull();
     expect(safeAppStoreSubscriptionUrl('http://apps.apple.com/account/subscriptions')).toBeNull();
+  });
+
+  it('starts Sentry only with a structurally valid HTTPS DSN', () => {
+    expect(resolveSentryDsn('REPLACE_ME')).toBeUndefined();
+    expect(resolveSentryDsn('')).toBeUndefined();
+    expect(resolveSentryDsn('https://sentry.io/123')).toBeUndefined();
+    expect(resolveSentryDsn('http://public@example.com/123')).toBeUndefined();
+    expect(resolveSentryDsn('https://public@example.com/123')).toBe('https://public@example.com/123');
   });
 });

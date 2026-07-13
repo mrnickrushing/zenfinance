@@ -2,7 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
-import { resolveApiUrl, safeAppStoreSubscriptionUrl } from './src/security';
+import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './src/security';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
@@ -120,7 +120,7 @@ import type {
 } from '@zenfinance/shared';
 
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
-const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
+const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
 const OTA_DIAGNOSTIC_LABEL = 'Finance shell UI cleanup · 2026-07-12.2';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'

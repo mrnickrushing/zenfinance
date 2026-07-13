@@ -13,6 +13,22 @@ export function resolveApiUrl(configured: string | null | undefined, development
   return DEFAULT_PRODUCTION_API_URL;
 }
 
+export function resolveSentryDsn(configured: string | null | undefined): string | undefined {
+  const candidate = configured?.trim();
+  if (!candidate) return undefined;
+
+  try {
+    const url = new URL(candidate);
+    const projectId = url.pathname.split('/').filter(Boolean).at(-1);
+    if (url.protocol !== 'https:' || !url.username || !url.hostname || !projectId) {
+      return undefined;
+    }
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export function safeAppStoreSubscriptionUrl(value: string | null | undefined): string | null {
   if (!value) return null;
   try {
