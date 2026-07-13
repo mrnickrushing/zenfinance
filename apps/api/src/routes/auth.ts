@@ -1,27 +1,40 @@
 import {
   appleAuthSchema,
+  forgotPasswordSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
+  resetPasswordSchema,
   type AppleAuthInput,
+  type ForgotPasswordInput,
   type LoginInput,
   type RefreshInput,
   type RegisterInput,
+  type ResetPasswordInput,
 } from '@zenfinance/shared';
 import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+import crypto from 'node:crypto';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { passwordResetCodes, users } from '../db/schema.js';
 import { verifyAppleIdentityToken } from '../lib/apple.js';
+import { sendPasswordResetEmail } from '../lib/email.js';
 import {
   issueUserAccessToken,
   issueUserRefreshToken,
+  revokeAllUserRefreshTokens,
   revokeUserRefreshToken,
   rotateUserRefreshToken,
 } from '../lib/userTokens.js';
 import { validateBody } from '../middleware/validate.js';
+
+const RESET_CODE_TTL_MS = 15 * 60 * 1000;
+
+function hashResetCode(code: string): string {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
 
 const BCRYPT_ROUNDS = 12;
 
@@ -128,6 +141,80 @@ export function createAuthRouter(): ReturnType<typeof Router> {
         .values({ email, appleSub: identity.sub })
         .returning({ id: users.id });
       res.status(201).json(await issueTokens(created!.id));
+    },
+  );
+
+  // Request a reset code. Always 200 with the same body so the response can't
+  // be used to probe which emails have accounts.
+  authRouter.post(
+    '/api/auth/forgot',
+    authLimiter,
+    validateBody(forgotPasswordSchema),
+    async (_req, res) => {
+      const input = res.locals.body as ForgotPasswordInput;
+      const [user] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, input.email))
+        .limit(1);
+      if (user) {
+        // Invalidate any outstanding codes, then issue a fresh one.
+        await db
+          .update(passwordResetCodes)
+          .set({ consumedAt: new Date() })
+          .where(and(eq(passwordResetCodes.userId, user.id), isNull(passwordResetCodes.consumedAt)));
+        const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
+        await db.insert(passwordResetCodes).values({
+          userId: user.id,
+          codeHash: hashResetCode(code),
+          expiresAt: new Date(Date.now() + RESET_CODE_TTL_MS),
+        });
+        await sendPasswordResetEmail(input.email, code);
+      }
+      res.json({ ok: true });
+    },
+  );
+
+  // Complete a reset with the emailed code. On success every existing session
+  // is revoked so a stolen refresh token can't outlive the password change.
+  authRouter.post(
+    '/api/auth/reset',
+    authLimiter,
+    validateBody(resetPasswordSchema),
+    async (_req, res) => {
+      const input = res.locals.body as ResetPasswordInput;
+      const [user] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, input.email))
+        .limit(1);
+      const invalid = () =>
+        res.status(400).json({ error: { code: 'invalid_request', message: 'Invalid or expired code' } });
+      if (!user) {
+        invalid();
+        return;
+      }
+      const [codeRow] = await db
+        .select()
+        .from(passwordResetCodes)
+        .where(
+          and(
+            eq(passwordResetCodes.userId, user.id),
+            eq(passwordResetCodes.codeHash, hashResetCode(input.code)),
+            isNull(passwordResetCodes.consumedAt),
+            gt(passwordResetCodes.expiresAt, new Date()),
+          ),
+        )
+        .limit(1);
+      if (!codeRow) {
+        invalid();
+        return;
+      }
+      const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
+      await db.update(users).set({ passwordHash, updatedAt: new Date() }).where(eq(users.id, user.id));
+      await db.update(passwordResetCodes).set({ consumedAt: new Date() }).where(eq(passwordResetCodes.id, codeRow.id));
+      await revokeAllUserRefreshTokens(db, user.id);
+      res.json({ ok: true });
     },
   );
 

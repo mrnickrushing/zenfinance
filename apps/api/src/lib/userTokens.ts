@@ -128,3 +128,11 @@ export async function revokeUserRefreshToken(db: Db, presented: string): Promise
     .set({ revokedAt: new Date() })
     .where(and(eq(userRefreshTokens.familyId, row.familyId), isNull(userRefreshTokens.revokedAt)));
 }
+
+/** Revoke every active session for a user — used after a password reset. */
+export async function revokeAllUserRefreshTokens(db: Db, userId: number): Promise<void> {
+  await db
+    .update(userRefreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(and(eq(userRefreshTokens.userId, userId), isNull(userRefreshTokens.revokedAt)));
+}

@@ -153,6 +153,21 @@ export const appleAuthSchema = z.object({
 });
 export type AppleAuthInput = z.infer<typeof appleAuthSchema>;
 
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+});
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
+export const resetPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code from your email'),
+  password: z.string().min(10).max(200),
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;

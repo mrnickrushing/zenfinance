@@ -636,6 +636,8 @@ function AuthScreen() {
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [touched, setTouched] = useState(false);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [reset, setReset] = useState<'off' | 'request' | 'confirm'>('off');
+  const [resetCode, setResetCode] = useState('');
 
   useEffect(() => {
     void AppleAuthentication.isAvailableAsync()
@@ -644,10 +646,55 @@ function AuthScreen() {
   }, []);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const passwordValid = password.length >= 8;
+  // Registration requires 10+ (server registerSchema); sign-in only needs a
+  // non-empty password.
+  const passwordMin = mode === 'register' ? 10 : 1;
+  const passwordValid = password.length >= passwordMin;
   const formValid = emailValid && passwordValid;
   const emailError = touched && email.length > 0 && !emailValid ? 'Enter a valid email address.' : null;
-  const passwordError = touched && password.length > 0 && !passwordValid ? 'Use at least 8 characters.' : null;
+  const passwordError =
+    touched && password.length > 0 && !passwordValid ? `Use at least ${passwordMin} characters.` : null;
+
+  async function requestReset() {
+    if (!emailValid) {
+      setTouched(true);
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestApi('/api/auth/forgot', { method: 'POST', body: JSON.stringify({ email: email.trim() }) }, false);
+      setReset('confirm');
+    } catch (err) {
+      Alert.alert('Could not send code', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmReset() {
+    if (!/^\d{6}$/.test(resetCode) || password.length < 10) {
+      setTouched(true);
+      Alert.alert('Check your entries', 'Enter the 6-digit code and a new password of at least 10 characters.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await requestApi(
+        '/api/auth/reset',
+        { method: 'POST', body: JSON.stringify({ email: email.trim(), code: resetCode, password }) },
+        false,
+      );
+      setReset('off');
+      setResetCode('');
+      setPassword('');
+      setMode('login');
+      Alert.alert('Password updated', 'You can now sign in with your new password.');
+    } catch (err) {
+      Alert.alert('Reset failed', err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function generateBrief() {
     const input = transaction.trim().toLowerCase();
@@ -765,6 +812,68 @@ function AuthScreen() {
           Link your accounts and get one plain-English move from your real transactions.
         </Text>
 
+        {reset !== 'off' ? (
+          <View style={[styles.authPanelV2, { borderColor: theme.border }]}>
+            <Text style={styles.authModeTitle}>Reset your password</Text>
+            {reset === 'request' ? (
+              <>
+                <Text style={styles.authFieldHint}>Enter your email and we'll send a 6-digit reset code.</Text>
+                <TextInput
+                  style={[styles.authInputV2, emailError ? styles.authInputError : null]}
+                  placeholder="Email"
+                  placeholderTextColor={theme.muted}
+                  autoCapitalize="none"
+                  autoComplete="email"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  accessibilityLabel="Email"
+                />
+                {emailError ? <Text style={styles.authFieldError}>{emailError}</Text> : null}
+                <PrimaryButton label={busy ? 'Sending...' : 'Send reset code'} icon={Send} disabled={busy} onPress={requestReset} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.authFieldHint}>We sent a code to {email}. Enter it with a new password.</Text>
+                <TextInput
+                  style={styles.authInputV2}
+                  placeholder="6-digit code"
+                  placeholderTextColor={theme.muted}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  accessibilityLabel="Reset code"
+                />
+                <TextInput
+                  style={styles.authInputV2}
+                  placeholder="New password (10+ characters)"
+                  placeholderTextColor={theme.muted}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  textContentType="newPassword"
+                  value={password}
+                  onChangeText={setPassword}
+                  accessibilityLabel="New password"
+                />
+                <PrimaryButton label={busy ? 'Working...' : 'Reset password'} icon={ShieldCheck} disabled={busy} onPress={confirmReset} />
+                <Pressable style={styles.authModeToggle} onPress={requestReset} accessibilityRole="button">
+                  <Text style={styles.authModeToggleText}>Didn't get it? <Text style={styles.authModeToggleLink}>Resend</Text></Text>
+                </Pressable>
+              </>
+            )}
+            <Pressable
+              style={styles.authModeToggle}
+              onPress={() => {
+                setReset('off');
+                setResetCode('');
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.authModeToggleText}>Back to <Text style={styles.authModeToggleLink}>sign in</Text></Text>
+            </Pressable>
+          </View>
+        ) : (
         <View style={[styles.authPanelV2, { borderColor: theme.border }]}>
           <Text style={styles.authModeTitle}>{mode === 'register' ? 'Create your account' : 'Welcome back'}</Text>
           <TextInput
@@ -782,7 +891,7 @@ function AuthScreen() {
           {emailError ? <Text style={styles.authFieldError}>{emailError}</Text> : null}
           <TextInput
             style={[styles.authInputV2, passwordError ? styles.authInputError : null]}
-            placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'}
+            placeholder={mode === 'register' ? 'Password (10+ characters)' : 'Password'}
             placeholderTextColor={theme.muted}
             secureTextEntry
             autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
@@ -828,8 +937,21 @@ function AuthScreen() {
               <Text style={styles.authModeToggleLink}>{mode === 'register' ? 'Sign in' : 'Create account'}</Text>
             </Text>
           </Pressable>
+          {mode === 'login' ? (
+            <Pressable
+              style={styles.authForgotLink}
+              onPress={() => {
+                setReset('request');
+                setTouched(false);
+              }}
+              accessibilityRole="button"
+            >
+              <Text style={styles.authModeToggleLink}>Forgot password?</Text>
+            </Pressable>
+          ) : null}
           <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
         </View>
+        )}
 
         <View style={styles.demoPanel}>
           <Text style={styles.demoLabel}>Try a money brief</Text>
@@ -3604,6 +3726,8 @@ const styles = StyleSheet.create({
   authModeToggle: { alignItems: 'center', paddingVertical: 6 },
   authModeToggleText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13 },
   authModeToggleLink: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold' },
+  authForgotLink: { alignItems: 'center', paddingVertical: 2 },
+  authFieldHint: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18 },
   authDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 2 },
   authDividerLine: { flex: 1, height: 1, backgroundColor: '#FFFFFF1A' },
   authDividerText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12 },

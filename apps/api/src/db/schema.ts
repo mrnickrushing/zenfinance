@@ -72,6 +72,23 @@ export const users = pgTable(
   },
 );
 
+// Short-lived password-reset codes. Only the SHA-256 of the 6-digit code is
+// stored, never the code itself; `consumedAt` makes a code single-use.
+export const passwordResetCodes = pgTable(
+  'password_reset_codes',
+  {
+    id: serial('id').primaryKey(),
+    userId: integer('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('password_reset_user_idx').on(t.userId)],
+);
+
 // Same rotation-family model as admin_refresh_tokens, but per user and
 // presented in the JSON body (the iOS client keeps it in the Keychain).
 export const userRefreshTokens = pgTable(
