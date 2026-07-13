@@ -1088,7 +1088,7 @@ function ProductShell() {
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
-    if (tab === 'score') return <ZenScoreDetailsScreen home={home} />;
+    if (tab === 'score') return <ZenScoreDetailsScreen home={home} onImprove={() => setTab('coach')} />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
@@ -1785,24 +1785,61 @@ const SCORE_COMPONENT_ICON: Record<string, IconComponent> = {
   growth_savings: PiggyBank,
   consistency: CheckCircle2,
 };
+// Blueprint §4: Mindful = Teal, Consistency = Violet, Growth = Teal.
+const SCORE_COMPONENT_TINT: Record<string, keyof typeof midnightZen> = {
+  mindful_spending: 'accent',
+  growth_savings: 'accent',
+  consistency: 'violet',
+};
 
-function ZenScoreDetailsScreen({ home }: { home: MobileHomeSummaryView }) {
+function ScoreMeterCard({ icon: Icon, tint, label, detail, value }: { icon: IconComponent; tint: string; label: string; detail: string; value: number | null }) {
+  const pct = Math.max(0, Math.min(100, value ?? 0));
+  return (
+    <ZenGlass style={styles.scoreMeterCard}>
+      <View style={styles.scoreMeterInner}>
+        <View style={styles.scoreMeterBody}>
+          <View style={styles.scoreMetricIcon}><Icon color={tint} size={18} /></View>
+          <Text style={styles.scoreMeterName} numberOfLines={2}>{label}</Text>
+          <Text style={styles.scoreMeterDetail} numberOfLines={4}>{detail}</Text>
+        </View>
+        <View style={styles.scoreMeterBarCol}>
+          <Text style={styles.scoreMeterPct}>{value === null ? '—' : `${value}%`}</Text>
+          <View style={styles.scoreMeterTrack}>
+            <View style={[styles.scoreMeterFill, { height: `${pct}%`, backgroundColor: tint }]} />
+          </View>
+        </View>
+      </View>
+    </ZenGlass>
+  );
+}
+
+function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryView; onImprove: () => void }) {
   const theme = useTheme();
   const { score, caption, components } = home.zenScore;
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Score Details</Text><Text style={styles.zenPageSubtitle}>Your progress, reflected</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
-      <ZenGlass style={styles.scoreHero}><Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text><ZenLotus size={84} /><Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text><Text style={styles.scoreHeroMeta}>{caption}</Text></ZenGlass>
-      <View style={styles.scoreMetricStack}>{components.map((c, index) => {
-        const Icon = SCORE_COMPONENT_ICON[c.key] ?? CircleDollarSign;
-        return (
-          <ZenGlass key={c.key} style={styles.scoreMetric}>
-            <View style={styles.scoreMetricIcon}><Icon color={index === 1 ? theme.violet : theme.accent} size={18} /></View>
-            <View style={styles.flexShrink}><Text style={styles.scoreMetricName}>{c.label}</Text><Text style={styles.scoreMetricCopy}>{c.detail}</Text></View>
-            <Text style={styles.scoreMetricValue}>{c.value === null ? '—' : `${c.value}%`}</Text>
-          </ZenGlass>
-        );
-      })}</View>
+      <View style={styles.scoreHeroV2}>
+        <ZenLotus size={168} />
+        <Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text>
+        <Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text>
+        <Text style={styles.scoreHeroMeta}>{caption}</Text>
+      </View>
+      <View style={styles.scoreMeterRow}>
+        {components.map((c) => (
+          <ScoreMeterCard
+            key={c.key}
+            icon={SCORE_COMPONENT_ICON[c.key] ?? CircleDollarSign}
+            tint={theme[SCORE_COMPONENT_TINT[c.key] ?? 'accent']}
+            label={c.label}
+            detail={c.detail}
+            value={c.value}
+          />
+        ))}
+      </View>
+      <View style={styles.scoreImproveWrap}>
+        <PrimaryButton label="How to improve" icon={Sparkles} onPress={onImprove} />
+      </View>
     </ScrollView>
   );
 }
@@ -3619,9 +3656,21 @@ const styles = StyleSheet.create({
   capButton: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
   categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
-  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 52, lineHeight: 56, marginTop: -8 },
-  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 8, paddingBottom: 20, gap: 2 },
+  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 64, lineHeight: 70, marginTop: 4 },
+  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 2 },
   scoreMetricStack: { gap: 10 },
+  scoreMeterRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  scoreMeterCard: { flex: 1, padding: 12, minHeight: 196 },
+  scoreMeterInner: { flex: 1, flexDirection: 'row', gap: 8 },
+  scoreMeterBody: { flex: 1, gap: 6 },
+  scoreMeterName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13, lineHeight: 16 },
+  scoreMeterDetail: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 13 },
+  scoreMeterBarCol: { width: 24, alignItems: 'center', gap: 6 },
+  scoreMeterPct: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  scoreMeterTrack: { width: 6, flex: 1, borderRadius: 3, backgroundColor: '#FFFFFF14', overflow: 'hidden', justifyContent: 'flex-end' },
+  scoreMeterFill: { width: 6, borderRadius: 3 },
+  scoreImproveWrap: { marginTop: 18 },
   scoreMetric: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 18 },
   scoreMetricIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
   scoreMetricName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
