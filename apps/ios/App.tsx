@@ -54,6 +54,7 @@ import {
   Animated,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -75,10 +76,6 @@ import {
   Circle as SvgCircle,
   Defs,
   Ellipse,
-  G,
-  Line as SvgLine,
-  LinearGradient,
-  Path,
   RadialGradient,
   Rect,
   Stop,
@@ -471,28 +468,15 @@ function ZenGlass({ children, style }: { children: ReactNode; style?: object }) 
 // a seed crown; a radial aura sits behind it. The breathing opacity below makes
 // the whole mark (aura included) gently glow — animation stays in Animated so
 // it works natively (react-native-svg has no SMIL).
-const LOTUS_PETALS = [
-  { r: -66, s: 0.82, o: 0.6 },
-  { r: 66, s: 0.82, o: 0.6 },
-  { r: -42, s: 0.9, o: 0.82 },
-  { r: 42, s: 0.9, o: 0.82 },
-  { r: -20, s: 0.96, o: 1 },
-  { r: 20, s: 0.96, o: 1 },
-  { r: 0, s: 1, o: 1 },
-];
-const LOTUS_PETAL = 'M0 0 C -10 -14 -9 -29 0 -42 C 9 -29 10 -14 0 0 Z';
-const LOTUS_VEIN = 'M0 -3 C -1.6 -15 -1.2 -29 0 -38';
+// The lotus artwork from the Stitch design, extracted to a transparent PNG
+// (the glow keys onto the app's dark surfaces). Native aspect 578×354.
+const LOTUS_IMAGE = require('./assets/lotus.png');
+const LOTUS_ASPECT = 354 / 578;
 
 function ZenLotus({ size = 18 }: { size?: number }) {
   // "The First Breath" (animation spec): scale 1→1.08, opacity 0.7→1 over a 4s
   // yoyo cycle on the standard bezier(0.4,0,0.2,1) curve.
   const breathe = useRef(new Animated.Value(0)).current;
-  // Unique gradient ids per instance so multiple lotuses on one screen (e.g.
-  // profile avatar + score pill) don't collide on a shared def id.
-  const uid = useRef(Math.random().toString(36).slice(2, 8)).current;
-  const sid = `zl-s-${uid}`;
-  const fid = `zl-f-${uid}`;
-  const aid = `zl-a-${uid}`;
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -514,42 +498,7 @@ function ZenLotus({ size = 18 }: { size?: number }) {
       accessibilityElementsHidden
       importantForAccessibility="no-hide-descendants"
     >
-      <Svg width={size} height={size} viewBox="0 0 100 100">
-        <Defs>
-          <LinearGradient id={sid} gradientUnits="userSpaceOnUse" x1="50" y1="28" x2="50" y2="74">
-            <Stop offset="0" stopColor="#B8FFFF" />
-            <Stop offset="0.5" stopColor={midnightZen.accent} />
-            <Stop offset="1" stopColor="#0A9C9D" />
-          </LinearGradient>
-          <LinearGradient id={fid} gradientUnits="userSpaceOnUse" x1="50" y1="30" x2="50" y2="74">
-            <Stop offset="0" stopColor="#8AFFFF" stopOpacity="0.5" />
-            <Stop offset="0.7" stopColor={midnightZen.accent} stopOpacity="0.14" />
-            <Stop offset="1" stopColor={midnightZen.accent} stopOpacity="0" />
-          </LinearGradient>
-          <RadialGradient id={aid} cx="50" cy="54" r="46" gradientUnits="userSpaceOnUse">
-            <Stop offset="0" stopColor="#8AFFFF" stopOpacity="0.55" />
-            <Stop offset="0.45" stopColor={midnightZen.accent} stopOpacity="0.22" />
-            <Stop offset="1" stopColor={midnightZen.accent} stopOpacity="0" />
-          </RadialGradient>
-        </Defs>
-
-        <Ellipse cx="50" cy="54" rx="48" ry="44" fill={`url(#${aid})`} />
-
-        {LOTUS_PETALS.map((p) => (
-          <G key={`${p.r}-${p.s}`} transform={`translate(50 72) rotate(${p.r}) scale(${p.s})`} opacity={p.o}>
-            <Path d={LOTUS_PETAL} fill={`url(#${fid})`} stroke={`url(#${sid})`} strokeWidth={2} strokeLinejoin="round" />
-            <Path d={LOTUS_VEIN} fill="none" stroke={`url(#${sid})`} strokeWidth={1} strokeLinecap="round" opacity={0.5} />
-          </G>
-        ))}
-
-        <G stroke={`url(#${sid})`} fill="none" strokeLinecap="round">
-          <SvgCircle cx="50" cy="61" r="4.2" strokeWidth={1.1} opacity={0.5} />
-          <SvgCircle cx="50" cy="61" r="1.4" fill="#8AFFFF" stroke="none" />
-          <SvgLine x1="50" y1="61" x2="50" y2="55" strokeWidth={1.1} />
-          <SvgLine x1="50" y1="61" x2="45" y2="57" strokeWidth={1.1} />
-          <SvgLine x1="50" y1="61" x2="55" y2="57" strokeWidth={1.1} />
-        </G>
-      </Svg>
+      <Image source={LOTUS_IMAGE} style={{ width: size, height: Math.round(size * LOTUS_ASPECT) }} resizeMode="contain" />
     </Animated.View>
   );
 }
