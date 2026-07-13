@@ -1612,7 +1612,8 @@ function PaywallScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>ZenFinance Coach</Text><Text style={styles.zenPageSubtitle}>A calmer way to make your next money move</Text></View><Crown color={theme.gold} size={19} /></View>
+      <ZenGlass style={[styles.primaryPanel, styles.paywallHero]}>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
           <Crown color={theme.accent} size={36} />
         </View>
@@ -1629,7 +1630,7 @@ function PaywallScreen({
           <FeatureLine text="Run what-if forecasts before a goal slips off pace" />
           <FeatureLine text="Audit subscriptions and track every verified Money Win" />
         </View>
-      </View>
+      </ZenGlass>
 
       {billing.packages.map((pkg) => {
         const selected = selectedProductId === pkg.productId;
@@ -1726,7 +1727,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
       <SectionHeader title="Your Goals" />
       {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
       {goals.map((goal) => (
-        <View key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <ZenGlass key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.panelTitle, { color: theme.ink }]}>{goal.name}</Text>
           <Text style={[styles.panelBody, { color: theme.muted }]}>{goalCoachSentence(goal)}</Text>
           <StatusRail>
@@ -1746,7 +1747,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
             icon={SlidersHorizontal}
             onPress={() => (billing.isPremium ? runScenario(goal.id) : setShowPaywall(true))}
           />
-        </View>
+        </ZenGlass>
       ))}
       {scenario ? (
         <SectionBand>
@@ -1961,7 +1962,7 @@ function WinsScreen({
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Money Wins</Text><Text style={styles.zenPageSubtitle}>Celebrate the money you kept</Text></View><PiggyBank color={theme.accent} size={19} /></View>
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <ZenGlass style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.panelHeader}>
           <ShieldCheck color={theme.accent} size={20} />
           <Text style={[styles.panelKicker, { color: theme.accent }]}>Money Physical</Text>
@@ -2003,14 +2004,14 @@ function WinsScreen({
             />
           </>
         )}
-      </View>
-      <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      </ZenGlass>
+      <ZenGlass style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <Text style={[styles.panelKicker, { color: theme.accent }]}>Money Wins</Text>
         <Text style={[styles.bigNumber, { color: theme.ink }]}>{usd(wins.verifiedTotalCents + wins.estimatedTotalCents, true)}</Text>
         <Text style={[styles.rowDetail, { color: theme.muted }]}>
           {usd(wins.verifiedTotalCents, true)} verified · {usd(wins.estimatedTotalCents, true)} estimated
         </Text>
-      </View>
+      </ZenGlass>
       {wins.wins.map((win) => (
         <View key={win.id} style={[styles.row, { borderColor: theme.border }]}>
           <View style={styles.flexShrink}>
@@ -3187,6 +3188,7 @@ const styles = StyleSheet.create({
   metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
   primaryPanel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, backgroundColor: '#FFFFFF0D', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  paywallHero: { borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.32, shadowRadius: 28 },
   sectionBand: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
