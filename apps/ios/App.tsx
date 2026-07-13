@@ -974,6 +974,7 @@ function BriefScreen({
         <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />
       )}
       {brief ? <DailyFocusCard brief={brief} /> : null}
+      {brief ? <ZenDailyWidget brief={brief} /> : null}
       <StatusRail>
         <View style={styles.zenStatCard}>
           <Text style={styles.zenStatLabel}>Recent Activity</Text>
@@ -1135,6 +1136,15 @@ function DailyFocusCard({ brief }: { brief: InsightView }) {
       </View>
       <Text style={styles.zenDailyCardBody}>{brief.action.description}</Text>
       <PrimaryButton label={reviewed ? 'Move reviewed' : 'Review my move'} icon={CheckCircle2} disabled={reviewed} onPress={reviewMove} />
+    </ZenGlass>
+  );
+}
+
+function ZenDailyWidget({ brief }: { brief: InsightView }) {
+  return (
+    <ZenGlass style={styles.dailyWidget}>
+      <View style={styles.dailyWidgetIcon}><Bell color="#00D2D3" size={16} /></View>
+      <View style={styles.flexShrink}><Text style={styles.dailyWidgetTitle}>Good morning!</Text><Text style={styles.dailyWidgetBody}>{brief.action.description}</Text><Text style={styles.dailyWidgetBrand}>ZenFinance</Text></View>
     </ZenGlass>
   );
 }
@@ -2313,7 +2323,8 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Settings</Text><Text style={styles.zenPageSubtitle}>Keep your ZenFinance space in balance</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
       <SectionHeader title="Billing" />
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.panelHeader}>
@@ -2919,6 +2930,11 @@ const styles = StyleSheet.create({
   zenDailyIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
   zenDailyCardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
   zenDailyCardBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
+  dailyWidget: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#00D2D34D', backgroundColor: '#00D2D314' },
+  dailyWidgetIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  dailyWidgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  dailyWidgetBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 2 },
+  dailyWidgetBrand: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3 },
   zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
   zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
