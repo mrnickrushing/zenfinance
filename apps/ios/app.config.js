@@ -5,7 +5,7 @@ module.exports = {
   expo: {
     name: 'ZenFinance',
     slug: 'zenfinance',
-    version: '0.1.0',
+    version: '0.1.1',
     orientation: 'portrait',
     icon: './assets/app-icon-master.png',
     scheme: 'zenfinance',
@@ -18,6 +18,7 @@ module.exports = {
       },
     },
     plugins: [
+      'expo-font',
       'expo-secure-store',
       [
         'expo-notifications',

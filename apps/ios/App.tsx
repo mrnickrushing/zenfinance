@@ -1,5 +1,8 @@
 import * as Sentry from '@sentry/react-native';
+import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import Constants from 'expo-constants';
+import { BlurView } from 'expo-blur';
+import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
 import * as Speech from 'expo-speech';
@@ -31,6 +34,7 @@ import {
   Square,
   Target,
   Trash2,
+  UserRound,
   UserPlus,
   Users,
   Volume2,
@@ -117,7 +121,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-type TabKey = 'brief' | 'coach' | 'goals' | 'subs' | 'wins' | 'settings';
+type TabKey = 'brief' | 'coach' | 'transactions' | 'profile' | 'goals' | 'subs' | 'wins' | 'settings' | 'budget' | 'score';
 const PREMIUM_TABS = new Set<TabKey>(['coach', 'subs', 'wins']);
 
 type RevenueCatCustomerInfo = Awaited<ReturnType<typeof Purchases.restorePurchases>>;
@@ -375,6 +379,31 @@ function useTheme() {
 }
 
 function ZenBackdrop() {
+  const phase = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.timing(phase, { toValue: 1, duration: 12000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [phase]);
+
+  const tealTransform = {
+    transform: [
+      { translateX: phase.interpolate({ inputRange: [0, 1], outputRange: [-22, 30] }) },
+      { translateY: phase.interpolate({ inputRange: [0, 1], outputRange: [24, -18] }) },
+      { scale: phase.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }) },
+    ],
+  };
+  const violetTransform = {
+    transform: [
+      { translateX: phase.interpolate({ inputRange: [0, 1], outputRange: [24, -28] }) },
+      { translateY: phase.interpolate({ inputRange: [0, 1], outputRange: [-16, 22] }) },
+      { scale: phase.interpolate({ inputRange: [0, 1], outputRange: [1.08, 0.94] }) },
+    ],
+  };
+
   return (
     <View pointerEvents="none" style={styles.zenBackdrop}>
       <Svg width="100%" height="100%" preserveAspectRatio="none">
@@ -398,23 +427,31 @@ function ZenBackdrop() {
         <Ellipse cx="78%" cy="72%" rx="64%" ry="38%" fill="url(#blueGlow)" />
         <SvgCircle cx="20%" cy="82%" r="30%" fill="url(#violetGlow)" opacity="0.55" />
       </Svg>
+      <Animated.View style={[styles.meshTeal, tealTransform]} />
+      <Animated.View style={[styles.meshViolet, violetTransform]} />
     </View>
   );
 }
 
 function ZenGlass({ children, style }: { children: ReactNode; style?: object }) {
   const theme = useTheme();
-  return <View style={[styles.zenGlass, { borderColor: theme.border }, style]}>{children}</View>;
+  return (
+    <View style={[styles.zenGlass, { borderColor: theme.border }, style]}>
+      <BlurView intensity={18} tint="dark" style={styles.zenGlassBlur as any} />
+      <View pointerEvents="none" style={styles.zenGlassTint} />
+      {children}
+    </View>
+  );
 }
 
 function ZenLotus({ size = 18 }: { size?: number }) {
-  const breathe = useRef(new Animated.Value(0.72)).current;
+  const breathe = useRef(new Animated.Value(0.6)).current;
 
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
-        Animated.timing(breathe, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(breathe, { toValue: 0.72, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 1, duration: 600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(breathe, { toValue: 0.6, duration: 600, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ]),
     );
     animation.start();
@@ -428,11 +465,31 @@ function ZenLotus({ size = 18 }: { size?: number }) {
   );
 }
 
+function ZenScoreCard({ score }: { score: number }) {
+  return (
+    <ZenGlass style={styles.zenScoreCard}>
+      <View style={styles.zenScoreAura}>
+        <ZenLotus size={42} />
+      </View>
+      <Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text>
+      <Text style={styles.zenScoreNumber}>{score}<Text style={styles.zenScoreDenom}>/100</Text></Text>
+      <Text style={styles.zenScoreCaption}>Balanced and steady</Text>
+    </ZenGlass>
+  );
+}
+
 type IconComponent = typeof Sparkles;
 
 export default function App() {
   const { accessToken, loading, setTokens, setLoading } = useAppStore();
   const theme = useTheme();
+  const [fontsLoaded] = useFonts({
+    Inter_300Light,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
 
   useEffect(() => {
     void (async () => {
@@ -445,7 +502,7 @@ export default function App() {
     })();
   }, [setLoading, setTokens]);
 
-  if (loading) {
+  if (loading || !fontsLoaded) {
     return (
       <SafeAreaView style={[styles.center, { backgroundColor: theme.bg }]}>
         <ActivityIndicator color={theme.accent} />
@@ -454,6 +511,21 @@ export default function App() {
   }
 
   return accessToken ? <ProductShell /> : <AuthScreen />;
+}
+
+function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
+  return (
+    <SafeAreaView style={styles.onboardingScreen}>
+      <ZenBackdrop />
+      <Pressable style={styles.onboardingSkip} onPress={onStart}><Text style={styles.onboardingSkipText}>Skip</Text></Pressable>
+      <View style={styles.onboardingHero}>
+        <View style={styles.onboardingLotus}><ZenLotus size={88} /></View>
+        <Text style={styles.onboardingTitle}>Find your{`\n`}financial peace.</Text>
+        <Text style={styles.onboardingBody}>AI-powered coaching to help you reach your goals without the stress.</Text>
+      </View>
+      <PrimaryButton label="Start Your Journey" icon={ChevronRight} onPress={onStart} />
+    </SafeAreaView>
+  );
 }
 
 function AuthScreen() {
@@ -467,6 +539,7 @@ function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
 
   function generateBrief() {
     const input = transaction.trim().toLowerCase();
@@ -509,6 +582,10 @@ function AuthScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!showLogin) {
+    return <ZenOnboardingWelcome onStart={() => setShowLogin(true)} />;
   }
 
   return (
@@ -634,26 +711,30 @@ function ProductShell() {
     }
     const hasLinkedItems = home.items.length > 0;
     if (tab === 'brief') {
-      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} /> : <LinkingScreen onLinked={refresh} />;
+      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} onNavigate={setTab} /> : <LinkingScreen onLinked={refresh} />;
     }
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen />;
+    if (tab === 'transactions') return <TransactionsScreen home={home} onConnect={() => setTab('brief')} />;
+    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} onSettings={() => setTab('settings')} onScore={() => setTab('score')} />;
+    if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
+    if (tab === 'score') return <ZenScoreDetailsScreen home={home} />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
   }, [home, refresh, refreshing, tab, theme.accent]);
 
-  const isHome = tab === 'brief';
+  const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score']).has(tab);
 
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
       <StatusBar style="light" />
       <ZenBackdrop />
       <View style={styles.zenFrame}>
-        {!isHome ? (
+        {!isZenRoute ? (
           <View style={styles.topBar}>
             <View style={styles.flexShrink}>
               <View style={styles.appTitleRow}>
@@ -671,7 +752,7 @@ function ProductShell() {
             </Pressable>
           </View>
         ) : null}
-        {home && !isHome ? (
+        {home && !isZenRoute ? (
           <View style={styles.shellRail}>
             <ShellCoachConsole home={home} onAsk={() => setTab('coach')} />
           </View>
@@ -754,7 +835,9 @@ function LinkingScreen({ onLinked }: { onLinked: () => void }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Connect Bank</Text><Text style={styles.zenPageSubtitle}>Link securely in three calm steps</Text></View><Text style={styles.connectClose}>Close</Text></View>
+      <View style={styles.connectSteps}>{['Select Bank', 'Verify', 'Sync'].map((step, index) => <View key={step} style={styles.connectStep}><View style={[styles.connectStepDot, index === 0 ? styles.connectStepActive : null]}><Text style={styles.connectStepNumber}>{index + 1}</Text></View><Text style={styles.connectStepText}>{step}</Text></View>)}</View>
       <SectionBand>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
           <Landmark color={theme.accent} size={38} />
@@ -766,6 +849,8 @@ function LinkingScreen({ onLinked }: { onLinked: () => void }) {
         </Text>
         <PrimaryButton label={busy ? 'Opening Plaid...' : 'Link a bank'} icon={Landmark} disabled={busy} onPress={linkBank} />
       </SectionBand>
+      <Text style={styles.zenSectionLabel}>POPULAR BANKS</Text>
+      <View style={styles.bankGrid}>{['Chase', 'Wells Fargo', 'Bank of America', 'Citibank', 'Capital One', 'US Bank'].map((name) => <Pressable key={name} style={styles.bankTile} onPress={linkBank}><Landmark color={theme.accent} size={18} /><Text style={styles.bankTileText}>{name}</Text></Pressable>)}</View>
       <StatusRail>
         <MoneyMetric label="Access" value="Read-only" icon={ShieldCheck} />
         <MoneyMetric label="Coach" value="Briefs" icon={Sparkles} />
@@ -783,10 +868,12 @@ function BriefScreen({
   home,
   onRefresh,
   refreshing,
+  onNavigate,
 }: {
   home: MobileHomeSummaryView;
   onRefresh: () => void;
   refreshing: boolean;
+  onNavigate: (tab: TabKey) => void;
 }) {
   const theme = useTheme();
   const brief = home.weeklyBrief ?? home.firstLook;
@@ -862,13 +949,7 @@ function BriefScreen({
           {refreshing ? <ActivityIndicator color={theme.accent} size="small" /> : <RefreshCcw color={theme.muted} size={17} />}
         </Pressable>
       </View>
-      <ZenGlass style={styles.zenScorePill}>
-        <View style={styles.zenScoreIcon}>
-          <ZenLotus size={15} />
-        </View>
-        <Text style={styles.zenScoreText}>Zen Score: 88/100</Text>
-        <View style={styles.zenScoreDot} />
-      </ZenGlass>
+      <ZenScoreCard score={88} />
       {brief ? (
         <MoneyBriefHero
           home={home}
@@ -882,6 +963,7 @@ function BriefScreen({
       ) : (
         <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />
       )}
+      {brief ? <DailyFocusCard brief={brief} /> : null}
       <StatusRail>
         <View style={styles.zenStatCard}>
           <Text style={styles.zenStatLabel}>Recent Activity</Text>
@@ -894,6 +976,18 @@ function BriefScreen({
           <Text style={styles.zenStatMeta}>{home.goals[0]?.name ?? 'Set your first goal'}</Text>
         </View>
       </StatusRail>
+      <View style={styles.zenLinkGrid}>
+        <Pressable style={styles.zenLinkCard} onPress={() => onNavigate('goals')}>
+          <Target color={theme.accent} size={18} />
+          <Text style={styles.zenLinkTitle}>Savings Goals</Text>
+          <Text style={styles.zenLinkMeta}>Your path to Zen</Text>
+        </Pressable>
+        <Pressable style={styles.zenLinkCard} onPress={() => onNavigate('budget')}>
+          <CircleDollarSign color={theme.violet} size={18} />
+          <Text style={styles.zenLinkTitle}>Smart Budgeting</Text>
+          <Text style={styles.zenLinkMeta}>Balance your flow</Text>
+        </Pressable>
+      </View>
       <SectionHeader title="This Week" />
       <StatusRail>
         <MoneyMetric label="Saved" value={usd(home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents, true)} icon={CircleDollarSign} />
@@ -991,16 +1085,6 @@ function MoneyBriefHero({
       </View>
       <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
       <Text style={styles.zenInsightBody}>{brief.body}</Text>
-      <View style={styles.zenDailyFocus}>
-        <View style={styles.flexShrink}>
-          <Text style={styles.zenDailyKicker}>DAILY FOCUS</Text>
-          <Text style={styles.zenDailyText}>{brief.action.description}</Text>
-          <Text style={styles.zenDailyMeta}>{brief.action.timeframe}</Text>
-        </View>
-        <Pressable style={styles.zenSwapButton} onPress={() => feedback('up')}>
-          <Text style={styles.zenSwapText}>View Move</Text>
-        </Pressable>
-      </View>
       <View style={styles.zenInsightFooter}>
         <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
         <Pressable onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
@@ -1013,6 +1097,155 @@ function MoneyBriefHero({
           {speaking ? <Pressable onPress={onStopVoice}><Square color={theme.accent} size={16} /></Pressable> : null}
         </View>
       ) : null}
+    </ZenGlass>
+  );
+}
+
+function DailyFocusCard({ brief }: { brief: InsightView }) {
+  const theme = useTheme();
+  const [reviewed, setReviewed] = useState(false);
+
+  async function reviewMove() {
+    setReviewed(true);
+    await requestApi(`/api/insights/${brief.id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating: 'up' }),
+    }).catch(() => {});
+  }
+
+  return (
+    <ZenGlass style={styles.zenDailyCard}>
+      <View style={styles.zenDailyCardHeader}>
+        <View style={styles.zenDailyIcon}><Target color={theme.accent} size={19} /></View>
+        <View style={styles.flexShrink}>
+          <Text style={styles.zenDailyKicker}>DAILY FOCUS</Text>
+          <Text style={styles.zenDailyCardTitle}>One calm move for today</Text>
+        </View>
+        <Text style={styles.zenDailyMeta}>{brief.action.timeframe}</Text>
+      </View>
+      <Text style={styles.zenDailyCardBody}>{brief.action.description}</Text>
+      <PrimaryButton label={reviewed ? 'Move reviewed' : 'Review my move'} icon={CheckCircle2} disabled={reviewed} onPress={reviewMove} />
+    </ZenGlass>
+  );
+}
+
+function TransactionsScreen({ home, onConnect }: { home: MobileHomeSummaryView; onConnect: () => void }) {
+  const theme = useTheme();
+  const items = home.items.length > 0 ? home.items : [{ id: 0, provider: 'plaid', institutionName: 'Connect a bank', accounts: [], status: 'active', lastSyncedAt: null } as LinkedItem];
+  return (
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}>
+        <View><Text style={styles.zenPageTitle}>Accounts & Transactions</Text><Text style={styles.zenPageSubtitle}>Your money, in one calm view</Text></View>
+        <View style={styles.zenHeaderAvatar}><ZenLotus size={17} /></View>
+      </View>
+      <Text style={styles.zenSectionLabel}>LINKED ACCOUNTS</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRail}>
+        {items.map((item, index) => (
+          <ZenGlass key={`${item.id}-${index}`} style={styles.accountCard}>
+            <View style={styles.accountCardIcon}><Landmark color={theme.accent} size={17} /></View>
+            <Text style={styles.accountCardName}>{item.institutionName ?? 'Bank'}</Text>
+            <Text style={styles.accountCardType}>{item.accounts.length ? `${item.accounts.length} accounts` : 'Ready to connect'}</Text>
+            <Text style={styles.accountCardAmount}>{item.accounts.length ? usd(item.accounts.reduce((sum, account) => sum + (account.currentBalanceCents ?? 0), 0), true) : '$0'}</Text>
+          </ZenGlass>
+        ))}
+      </ScrollView>
+      <Text style={styles.zenSectionLabel}>RECENT ACTIVITY</Text>
+      <ZenGlass style={styles.transactionPanel}>
+        {home.recentTransactions.slice(0, 8).map((txn, index) => (
+          <View key={txn.id} style={[styles.transactionRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
+            <View style={styles.transactionIcon}><CircleDollarSign color={index % 2 ? theme.violet : theme.accent} size={16} /></View>
+            <View style={styles.flexShrink}>
+              <Text style={styles.transactionName}>{txn.merchantClean ?? txn.merchantName ?? txn.name}</Text>
+              <Text style={styles.transactionMeta}>{txn.category ?? 'General'} · {dateLabel(txn.postedDate)}</Text>
+            </View>
+            <Text style={styles.transactionAmount}>{usd(txn.amountCents)}</Text>
+          </View>
+        ))}
+        {home.recentTransactions.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
+      </ZenGlass>
+      <PrimaryButton label="Connect another account" icon={Landmark} onPress={onConnect} />
+    </ScrollView>
+  );
+}
+
+function ZenProfileScreen({ billing, onSettings, onScore }: { billing: BillingStatusView; onSettings: () => void; onScore: () => void }) {
+  const theme = useTheme();
+  const rows = [
+    { label: 'Settings', icon: SlidersHorizontal, onPress: onSettings },
+    { label: 'Security', icon: LockKeyhole, onPress: onSettings },
+    { label: 'Linked Banks', icon: Landmark, onPress: onSettings },
+    { label: 'Notifications', icon: Bell, onPress: onSettings },
+  ];
+  return (
+    <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
+      <View style={styles.profileAvatar}><ZenLotus size={38} /></View>
+      <Text style={styles.profileName}>ZenFinance Member</Text>
+      <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>88/100</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
+      <ZenGlass style={styles.profileMenu}>
+        {rows.map((row, index) => {
+          const Icon = row.icon;
+          return <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}><Icon color={theme.muted} size={18} /><Text style={styles.profileMenuText}>{row.label}</Text><ChevronRight color={theme.muted} size={17} /></Pressable>;
+        })}
+      </ZenGlass>
+      <SecondaryButton label="Open full settings" icon={SlidersHorizontal} onPress={onSettings} />
+    </ScrollView>
+  );
+}
+
+function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
+  const theme = useTheme();
+  const categories = useMemo(() => {
+    const grouped = new Map<string, number>();
+    for (const txn of home.recentTransactions) {
+      const key = txn.category ?? 'Essentials';
+      grouped.set(key, (grouped.get(key) ?? 0) + Math.abs(txn.amountCents));
+    }
+    return [...grouped.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  }, [home.recentTransactions]);
+  const total = categories.reduce((sum, [, amount]) => sum + amount, 0);
+  return (
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Text style={styles.zenHeaderEdit}>Edit</Text></View>
+      <ZenGlass style={styles.budgetHero}>
+        <View style={styles.budgetRing}><Text style={styles.budgetHeroAmount}>{usd(total, true)}</Text><Text style={styles.budgetHeroMeta}>Available Funds</Text></View>
+        <View style={styles.budgetLegend}><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.accent }]} /><Text style={styles.budgetLegendText}>Essentials</Text></View><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.violet }]} /><Text style={styles.budgetLegendText}>Flexible</Text></View></View>
+      </ZenGlass>
+      <Text style={styles.zenSectionLabel}>SPENDING FLOW</Text>
+      <View style={styles.budgetBubbleGrid}>
+        {categories.map(([category, amount], index) => <View key={category} style={[styles.budgetBubble, index === 0 ? styles.budgetBubbleLarge : null, { borderColor: index % 2 ? theme.violet : theme.accent }]}><Text style={styles.budgetBubbleName}>{category}</Text><Text style={styles.budgetBubbleAmount}>{usd(amount, true)}</Text><Text style={styles.budgetBubbleMeta}>{total ? `${Math.round((amount / total) * 100)}%` : '0%'}</Text></View>)}
+      </View>
+      <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
+    </ScrollView>
+  );
+}
+
+function ZenScoreDetailsScreen({ home }: { home: MobileHomeSummaryView }) {
+  const theme = useTheme();
+  const goalProgress = home.goals[0] ? Math.round(home.goals[0].pacing.progressRatio * 100) : 85;
+  const metrics = [
+    ['Mindful Spending', 'Great job staying within budget.', `${Math.min(100, goalProgress + 4)}%`, CircleDollarSign],
+    ['Growth & Savings', 'You are building a consistent rhythm.', `${Math.max(0, goalProgress - 2)}%`, PiggyBank],
+    ['Consistency', 'Small steps are becoming a habit.', '85%', CheckCircle2],
+  ] as const;
+  return (
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Score Details</Text><Text style={styles.zenPageSubtitle}>Your progress, reflected</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
+      <ZenGlass style={styles.scoreHero}><Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text><ZenLotus size={84} /><Text style={styles.scoreHeroNumber}>88</Text><Text style={styles.scoreHeroMeta}>Your financial wellness is blooming.</Text></ZenGlass>
+      <View style={styles.scoreMetricStack}>{metrics.map(([name, copy, value, Icon], index) => <ZenGlass key={name} style={styles.scoreMetric}><View style={styles.scoreMetricIcon}><Icon color={index === 1 ? theme.violet : theme.accent} size={18} /></View><View style={styles.flexShrink}><Text style={styles.scoreMetricName}>{name}</Text><Text style={styles.scoreMetricCopy}>{copy}</Text></View><Text style={styles.scoreMetricValue}>{value}</Text></ZenGlass>)}</View>
+    </ScrollView>
+  );
+}
+
+function ZenMilestoneCard({ goal }: { goal: GoalView }) {
+  return (
+    <ZenGlass style={styles.milestoneCard}>
+      <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
+      <Text style={styles.milestoneSubtitle}>{goal.name}</Text>
+      <View style={styles.milestoneLotus}><ZenLotus size={72} /></View>
+      <Text style={styles.milestoneBody}>You’re making steady progress. Take a breath and celebrate this step.</Text>
+      <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={() => {}} />
     </ZenGlass>
   );
 }
@@ -1078,6 +1311,7 @@ function CoachScreen() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.coachScreenHeader}><View><Text style={styles.zenPageTitle}>Zen AI Coach</Text><Text style={styles.zenPageSubtitle}>A calm place to ask anything about your money</Text></View><View style={styles.chatStatus}><View style={styles.zenScoreDot} /><Text style={styles.chatStatusText}>Online</Text></View></View>
       <FlatList
         data={answers}
         keyExtractor={(item) => item.id}
@@ -1114,6 +1348,10 @@ function ChatBubble({ answer }: { answer: ChatAnswerView }) {
   const theme = useTheme();
   return (
     <CoachCard>
+      <View style={styles.chatBubbleHeader}>
+        <View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View>
+        <Text style={styles.chatBubbleKicker}>ZEN AI</Text>
+      </View>
       <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
       <InsightLedger facts={answer.facts} />
       {answer.actions.map((action) => (
@@ -1150,13 +1388,15 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
 
   return (
     <View style={styles.promptBoard}>
-      <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
-        <Bot color={theme.accent} size={34} />
-      </View>
-      <Text style={[styles.emptyTitle, { color: theme.ink }]}>Ask about your money</Text>
-      <Text style={[styles.emptyCopy, { color: theme.muted }]}>
-        Start with a question that has a dollar amount, merchant, category, or goal attached.
-      </Text>
+      <ZenGlass style={styles.chatMessageBubble}>
+        <View style={styles.chatBubbleHeader}><View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View><Text style={styles.chatBubbleKicker}>ZEN AI</Text></View>
+        <Text style={styles.chatMessageText}>Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.</Text>
+      </ZenGlass>
+      <ZenGlass style={styles.chatMessageBubble}>
+        <View style={styles.chatBubbleHeader}><View style={styles.chatBubbleIcon}><ZenLotus size={16} /></View><Text style={styles.chatBubbleKicker}>ZEN AI</Text></View>
+        <Text style={styles.chatMessageText}>Ask me about a charge, a goal, or what you can comfortably spend next.</Text>
+      </ZenGlass>
+      <Text style={styles.chatPromptLabel}>TRY ASKING</Text>
       {groups.map((group) => {
         const Icon = group.icon;
         return (
@@ -1396,6 +1636,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   return (
     <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
       <SectionHeader title="Goals" />
+      {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
       {goals.map((goal) => (
         <View key={goal.id} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.panelTitle, { color: theme.ink }]}>{goal.name}</Text>
@@ -2365,12 +2606,10 @@ function Toggle({ label, value, onValueChange }: { label: string; value: boolean
 function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
-    { key: 'brief', icon: Sparkles, label: 'Brief' },
+    { key: 'brief', icon: Home, label: 'Home' },
     { key: 'coach', icon: MessageCircle, label: 'Coach' },
-    { key: 'goals', icon: Target, label: 'Goals' },
-    { key: 'subs', icon: WalletCards, label: 'Audit' },
-    { key: 'wins', icon: PiggyBank, label: 'Wins' },
-    { key: 'settings', icon: Moon, label: 'More' },
+    { key: 'transactions', icon: CircleDollarSign, label: 'Transactions' },
+    { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
   return (
     <View style={[styles.tabBar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
@@ -2415,9 +2654,9 @@ function MoneyMetric({ label, value, icon: Icon }: { label: string; value: strin
 function CoachCard({ children }: { children: ReactNode }) {
   const theme = useTheme();
   return (
-    <View style={[styles.coachCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+    <ZenGlass style={[styles.coachCard, styles.violetChatGlow, { borderColor: theme.violet }]}>
       {children}
-    </View>
+    </ZenGlass>
   );
 }
 
@@ -2484,12 +2723,7 @@ function PlanOption({
 }
 
 function SectionBand({ children }: { children: ReactNode }) {
-  const theme = useTheme();
-  return (
-    <View style={[styles.sectionBand, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      {children}
-    </View>
-  );
+  return <ZenGlass style={styles.sectionBand}>{children}</ZenGlass>;
 }
 
 function EvidenceChip({ label }: { label: string }) {
@@ -2546,18 +2780,32 @@ function PrimaryButton({
   onPress: () => void;
 }) {
   const theme = useTheme();
+  const pulse = useRef(new Animated.Value(0.98)).current;
+  useEffect(() => {
+    if (disabled) return;
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0.98, duration: 500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    animation.start();
+    return () => animation.stop();
+  }, [disabled, pulse]);
   const contentColor = disabled ? theme.muted : '#fff';
   return (
-    <Pressable
-      style={[styles.primaryButton, { backgroundColor: disabled ? theme.surfaceAlt : theme.accent }]}
-      disabled={disabled}
-      onPress={onPress}
-    >
-      {Icon ? <Icon color={contentColor} size={18} /> : null}
-      <Text style={[styles.primaryButtonText, { color: contentColor }]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
+    <Animated.View style={[styles.primaryButtonPulse, { transform: [{ scale: disabled ? 1 : pulse }] }]}>
+      <Pressable
+        style={[styles.primaryButton, { backgroundColor: disabled ? theme.surfaceAlt : theme.accent }]}
+        disabled={disabled}
+        onPress={onPress}
+      >
+        {Icon ? <Icon color={contentColor} size={18} /> : null}
+        <Text style={[styles.primaryButtonText, { color: contentColor }]} numberOfLines={2}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -2601,6 +2849,13 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   centerGrow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   authScreen: { flex: 1 },
+  onboardingScreen: { flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 24, justifyContent: 'space-between', backgroundColor: '#0B0E14' },
+  onboardingSkip: { alignSelf: 'flex-end', padding: 8 },
+  onboardingSkipText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12 },
+  onboardingHero: { alignItems: 'center', gap: 18 },
+  onboardingLotus: { width: 150, height: 150, borderRadius: 75, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8E44AD26', shadowColor: '#00D2D3', shadowOpacity: 0.5, shadowRadius: 34, shadowOffset: { width: 0, height: 0 } },
+  onboardingTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 31, lineHeight: 36, textAlign: 'center', letterSpacing: 0.5 },
+  onboardingBody: { maxWidth: 290, color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 21, textAlign: 'center' },
   authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
   authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
@@ -2609,6 +2864,8 @@ const styles = StyleSheet.create({
   appScreen: { flex: 1 },
   content: { flex: 1 },
   zenBackdrop: StyleSheet.absoluteFill,
+  meshTeal: { position: 'absolute', width: 260, height: 220, left: -80, top: 80, borderRadius: 140, backgroundColor: '#00D2D31A' },
+  meshViolet: { position: 'absolute', width: 300, height: 250, right: -100, top: 20, borderRadius: 160, backgroundColor: '#8E44AD1A' },
   zenFrame: { flex: 1, marginHorizontal: 12, marginTop: 8, marginBottom: 8, borderRadius: 28, borderWidth: 1, borderColor: '#FFFFFF26', overflow: 'hidden' },
   zenHomeScroll: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24, gap: 14 },
   zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
@@ -2616,19 +2873,33 @@ const styles = StyleSheet.create({
   zenBrand: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   zenHeaderAction: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   zenScorePill: { alignSelf: 'center', minHeight: 34, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  zenScoreCard: { alignItems: 'center', paddingVertical: 18, gap: 3, borderColor: '#FFFFFF38' },
+  zenScoreAura: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D31A', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
+  zenScoreEyebrow: { color: '#FFFFFF99', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 2, marginTop: 5 },
+  zenScoreNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 34, letterSpacing: 1 },
+  zenScoreDenom: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 15, letterSpacing: 0 },
+  zenScoreCaption: { color: '#79E6B0', fontFamily: 'Inter_500Medium', fontSize: 10 },
   zenScoreIcon: { width: 22, height: 22, borderRadius: 7, backgroundColor: '#FFFFFF33', alignItems: 'center', justifyContent: 'center' },
   zenScoreText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   zenScoreDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#79E6B0' },
-  zenGlass: { backgroundColor: '#FFFFFF14', borderWidth: 1, borderRadius: 24, padding: 16, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  zenGlass: { backgroundColor: '#FFFFFF0D', borderWidth: 1, borderRadius: 24, padding: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  zenGlassBlur: StyleSheet.absoluteFill,
+  zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
+  primaryButtonPulse: { width: '100%' },
   zenInsightCard: { gap: 12, borderColor: '#FFFFFF38' },
   zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
   zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
-  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontWeight: '300' },
+  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontFamily: 'Inter_300Light', letterSpacing: 1 },
   zenInsightBody: { color: '#FFFFFFB3', fontSize: 13, lineHeight: 18 },
   zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
-  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
+  zenDailyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  zenDailyIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  zenDailyCardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
+  zenDailyCardBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
+  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
   zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
   zenSwapButton: { minHeight: 32, borderRadius: 16, paddingHorizontal: 11, justifyContent: 'center', backgroundColor: '#FFFFFFB3' },
@@ -2637,9 +2908,85 @@ const styles = StyleSheet.create({
   zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
   zenVoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 2 },
-  zenStatLabel: { color: '#FFFFFFB3', fontSize: 10, fontWeight: '700' },
-  zenStatValue: { color: '#FFFFFF', fontSize: 20, fontWeight: '700' },
+  zenStatLabel: { color: '#FFFFFFB3', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
+  zenStatValue: { color: '#FFFFFF', fontSize: 20, fontFamily: 'Inter_600SemiBold' },
   zenStatMeta: { color: '#FFFFFF80', fontSize: 10 },
+  zenLinkGrid: { flexDirection: 'row', gap: 10 },
+  zenLinkCard: { flex: 1, minHeight: 88, padding: 12, borderRadius: 18, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 4 },
+  zenLinkTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  zenLinkMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
+  zenScreenScroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28, gap: 14 },
+  zenPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  zenPageTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, letterSpacing: 0.4 },
+  zenPageSubtitle: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
+  zenHeaderAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
+  zenSectionLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
+  accountRail: { gap: 10, paddingRight: 16 },
+  accountCard: { width: 132, minHeight: 148, padding: 12, gap: 4, borderRadius: 18 },
+  accountCardIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
+  accountCardName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  accountCardType: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9 },
+  accountCardAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 18, marginTop: 'auto' },
+  transactionPanel: { paddingVertical: 4 },
+  transactionRow: { minHeight: 64, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  transactionIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
+  transactionName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  transactionMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
+  profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
+  profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
+  profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, textAlign: 'center', marginTop: 10 },
+  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center', marginTop: 3 },
+  profileScore: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', marginTop: 12 },
+  profileScoreText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  profileMenu: { paddingVertical: 4, marginTop: 8 },
+  profileMenuRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
+  profileMenuText: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 13 },
+  zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 10 },
+  zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  budgetHero: { minHeight: 210, alignItems: 'center', justifyContent: 'center', gap: 16 },
+  budgetRing: { width: 142, height: 142, borderRadius: 71, borderWidth: 10, borderColor: '#00D2D366', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
+  budgetHeroAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 23 },
+  budgetHeroMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
+  budgetLegend: { flexDirection: 'row', gap: 16 },
+  legendLine: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legendDot: { width: 7, height: 7, borderRadius: 4 },
+  budgetLegendText: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10 },
+  budgetBubbleGrid: { minHeight: 290, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  budgetBubble: { width: 104, height: 104, borderRadius: 52, backgroundColor: '#FFFFFF14', borderWidth: 2, alignItems: 'center', justifyContent: 'center', padding: 8 },
+  budgetBubbleLarge: { width: 132, height: 132, borderRadius: 66 },
+  budgetBubbleName: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 10, textAlign: 'center' },
+  budgetBubbleAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13, marginTop: 4 },
+  budgetBubbleMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 },
+  budgetInsight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  budgetInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  budgetInsightBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
+  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 52, lineHeight: 56, marginTop: -8 },
+  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  scoreMetricStack: { gap: 10 },
+  scoreMetric: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 18 },
+  scoreMetricIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
+  scoreMetricName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  scoreMetricCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
+  scoreMetricValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  connectClose: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
+  connectStep: { alignItems: 'center', gap: 5 },
+  connectStepDot: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: '#FFFFFF40', alignItems: 'center', justifyContent: 'center' },
+  connectStepActive: { backgroundColor: '#00D2D3', borderColor: '#00D2D3' },
+  connectStepNumber: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  connectStepText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9 },
+  bankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  bankTile: { width: '31%', minHeight: 70, borderRadius: 16, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 7 },
+  bankTileText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'center' },
+  milestoneCard: { alignItems: 'center', gap: 8, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.45, shadowRadius: 30 },
+  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 24, textAlign: 'center' },
+  milestoneSubtitle: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center' },
+  milestoneLotus: { width: 130, height: 130, borderRadius: 65, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8E44AD26', marginVertical: 8 },
+  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, textAlign: 'center' },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
   heroTitleV2: { color: '#FFFFFF', fontSize: 36, lineHeight: 39, fontWeight: '300', textAlign: 'left', marginTop: 18 },
@@ -2670,7 +3017,7 @@ const styles = StyleSheet.create({
   topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A', backgroundColor: '#0B0E14B3' },
   appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   tinyLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  appTitle: { fontSize: 24, fontWeight: '800' },
+  appTitle: { fontSize: 24, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 },
   appSub: { fontSize: 13, marginTop: 2 },
   iconButton: { width: 40, height: 40, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
   shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#0B0E14B3', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A' },
@@ -2680,7 +3027,7 @@ const styles = StyleSheet.create({
   consoleChip: { minHeight: 30, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
   consoleChipText: { fontSize: 12, fontWeight: '800' },
   consoleDot: { width: 7, height: 7, borderRadius: 4 },
-  consoleAskPill: { minHeight: 42, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14, shadowColor: '#05a77b', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  consoleAskPill: { minHeight: 42, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14, shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   consoleAskText: { color: '#fff', fontSize: 14, fontWeight: '900' },
   consoleNextAction: { minHeight: 70, borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   consoleActionKicker: { fontSize: 11, lineHeight: 15, fontWeight: '900', textTransform: 'uppercase' },
@@ -2688,10 +3035,10 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
   primaryButton: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
-  primaryButtonText: { flexShrink: 1, fontWeight: '800', fontSize: 15, textAlign: 'center' },
+  primaryButtonText: { flexShrink: 1, fontFamily: 'Inter_600SemiBold', fontSize: 15, textAlign: 'center' },
   secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
-  secondaryButtonText: { flexShrink: 1, fontWeight: '700', fontSize: 14, textAlign: 'center' },
+  secondaryButtonText: { flexShrink: 1, fontFamily: 'Inter_500Medium', fontSize: 14, textAlign: 'center' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
   largeIcon: { width: 72, height: 72, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   emptyTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
@@ -2700,12 +3047,12 @@ const styles = StyleSheet.create({
   metric: { flex: 1, minHeight: 82, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
-  primaryPanel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  primaryPanel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, backgroundColor: '#FFFFFF0D', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   sectionBand: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
-  panelBody: { fontSize: 15, lineHeight: 22 },
+  panelTitle: { fontSize: 20, lineHeight: 26, fontFamily: 'Inter_300Light', letterSpacing: 1 },
+  panelBody: { fontSize: 15, lineHeight: 22, fontFamily: 'Inter_400Regular' },
   briefHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
   impactPill: { minWidth: 82, borderRadius: 8, paddingVertical: 10, paddingHorizontal: 10, alignItems: 'center', gap: 2 },
   impactValue: { fontSize: 19, fontWeight: '800', fontVariant: ['tabular-nums'] },
@@ -2725,11 +3072,11 @@ const styles = StyleSheet.create({
   planTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   planBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   planBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  sectionTitle: { fontSize: 17, fontWeight: '800', marginTop: 10 },
+  sectionTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, marginTop: 10 },
   row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', gap: 12 },
   destructiveIconButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  rowTitle: { fontSize: 15, fontWeight: '800' },
-  rowDetail: { fontSize: 13, lineHeight: 18, marginTop: 2 },
+  rowTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
+  rowDetail: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular', marginTop: 2 },
   updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
@@ -2738,7 +3085,18 @@ const styles = StyleSheet.create({
   tabItemActive: { shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   tabText: { fontSize: 11, fontWeight: '800' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
-  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  coachCard: { borderWidth: 1, borderRadius: 24, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#8E44AD', shadowOpacity: 0.38, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  violetChatGlow: { backgroundColor: '#8E44AD14' },
+  chatBubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  chatBubbleIcon: { width: 26, height: 26, borderRadius: 9, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
+  chatBubbleKicker: { color: '#FFFFFFB3', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 },
+  chatPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
+  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  chatStatus: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  chatStatusText: { color: '#79E6B0', fontFamily: 'Inter_400Regular', fontSize: 10 },
+  chatMessageBubble: { alignSelf: 'stretch', gap: 8, borderColor: '#8E44AD66', backgroundColor: '#8E44AD14', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 24 },
+  chatMessageText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
+  chatPromptLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
   promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
   promptGroup: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
   quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
