@@ -19,7 +19,6 @@ import {
   CircleDollarSign,
   CreditCard,
   Crown,
-  Coffee,
   Gift,
   Home,
   Landmark,
@@ -34,9 +33,7 @@ import {
   RotateCcw,
   CloudOff,
   Send,
-  ShoppingCart,
   ShieldCheck,
-  Sprout,
   SlidersHorizontal,
   Sparkles,
   Square,
@@ -57,6 +54,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   Pressable,
   RefreshControl,
@@ -355,6 +353,16 @@ async function clearRevenueCatIdentity(): Promise<void> {
   const configured = await Purchases.isConfigured().catch(() => false);
   if (configured) await Purchases.logOut().catch(() => {});
   configuredRevenueCatUserId = null;
+}
+
+async function signOutUser(): Promise<void> {
+  const refreshToken = useAppStore.getState().refreshToken;
+  if (refreshToken) {
+    await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
+  }
+  await clearRevenueCatIdentity();
+  await persistTokens(null);
+  useAppStore.getState().setTokens(null);
 }
 
 function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo: RevenueCatCustomerInfo): RestorePayload {
@@ -1538,14 +1546,14 @@ function BriefScreen({
       <SectionHeader title="Recent Money Movement" />
       {home.recentTransactions.slice(0, 6).map((txn) => {
         const category = formatActivityCategory(txn);
-        const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+        const { icon: iconName, color, backgroundColor } = activityIconForCategory(category);
         const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
         const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
         const date = dateLabel(txn.postedDate);
         return (
           <ZenGlass key={txn.id} style={styles.activityTile}>
             <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
-              <Icon color={color} size={20} strokeWidth={1.9} />
+              <MaterialSymbol name={iconName} color={color} size={20} />
             </View>
             <View style={styles.activityCopy}>
               <Text style={styles.activityTitle}>{category}</Text>
@@ -1686,14 +1694,14 @@ function accountKindLabel(account: LinkedAccount): string {
   return 'Account';
 }
 
-function accountKindIcon(kind: string): typeof Landmark {
+function accountKindIcon(kind: string): MaterialSymbolName {
   switch (kind) {
     case 'Credit':
-      return CreditCard;
+      return 'credit_card';
     case 'Savings':
-      return PiggyBank;
+      return 'savings';
     default:
-      return Landmark;
+      return 'account_balance';
   }
 }
 
@@ -1715,18 +1723,18 @@ function formatActivityCategory(txn: EnrichedTransactionView): string {
     .join(' ');
 }
 
-function activityIconForCategory(category: string): { icon: typeof Sprout; color: string; backgroundColor: string } {
+function activityIconForCategory(category: string): { icon: MaterialSymbolName; color: string; backgroundColor: string } {
   switch (category) {
     case 'Growth/Investments':
-      return { icon: Sprout, color: '#75D38F', backgroundColor: '#75D38F24' };
+      return { icon: 'eco', color: '#75D38F', backgroundColor: '#75D38F24' };
     case 'Dining':
-      return { icon: Coffee, color: '#E1AF7F', backgroundColor: '#E1AF7F24' };
+      return { icon: 'local_cafe', color: '#E1AF7F', backgroundColor: '#E1AF7F24' };
     case 'Shopping':
-      return { icon: ShoppingCart, color: '#AE8AEF', backgroundColor: '#AE8AEF24' };
+      return { icon: 'shopping_cart', color: '#AE8AEF', backgroundColor: '#AE8AEF24' };
     case 'Utilities':
-      return { icon: Home, color: '#79B8F3', backgroundColor: '#79B8F324' };
+      return { icon: 'home', color: '#79B8F3', backgroundColor: '#79B8F324' };
     default:
-      return { icon: CircleDollarSign, color: '#8FD8DA', backgroundColor: '#8FD8DA24' };
+      return { icon: 'account_balance_wallet', color: '#8FD8DA', backgroundColor: '#8FD8DA24' };
   }
 }
 
@@ -1772,7 +1780,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRail}>
         {displayedCards.map(({ item, account, key }, index) => {
           const kind = accountKindLabel(account);
-          const Icon = accountKindIcon(kind);
+          const iconName = accountKindIcon(kind);
           const displayName = account.name || item.institutionName || kind;
           const ending = account.mask ? `Ending in ${account.mask}` : item.institutionName ? item.institutionName : 'Connected account';
           const balance = account.currentBalanceCents == null ? '$0.00' : usd(account.currentBalanceCents, true);
@@ -1781,7 +1789,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
             <ZenGlass key={key} style={[styles.accountCard, featured ? styles.accountCardFeatured : null]}>
               <Text style={styles.accountCardEyebrow}>{kind}</Text>
               <View style={[styles.accountCardIcon, featured ? styles.accountCardIconFeatured : null]}>
-                <Icon color={featured ? theme.accent : theme.ink} size={26} strokeWidth={1.75} />
+                <MaterialSymbol name={iconName} color={featured ? theme.accent : theme.ink} size={24} />
               </View>
               <Text style={styles.accountCardName}>{kind}</Text>
               <Text style={styles.accountCardSubtitle}>{displayName}</Text>
@@ -1800,14 +1808,14 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
       <View style={styles.transactionList}>
         {activityRows.map((txn) => {
           const category = formatActivityCategory(txn);
-          const { icon: Icon, color, backgroundColor } = activityIconForCategory(category);
+          const { icon: iconName, color, backgroundColor } = activityIconForCategory(category);
           const amountColor = txn.amountCents < 0 ? '#FF6B99' : theme.accent;
           const merchant = txn.merchantClean ?? txn.merchantName ?? txn.name;
           const date = dateLabel(txn.postedDate);
           return (
             <ZenGlass key={txn.id} style={styles.activityTile}>
               <View style={[styles.activityIcon, { backgroundColor, borderColor: `${color}40` }]}>
-                <Icon color={color} size={20} strokeWidth={1.9} />
+                <MaterialSymbol name={iconName} color={color} size={20} />
               </View>
               <View style={styles.activityCopy}>
                 <Text style={styles.activityTitle} numberOfLines={1}>{category}</Text>
@@ -1832,26 +1840,33 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
 
 function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { billing: BillingStatusView; score: number | null; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
   const theme = useTheme();
-  const rows = [
-    { label: 'Settings', icon: SlidersHorizontal, onPress: onSettings },
-    { label: 'Security', icon: LockKeyhole, onPress: onSettings },
-    { label: 'Linked Banks', icon: Landmark, onPress: onSettings },
-    { label: 'Notifications', icon: Bell, onPress: onSettings },
-    { label: 'Smart Budgeting', icon: CircleDollarSign, onPress: onBudget },
+  const rows: Array<{ label: string; icon: MaterialSymbolName; onPress: () => void }> = [
+    { label: 'Settings', icon: 'settings', onPress: onSettings },
+    { label: 'Security', icon: 'security', onPress: onSettings },
+    { label: 'Linked Banks', icon: 'link', onPress: onSettings },
+    { label: 'Notifications', icon: 'notifications', onPress: onSettings },
+    { label: 'Smart Budgeting', icon: 'account_balance_wallet', onPress: onBudget },
   ];
   return (
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
       <View style={styles.profileAvatar}><ZenLotus size={64} /></View>
       <Text style={styles.profileName}>ZenFinance Member</Text>
-      <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      <View style={styles.profileRoleRow}>
+        <ZenLotus size={13} />
+        <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      </View>
       <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
       <ZenGlass style={styles.profileMenu}>
-        {rows.map((row, index) => {
-          const Icon = row.icon;
-          return <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}><Icon color={theme.muted} size={18} /><Text style={styles.profileMenuText}>{row.label}</Text><ChevronRight color={theme.muted} size={17} /></Pressable>;
-        })}
+        {rows.map((row, index) => (
+          <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}>
+            <MaterialSymbol name={row.icon} color={theme.muted} size={18} />
+            <Text style={styles.profileMenuText}>{row.label}</Text>
+            <ChevronRight color={theme.muted} size={17} />
+          </Pressable>
+        ))}
       </ZenGlass>
+      <SecondaryButton label="Sign Out" icon={LogOut} onPress={signOutUser} />
       <SecondaryButton label="Open full settings" icon={SlidersHorizontal} onPress={onSettings} />
     </ScrollView>
   );
@@ -2126,15 +2141,22 @@ function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryVie
   );
 }
 
-function ZenMilestoneCard({ goal }: { goal: GoalView }) {
+function MilestoneModal({ goal, onDismiss }: { goal: GoalView; onDismiss: () => void }) {
+  const percent = Math.round(goal.pacing.progressRatio * 100);
   return (
-    <ZenGlass style={styles.milestoneCard}>
-      <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
-      <Text style={styles.milestoneSubtitle}>{goal.name}</Text>
-      <View style={styles.milestoneLotus}><ZenLotusPhoto variant="milestone" width={140} /></View>
-      <Text style={styles.milestoneBody}>You’re making steady progress. Take a breath and celebrate this step.</Text>
-      <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={() => {}} />
-    </ZenGlass>
+    <Modal visible transparent animationType="fade" onRequestClose={onDismiss}>
+      <View style={styles.milestoneBackdrop}>
+        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+        <ZenGlass style={styles.milestoneCard}>
+          <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
+          <View style={styles.milestoneLotus}><ZenLotusPhoto variant="milestone" width={140} /></View>
+          <Text style={styles.milestoneBody}>
+            You just hit {percent}% of your {goal.name} goal. Take a breath and celebrate!
+          </Text>
+          <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={onDismiss} />
+        </ZenGlass>
+      </View>
+    </Modal>
   );
 }
 
@@ -2568,7 +2590,9 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   const [saving, setSaving] = useState(false);
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [dismissedMilestoneId, setDismissedMilestoneId] = useState<number | null>(null);
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
+  const milestoneGoal = goals.find((goal) => goal.pacing.progressRatio >= 0.5 && goal.id !== dismissedMilestoneId);
 
   async function addGoal() {
     const dollars = Number(target);
@@ -2613,7 +2637,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
         <Text style={styles.mindfulSavingsCaption}>Total Saved</Text>
       </ZenGlass>
       <SectionHeader title="Your Goals" />
-      {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
+      {milestoneGoal ? <MilestoneModal goal={milestoneGoal} onDismiss={() => setDismissedMilestoneId(milestoneGoal.id)} /> : null}
       {goals.map((goal) => (
         <ZenGlass key={goal.id} style={styles.goalCardGlass}>
           <View style={styles.goalCardHeaderRow}>
@@ -3257,16 +3281,6 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     void Linking.openURL(url);
   }
 
-  async function signOut() {
-    const refreshToken = useAppStore.getState().refreshToken;
-    if (refreshToken) {
-      await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
-    }
-    await clearRevenueCatIdentity();
-    await persistTokens(null);
-    setTokens(null);
-  }
-
   async function deleteAccount() {
     Alert.alert('Delete account', 'This permanently deletes your ZenFinance data from the app database.', [
       { text: 'Cancel', style: 'cancel' },
@@ -3579,7 +3593,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           onPress={checkForUpdate}
         />
       </ZenGlass>
-      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
+      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOutUser} />
       <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
     </ScrollView>
   );
@@ -3975,7 +3989,8 @@ const styles = StyleSheet.create({
   profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
   profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, textAlign: 'center', marginTop: 10 },
-  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center', marginTop: 3 },
+  profileRoleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 3 },
+  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11 },
   profileScore: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', marginTop: 12 },
   profileScoreText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
   profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
@@ -4072,11 +4087,11 @@ const styles = StyleSheet.create({
   budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetEntryBody: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 3 },
   budgetEntryButton: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
-  milestoneCard: { alignItems: 'center', gap: 8, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.45, shadowRadius: 30 },
-  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 24, textAlign: 'center' },
-  milestoneSubtitle: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center' },
-  milestoneLotus: { width: 130, height: 130, borderRadius: 65, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8E44AD26', marginVertical: 8 },
-  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  milestoneBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
+  milestoneCard: { alignItems: 'center', gap: 10, width: '100%', maxWidth: 340, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.45, shadowRadius: 30 },
+  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24, textAlign: 'center' },
+  milestoneLotus: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginVertical: 4 },
+  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, textAlign: 'center' },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
   heroTitleV2: { color: '#FFFFFF', fontSize: 36, lineHeight: 39, fontWeight: '300', textAlign: 'left', marginTop: 18 },
