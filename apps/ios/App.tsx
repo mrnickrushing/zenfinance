@@ -2530,6 +2530,18 @@ function FeatureLine({ text }: { text: string }) {
   );
 }
 
+function goalIcon(name: string): MaterialSymbolName {
+  const key = name.toLowerCase();
+  if (key.includes('emergency')) return 'shield';
+  if (key.includes('car') || key.includes('vehicle') || key.includes('auto')) return 'directions_car';
+  if (key.includes('trip') || key.includes('travel') || key.includes('vacation') || key.includes('japan') || key.includes('flight')) return 'flight';
+  if (key.includes('home') || key.includes('house')) return 'home';
+  if (key.includes('school') || key.includes('education') || key.includes('tuition')) return 'school';
+  if (key.includes('health') || key.includes('medical')) return 'medical_services';
+  if (key.includes('wedding')) return 'favorite';
+  return 'savings';
+}
+
 function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing: BillingStatusView; onChanged: () => void }) {
   const theme = useTheme();
   const [name, setName] = useState('');
@@ -2575,12 +2587,29 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Savings Goals</Text><Text style={styles.zenPageSubtitle}>Small steps, meaningful progress</Text></View><Target color={theme.accent} size={19} /></View>
-      {goals[0] ? <ZenGlass style={styles.goalsSummary}><View style={styles.goalsSummaryHeader}><View style={styles.goalsSummaryIcon}><PiggyBank color={theme.accent} size={18} /></View><Text style={styles.goalsSummaryName}>{goals[0].name}</Text><Text style={styles.goalsSummaryPercent}>{Math.round(goals[0].pacing.progressRatio * 100)}%</Text></View><Text style={styles.goalsSummaryAmount}>{usd(goals[0].currentAmountCents, true)} <Text style={styles.goalsSummaryTarget}>of {usd(goals[0].targetAmountCents, true)}</Text></Text><View style={styles.goalProgressTrack}><View style={[styles.goalProgressFill, { width: `${Math.min(100, Math.max(0, goals[0].pacing.progressRatio * 100))}%` }]} /></View></ZenGlass> : null}
+      <ZenGlass style={styles.mindfulSavingsHero}>
+        <MaterialSymbol name="savings" size={54} color="#FFFFFF1F" style={styles.mindfulSavingsWatermark} />
+        <Text style={styles.mindfulSavingsLabel}>Mindful Savings</Text>
+        <Text style={styles.mindfulSavingsAmount}>{usd(goals.reduce((sum, goal) => sum + goal.currentAmountCents, 0))}</Text>
+        <Text style={styles.mindfulSavingsCaption}>Total Saved</Text>
+      </ZenGlass>
       <SectionHeader title="Your Goals" />
       {goals.find((goal) => goal.pacing.progressRatio >= 0.5) ? <ZenMilestoneCard goal={goals.find((goal) => goal.pacing.progressRatio >= 0.5)!} /> : null}
       {goals.map((goal) => (
         <ZenGlass key={goal.id} style={styles.goalCardGlass}>
-          <Text style={[styles.panelTitle, { color: theme.ink }]}>{goal.name}</Text>
+          <View style={styles.goalCardHeaderRow}>
+            <View style={styles.goalCardIcon}>
+              <MaterialSymbol name={goalIcon(goal.name)} size={20} color={theme.accent} />
+            </View>
+            <Text style={styles.goalCardName}>{goal.name}</Text>
+          </View>
+          <View style={styles.goalProgressTrack}>
+            <View style={[styles.goalProgressFill, { width: `${Math.min(100, Math.max(0, goal.pacing.progressRatio * 100))}%` }]} />
+          </View>
+          <View style={styles.goalCardMetaRow}>
+            <Text style={styles.goalCardAmount}>{usd(goal.currentAmountCents, true)} / {usd(goal.targetAmountCents, true)}</Text>
+            <Text style={styles.goalCardPercent}>{Math.round(goal.pacing.progressRatio * 100)}% complete</Text>
+          </View>
           <Text style={[styles.panelBody, { color: theme.muted }]}>{goalCoachSentence(goal)}</Text>
           <StatusRail>
             <MoneyMetric label="Current" value={usd(goal.currentAmountCents, true)} icon={PiggyBank} />
@@ -3993,13 +4022,17 @@ const styles = StyleSheet.create({
   scoreMetricName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   scoreMetricCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
   scoreMetricValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  goalsSummary: { gap: 10, borderColor: '#00D2D34D' },
-  goalsSummaryHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  goalsSummaryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  goalsSummaryName: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  goalsSummaryPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  goalsSummaryAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 22 },
-  goalsSummaryTarget: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  mindfulSavingsHero: { gap: 4, overflow: 'hidden' },
+  mindfulSavingsWatermark: { position: 'absolute', right: 14, bottom: 10 },
+  mindfulSavingsLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 13 },
+  mindfulSavingsAmount: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 30 },
+  mindfulSavingsCaption: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  goalCardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  goalCardIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  goalCardName: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
+  goalCardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  goalCardAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12 },
+  goalCardPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   goalProgressTrack: { height: 8, borderRadius: 4, backgroundColor: '#FFFFFF14', overflow: 'hidden' },
   goalProgressFill: { height: '100%', borderRadius: 4, backgroundColor: '#00D2D3' },
   connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
