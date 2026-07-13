@@ -1446,6 +1446,7 @@ function BriefScreen({
           speaking={speaking}
           onPlayVoice={playVoiceBrief}
           onStopVoice={stopVoiceBrief}
+          onViewSwap={() => onNavigate('budget')}
         />
       ) : (
         <EmptyMini
@@ -1461,14 +1462,21 @@ function BriefScreen({
       {brief ? <ZenDailyWidget brief={brief} /> : null}
       <StatusRail>
         <View style={styles.zenStatCard}>
-          <Text style={styles.zenStatLabel}>Recent Activity</Text>
-          <Text style={styles.zenStatValue}>{home.transactionCount}</Text>
-          <Text style={styles.zenStatMeta}>transactions synced</Text>
+          <Text style={styles.zenStatCardLabel}>Recent Activity:</Text>
+          <Text style={styles.zenStatCardBody} numberOfLines={2}>
+            {home.recentTransactions.length > 0
+              ? home.recentTransactions
+                  .slice(0, 3)
+                  .map((txn) => txn.merchantClean ?? txn.merchantName ?? txn.name)
+                  .join(', ')
+              : 'No activity yet'}
+          </Text>
         </View>
         <View style={styles.zenStatCard}>
-          <Text style={styles.zenStatLabel}>Savings Goal</Text>
-          <Text style={styles.zenStatValue}>{home.goals[0] ? `${Math.round(home.goals[0].pacing.progressRatio * 100)}%` : '0%'}</Text>
-          <Text style={styles.zenStatMeta}>{home.goals[0]?.name ?? 'Set your first goal'}</Text>
+          <Text style={styles.zenStatCardLabel}>Savings Goal:</Text>
+          <Text style={styles.zenStatCardBody}>
+            {home.goals[0] ? `${home.goals[0].name} (${Math.round(home.goals[0].pacing.progressRatio * 100)}%)` : 'Set your first goal'}
+          </Text>
         </View>
       </StatusRail>
       <View style={styles.zenLinkGrid}>
@@ -1563,6 +1571,7 @@ function MoneyBriefHero({
   speaking,
   onPlayVoice,
   onStopVoice,
+  onViewSwap,
 }: {
   home: MobileHomeSummaryView;
   brief: InsightView;
@@ -1571,6 +1580,7 @@ function MoneyBriefHero({
   speaking: boolean;
   onPlayVoice: () => void;
   onStopVoice: () => void;
+  onViewSwap: () => void;
 }) {
   const theme = useTheme();
   const impact = brief.action.estimatedImpactCents ? usd(brief.action.estimatedImpactCents, true) : '1 move';
@@ -1594,6 +1604,7 @@ function MoneyBriefHero({
       </View>
       <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
       <Text style={styles.zenInsightBody}>{brief.body}</Text>
+      <SecondaryButton label="View Swap" compact onPress={onViewSwap} />
       <View style={styles.zenInsightFooter}>
         <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
         <Pressable onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
@@ -3691,12 +3702,12 @@ const styles = StyleSheet.create({
   zenGlassBlur: StyleSheet.absoluteFill,
   zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
   primaryButtonPulse: { width: '100%' },
-  zenInsightCard: { gap: 12, borderColor: '#FFFFFF38' },
+  zenInsightCard: { gap: 12, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 20 },
   zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
   zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
-  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontFamily: 'Inter_300Light', letterSpacing: 1 },
+  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontFamily: 'Inter_700Bold' },
   zenInsightBody: { color: '#FFFFFFB3', fontSize: 13, lineHeight: 18 },
   zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
   zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
@@ -3717,10 +3728,9 @@ const styles = StyleSheet.create({
   zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
   zenVoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 2 },
-  zenStatLabel: { color: '#FFFFFFB3', fontSize: 10, fontFamily: 'Inter_600SemiBold' },
-  zenStatValue: { color: '#FFFFFF', fontSize: 20, fontFamily: 'Inter_600SemiBold' },
-  zenStatMeta: { color: '#FFFFFF80', fontSize: 10 },
+  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 4 },
+  zenStatCardLabel: { color: '#FFFFFF', fontSize: 13, fontFamily: 'Inter_700Bold' },
+  zenStatCardBody: { color: '#FFFFFFB3', fontSize: 12, lineHeight: 16 },
   zenLinkGrid: { flexDirection: 'row', gap: 10 },
   zenLinkCard: { flex: 1, minHeight: 88, padding: 12, borderRadius: 18, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 4 },
   zenLinkTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
