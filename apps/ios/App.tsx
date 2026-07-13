@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
@@ -55,6 +56,7 @@ import {
   Animated,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
   Linking,
   Platform,
@@ -400,6 +402,36 @@ function Text({ style, ...props }: TextProps) {
   return <RNText {...props} style={[styles.globalText, style]} />;
 }
 
+// Renders a glyph from the same "Material Symbols Outlined" font Stitch used
+// for every icon in the designs, subset down to just the names in use (see
+// assets/fonts/material-symbols-map.json) — pixel-identical to the renders
+// instead of a stand-in from a different icon set.
+type MaterialSymbolName = keyof typeof materialSymbolsMap;
+
+function MaterialSymbol({
+  name,
+  size = 24,
+  color = '#FFFFFF',
+  style,
+}: {
+  name: MaterialSymbolName;
+  size?: number;
+  color?: string;
+  style?: object;
+}) {
+  const glyph = String.fromCodePoint(parseInt(materialSymbolsMap[name], 16));
+  return (
+    <RNText
+      style={[
+        { fontFamily: 'MaterialSymbolsOutlined', fontSize: size, lineHeight: size, color, includeFontPadding: false },
+        style,
+      ]}
+    >
+      {glyph}
+    </RNText>
+  );
+}
+
 function ZenBackdrop() {
   const phase = useRef(new Animated.Value(0)).current;
 
@@ -561,6 +593,27 @@ function ZenLotus({ size = 18 }: { size?: number }) {
   );
 }
 
+// Photoreal lotus renders extracted from the Stitch designs (Onboarding,
+// Zen Score Details, Milestone popup each used a distinct render — Stitch
+// never exported one reusable asset). Cropped + alpha-matted from the source
+// screens since no transparent export exists; breathes on the same "First
+// Breath" cadence as the vector ZenLotus.
+const LOTUS_PHOTOS = {
+  onboarding: { source: require('./assets/images/lotus-onboarding.png'), ratio: 570 / 440 },
+  score: { source: require('./assets/images/lotus-score.png'), ratio: 463 / 313 },
+  milestone: { source: require('./assets/images/lotus-milestone.png'), ratio: 341 / 270 },
+} as const;
+
+function ZenLotusPhoto({ variant, width }: { variant: keyof typeof LOTUS_PHOTOS; width: number }) {
+  const { opacity, scale } = useZenBreath();
+  const { source, ratio } = LOTUS_PHOTOS[variant];
+  return (
+    <Animated.View style={{ opacity, transform: [{ scale }], alignItems: 'center' }}>
+      <Image source={source} style={{ width, height: width / ratio }} resizeMode="contain" />
+    </Animated.View>
+  );
+}
+
 function ZenScoreCard({ score }: { score: number }) {
   return (
     <ZenGlass style={styles.zenScoreCard}>
@@ -595,6 +648,7 @@ export default function App() {
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold,
+    MaterialSymbolsOutlined: require('./assets/fonts/MaterialSymbolsOutlined.ttf'),
   });
 
   useEffect(() => {
@@ -625,7 +679,7 @@ function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
       <ZenBackdrop />
       <Pressable style={styles.onboardingSkip} onPress={onStart}><Text style={styles.onboardingSkipText}>Skip</Text></Pressable>
       <View style={styles.onboardingHero}>
-        <View style={styles.onboardingLotus}><ZenLotus size={88} /></View>
+        <View style={styles.onboardingLotus}><ZenLotusPhoto variant="onboarding" width={220} /></View>
         <Text style={styles.onboardingTitle}>Find your{`\n`}financial peace.</Text>
         <Text style={styles.onboardingBody}>AI-powered coaching to help you reach your goals without the stress.</Text>
       </View>
@@ -1834,7 +1888,7 @@ function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryVie
       <View style={styles.scoreHeroV2}>
         <Text style={styles.scoreHeroLabel}>Zen Score</Text>
         <Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text>
-        <ZenLotus size={196} />
+        <ZenLotusPhoto variant="score" width={260} />
         <Text style={styles.scoreHeroMeta}>{caption}</Text>
       </View>
       <View style={styles.scoreRowStack}>
@@ -1861,7 +1915,7 @@ function ZenMilestoneCard({ goal }: { goal: GoalView }) {
     <ZenGlass style={styles.milestoneCard}>
       <Text style={styles.milestoneTitle}>Milestone Reached!</Text>
       <Text style={styles.milestoneSubtitle}>{goal.name}</Text>
-      <View style={styles.milestoneLotus}><ZenLotus size={72} /></View>
+      <View style={styles.milestoneLotus}><ZenLotusPhoto variant="milestone" width={140} /></View>
       <Text style={styles.milestoneBody}>You’re making steady progress. Take a breath and celebrate this step.</Text>
       <PrimaryButton label="Continue the Journey" icon={ChevronRight} onPress={() => {}} />
     </ZenGlass>
