@@ -9,6 +9,7 @@ import {
   validateMoneyPhysicalRevenueCatPurchase,
 } from '../moneyPhysical/service.js';
 import { requireUser } from '../middleware/userAuth.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { validateBody } from '../middleware/validate.js';
 
 export function createMoneyPhysicalRouter(): ReturnType<typeof Router> {
@@ -19,7 +20,11 @@ export function createMoneyPhysicalRouter(): ReturnType<typeof Router> {
     res.json(await getMoneyPhysicalStatus(db, userId));
   });
 
-  router.post('/api/money-physical/restore', requireUser, validateBody(moneyPhysicalRestoreSchema), async (_req, res) => {
+  router.post('/api/money-physical/restore', requireUser, userRateLimit('money-physical-restore', {
+    windowMs: 15 * 60 * 1000,
+    limit: 6,
+    message: 'Too many restore attempts. Try again later.',
+  }), validateBody(moneyPhysicalRestoreSchema), async (_req, res) => {
     const userId = res.locals.userId as number;
     const input = res.locals.body as MoneyPhysicalRestoreInput;
     const appUserId = await getOrCreateBillingCustomer(db, userId);

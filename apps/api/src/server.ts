@@ -12,6 +12,7 @@ import {
 } from './queue/index.js';
 import { db } from './db/client.js';
 import { processPendingProviderRevocations } from './privacy/service.js';
+import { safeErrorSummary } from './lib/safeError.js';
 
 if (env.SENTRY_DSN) {
   Sentry.init({
@@ -71,7 +72,7 @@ async function runRevocationSweep(): Promise<void> {
   try {
     await processPendingProviderRevocations(db);
   } catch (err) {
-    console.error('[privacy] provider revocation sweep failed:', err);
+    console.error('[privacy] provider revocation sweep failed:', safeErrorSummary(err));
     Sentry.captureException(err);
   } finally {
     revocationSweepRunning = false;

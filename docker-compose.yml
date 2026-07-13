@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: zenfinance
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -21,7 +21,7 @@ services:
       POSTGRES_PASSWORD: dev
       POSTGRES_DB: zenfinance_test
     ports:
-      - '5434:5432'
+      - '127.0.0.1:5434:5432'
     volumes:
       - pgtestdata:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +32,12 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '127.0.0.1:6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   pgdata:

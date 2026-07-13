@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import { Redis } from 'ioredis';
 import { env } from '../env.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 
 interface UserRateLimitOptions {
   windowMs: number;
@@ -51,7 +52,7 @@ export function userRateLimit(name: string, options: UserRateLimitOptions) {
       } catch (err) {
         // Preserve availability if Redis is briefly unavailable. The bounded
         // process-local limiter below still provides per-instance protection.
-        console.error('[rate-limit] Redis unavailable; using local fallback:', err);
+        console.error('[rate-limit] Redis unavailable; using local fallback:', safeErrorSummary(err));
       }
     }
 

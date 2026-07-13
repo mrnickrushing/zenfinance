@@ -1,4 +1,5 @@
 import { env } from '../env.js';
+import { safeErrorSummary } from './safeError.js';
 
 export interface SentEmail {
   to: string;
@@ -34,6 +35,7 @@ async function deliver(to: string, subject: string, text: string): Promise<boole
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ from: `ZenFinance <${env.RESEND_FROM_EMAIL}>`, to: [to], subject, text }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       console.error(`[email] Resend responded ${res.status} sending "${subject}"`);
@@ -41,7 +43,7 @@ async function deliver(to: string, subject: string, text: string): Promise<boole
     }
     return true;
   } catch (err) {
-    console.error(`[email] failed to send "${subject}":`, err);
+    console.error(`[email] failed to send "${subject}":`, safeErrorSummary(err));
     return false;
   }
 }
@@ -87,6 +89,7 @@ export async function sendSupportEmail(input: SupportEmailInput): Promise<boolea
         subject: `[ZenFinance] Support ticket #${input.ticketId} from ${input.name}`,
         text: `Ticket #${input.ticketId}\nFrom: ${input.name} <${input.email}>\n\n${input.message}`,
       }),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!res.ok) {
       console.error(`[email] Resend responded ${res.status} for ticket #${input.ticketId}`);
@@ -94,7 +97,7 @@ export async function sendSupportEmail(input: SupportEmailInput): Promise<boolea
     }
     return true;
   } catch (err) {
-    console.error(`[email] failed to send ticket #${input.ticketId}:`, err);
+    console.error(`[email] failed to send ticket #${input.ticketId}:`, safeErrorSummary(err));
     return false;
   }
 }

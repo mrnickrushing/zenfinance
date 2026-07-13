@@ -6,7 +6,17 @@ build/
 *.log
 .env
 .env.local
+.env.*
+!.env.example
+!**/.env.example
 .env.*.local
+*.pem
+*.key
+*.p12
+*.p8
+*.jks
+*.keystore
+*.mobileprovision
 coverage/
 .DS_Store
 *.tsbuildinfo

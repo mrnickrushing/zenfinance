@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { CATEGORY_IDS, isValidCategory } from './categories.js';
 import { env } from '../env.js';
+import { safeErrorSummary } from '../lib/safeError.js';
 import { mapProviderCategoryToTaxonomy } from './fallback.js';
 import type {
   EnrichmentBatchResult,
@@ -98,7 +99,7 @@ export class AnthropicEnrichmentProvider implements EnrichmentProvider {
         messages: [{ role: 'user', content: userContent }],
       });
     } catch (err) {
-      console.error('[enrichment] Anthropic API call failed, falling back to deterministic mapping:', err);
+      console.error('[enrichment] Anthropic API call failed, falling back to deterministic mapping:', safeErrorSummary(err));
       return {
         results: inputs.map(mapProviderCategoryToTaxonomy),
         usage: null,
@@ -136,7 +137,7 @@ export class AnthropicEnrichmentProvider implements EnrichmentProvider {
         };
       });
     } catch (err) {
-      console.error('[enrichment] Failed to parse/validate model output, falling back:', err);
+      console.error('[enrichment] Failed to parse/validate model output, falling back:', safeErrorSummary(err));
       parsed = inputs.map(mapProviderCategoryToTaxonomy);
     }
 
