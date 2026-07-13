@@ -85,7 +85,7 @@ import type {
 const API_URL: string = Constants.expoConfig?.extra?.apiUrl ?? 'https://api.zenfinance.rushingtechnologies.com';
 const SENTRY_DSN: string | undefined = Constants.expoConfig?.extra?.sentryDsn;
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'Lazyweb porcelain coach redesign · 2026-07-12.1';
+const OTA_DIAGNOSTIC_LABEL = 'Finance shell UI cleanup · 2026-07-12.2';
 
 if (SENTRY_DSN) {
   Sentry.init({
@@ -159,17 +159,17 @@ const useAppStore = createStore<AppState>((set) => ({
 }));
 
 const light = {
-  bg: '#f7f3eb',
-  surface: '#fffdf8',
-  surfaceAlt: '#eee7db',
-  ink: '#10141c',
-  muted: '#656b75',
-  border: '#d8d0c2',
-  accent: '#18b99b',
-  accentBright: '#35d5b8',
-  accentSoft: '#dff5ee',
-  gold: '#b98220',
-  goldSoft: '#f4e3c2',
+  bg: '#eef3f5',
+  surface: '#ffffff',
+  surfaceAlt: '#e3ebef',
+  ink: '#111820',
+  muted: '#62717d',
+  border: '#cbd8de',
+  accent: '#05a77b',
+  accentBright: '#1fc99b',
+  accentSoft: '#dff6ee',
+  gold: '#b87817',
+  goldSoft: '#fff1d2',
   danger: '#b42332',
   success: '#148a57',
 };
@@ -468,10 +468,10 @@ function AuthScreen() {
         </View>
 
         <Text style={styles.heroTitleV2}>
-          This week, do less. <Text style={styles.heroAccent}>One change beats ten insights.</Text>
+          Know what to do with your money today.
         </Text>
         <Text style={styles.heroCopyV2}>
-          ZenFinance reads your transactions and turns the noise into the one calm money move worth making now.
+          Link your accounts and get one plain-English move from your real transactions.
         </Text>
 
         <View style={[styles.authPanelV2, { borderColor: theme.border }]}>
@@ -492,13 +492,13 @@ function AuthScreen() {
             value={password}
             onChangeText={setPassword}
           />
-          <PrimaryButton label={busy ? 'Working...' : 'Do this now'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
+          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
           <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
           <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
         </View>
 
         <View style={styles.demoPanel}>
-          <Text style={styles.demoLabel}>Your next calm step</Text>
+          <Text style={styles.demoLabel}>Try a money brief</Text>
           <TextInput
             value={transaction}
             onChangeText={setTransaction}
@@ -629,6 +629,16 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
 
   return (
     <View style={[styles.coachConsole, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={styles.consoleHeaderRow}>
+        <View style={styles.flexShrink}>
+          <Text style={[styles.consoleActionKicker, { color: theme.accent }]}>Today's move</Text>
+          <Text style={[styles.consoleActionText, { color: theme.ink }]} numberOfLines={2}>{nextAction}</Text>
+        </View>
+        <Pressable style={[styles.consoleAskPill, { backgroundColor: theme.accent }]} onPress={onAsk}>
+          <MessageCircle color="#fff" size={16} />
+          <Text style={styles.consoleAskText}>Ask</Text>
+        </Pressable>
+      </View>
       <View style={styles.consoleStatusRow}>
         <View style={[styles.consoleChip, { borderColor: theme.border, backgroundColor: theme.bg }]}>
           <Landmark color={theme.ink} size={14} />
@@ -644,18 +654,6 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
           <Text style={[styles.consoleChipText, { color: theme.ink }]}>{home.billing.isPremium ? usd(totalWins, true) : 'Free'}</Text>
         </View>
       </View>
-      <Pressable style={[styles.consoleAskButton, { backgroundColor: theme.accent }]} onPress={onAsk}>
-        <MessageCircle color="#fff" size={18} />
-        <Text style={styles.consoleAskText}>Ask about a charge</Text>
-      </Pressable>
-      <Pressable style={[styles.consoleNextAction, { borderColor: theme.accent, backgroundColor: theme.accentSoft }]} onPress={onAsk}>
-        <SlidersHorizontal color={theme.accent} size={22} />
-        <View style={styles.flexShrink}>
-          <Text style={[styles.consoleActionKicker, { color: theme.accent }]}>Next calm step</Text>
-          <Text style={[styles.consoleActionText, { color: theme.ink }]} numberOfLines={2}>{nextAction}</Text>
-        </View>
-        <ChevronRight color={theme.accent} size={20} />
-      </Pressable>
     </View>
   );
 }
@@ -2316,12 +2314,12 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
             key={tab.key}
             style={[
               styles.tabItem,
-              selected ? [styles.tabItemActive, { backgroundColor: theme.accent }] : null,
+              selected ? [styles.tabItemActive, { backgroundColor: theme.accentSoft, borderColor: theme.accent }] : null,
             ]}
             onPress={() => onChange(tab.key)}
           >
-            <Icon color={selected ? '#fff' : theme.muted} size={selected ? 22 : 20} />
-            <Text style={[styles.tabText, { color: selected ? '#fff' : theme.muted }]} numberOfLines={1}>
+            <Icon color={selected ? theme.accent : theme.muted} size={selected ? 22 : 20} />
+            <Text style={[styles.tabText, { color: selected ? theme.ink : theme.muted }]} numberOfLines={1}>
               {tab.label}
             </Text>
           </Pressable>
@@ -2538,57 +2536,58 @@ const styles = StyleSheet.create({
   authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
   authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d8d0c2' },
-  authBrandText: { color: '#10141c', fontSize: 16, fontWeight: '900' },
+  authLogo: { width: 38, height: 38, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#cbd8de' },
+  authBrandText: { color: '#111820', fontSize: 16, fontWeight: '900' },
   appScreen: { flex: 1 },
   content: { flex: 1 },
   brandMark: { marginBottom: 16 },
   heroTitle: { fontSize: 40, fontWeight: '800' },
-  heroTitleV2: { color: '#10141c', fontSize: 38, lineHeight: 41, fontWeight: '900', textAlign: 'center', marginTop: 18 },
-  heroAccent: { color: '#10141c' },
+  heroTitleV2: { color: '#111820', fontSize: 36, lineHeight: 39, fontWeight: '900', textAlign: 'left', marginTop: 18 },
+  heroAccent: { color: '#111820' },
   heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
-  heroCopyV2: { color: '#4b5563', fontSize: 16, lineHeight: 24, textAlign: 'center', marginBottom: 4 },
+  heroCopyV2: { color: '#4b5b66', fontSize: 16, lineHeight: 24, textAlign: 'left', marginBottom: 4 },
   authPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 10 },
-  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#fffdf8', padding: 14, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
-  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#d8d0c2', backgroundColor: '#ffffff', color: '#10141c', paddingHorizontal: 14, fontSize: 15 },
+  authPanelV2: { borderWidth: 1, borderRadius: 8, backgroundColor: '#ffffff', padding: 14, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.14, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 8, borderColor: '#cbd8de', backgroundColor: '#f8fbfc', color: '#111820', paddingHorizontal: 14, fontSize: 15 },
   inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
   disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
-  disclosureV2: { color: '#656b75', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  demoPanel: { borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#fffdf8', padding: 14, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  demoLabel: { color: '#10141c', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#ffffff', color: '#10141c', paddingHorizontal: 14, fontSize: 15 },
-  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#18b99b', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
+  disclosureV2: { color: '#62717d', fontSize: 12, lineHeight: 18, textAlign: 'center' },
+  demoPanel: { borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#ffffff', padding: 14, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  demoLabel: { color: '#111820', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
+  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#f8fbfc', color: '#111820', paddingHorizontal: 14, fontSize: 15 },
+  demoButton: { minHeight: 48, borderRadius: 8, backgroundColor: '#05a77b', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
   demoButtonText: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  generatedBrief: { borderWidth: 1, borderColor: '#18b99b', borderRadius: 8, backgroundColor: '#dff5ee', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
-  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#18b99b', alignItems: 'center', justifyContent: 'center' },
-  generatedTitle: { color: '#10141c', fontSize: 16, fontWeight: '900' },
+  generatedBrief: { borderWidth: 1, borderColor: '#05a77b', borderRadius: 8, backgroundColor: '#dff6ee', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#05a77b', alignItems: 'center', justifyContent: 'center' },
+  generatedTitle: { color: '#111820', fontSize: 16, fontWeight: '900' },
   generatedBody: { color: '#2f3742', fontSize: 14, lineHeight: 20, marginTop: 4 },
   generatedImpact: { color: '#148a57', fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 2 },
   authProofGrid: { flexDirection: 'row', gap: 10 },
-  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#d8d0c2', borderRadius: 8, backgroundColor: '#fffdf8', padding: 12 },
-  authProofKicker: { color: '#18b99b', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
-  authProofTitle: { color: '#10141c', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
+  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#cbd8de', borderRadius: 8, backgroundColor: '#ffffff', padding: 12 },
+  authProofKicker: { color: '#05a77b', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
+  authProofTitle: { color: '#111820', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
   authProofBody: { color: '#4b5563', fontSize: 12, lineHeight: 17, marginTop: 6 },
-  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#d8d0c2', backgroundColor: '#f7f3eb' },
+  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#cbd8de', backgroundColor: '#eef3f5' },
   appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
   tinyLogo: { width: 30, height: 30, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   appTitle: { fontSize: 24, fontWeight: '800' },
   appSub: { fontSize: 13, marginTop: 2 },
-  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#d8d0c2' },
-  shellRail: { paddingHorizontal: 20, paddingVertical: 12, backgroundColor: '#f7f3eb', borderBottomWidth: 1, borderBottomColor: '#d8d0c2' },
-  coachConsole: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.18, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 4 },
+  iconButton: { width: 40, height: 40, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#cbd8de' },
+  shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#eef3f5', borderBottomWidth: 1, borderBottomColor: '#cbd8de' },
+  coachConsole: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 10, shadowColor: '#6c7b84', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  consoleHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   consoleStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   consoleChip: { minHeight: 30, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
   consoleChipText: { fontSize: 12, fontWeight: '800' },
   consoleDot: { width: 7, height: 7, borderRadius: 4 },
-  consoleAskButton: { minHeight: 52, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 3 },
-  consoleAskText: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  consoleAskPill: { minHeight: 42, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14, shadowColor: '#05a77b', shadowOpacity: 0.2, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  consoleAskText: { color: '#fff', fontSize: 14, fontWeight: '900' },
   consoleNextAction: { minHeight: 70, borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
   consoleActionKicker: { fontSize: 11, lineHeight: 15, fontWeight: '900', textTransform: 'uppercase' },
   consoleActionText: { fontSize: 14, lineHeight: 20, fontWeight: '900' },
   scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   input: { minHeight: 48, borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, fontSize: 15 },
-  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
+  primaryButton: { minHeight: 48, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#05a77b', shadowOpacity: 0.22, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
   primaryButtonText: { flexShrink: 1, fontWeight: '800', fontSize: 15, textAlign: 'center' },
   secondaryButton: { minHeight: 46, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
@@ -2601,8 +2600,8 @@ const styles = StyleSheet.create({
   metric: { flex: 1, minHeight: 82, borderWidth: 1, borderRadius: 8, padding: 12, gap: 4 },
   metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
   metricLabel: { fontSize: 12, fontWeight: '700' },
-  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
-  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  primaryPanel: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#6c7b84', shadowOpacity: 0.12, shadowRadius: 14, shadowOffset: { width: 0, height: 8 }, elevation: 3 },
+  sectionBand: { borderWidth: 1, borderRadius: 8, padding: 16, gap: 12, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
   panelTitle: { fontSize: 20, lineHeight: 26, fontWeight: '800' },
@@ -2615,14 +2614,14 @@ const styles = StyleSheet.create({
   evidenceChip: { maxWidth: '100%', borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6 },
   evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
   voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  actionBox: { borderRadius: 8, padding: 14, gap: 4, borderWidth: 1, borderColor: '#18b99b' },
+  actionBox: { borderRadius: 8, padding: 14, gap: 4, borderWidth: 1, borderColor: '#05a77b' },
   actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
   actionMeta: { fontSize: 13, lineHeight: 18 },
   inlineButtons: { flexDirection: 'row', gap: 10 },
   featureList: { gap: 9 },
   featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
+  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 8, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
   planTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
   planBadge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   planBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
@@ -2634,12 +2633,12 @@ const styles = StyleSheet.create({
   updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { marginHorizontal: 14, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 8, flexDirection: 'row', paddingVertical: 8, paddingHorizontal: 8, shadowColor: '#7d715f', shadowOpacity: 0.26, shadowRadius: 24, shadowOffset: { width: 0, height: 10 }, elevation: 12 },
-  tabItem: { flex: 1, minHeight: 58, alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0, borderRadius: 8 },
-  tabItemActive: { shadowColor: '#18b99b', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 4 },
+  tabBar: { marginHorizontal: 14, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 8, flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 7, shadowColor: '#34424b', shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
+  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 8, borderWidth: 1, borderColor: 'transparent' },
+  tabItemActive: { shadowColor: '#05a77b', shadowOpacity: 0.16, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   tabText: { fontSize: 11, fontWeight: '800' },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
-  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#9c8f7a', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
+  coachCard: { borderWidth: 1, borderRadius: 8, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#6c7b84', shadowOpacity: 0.1, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
   promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
   promptGroup: { borderWidth: 1, borderRadius: 8, padding: 12, gap: 8 },
   quickPromptRail: { borderTopWidth: 1, flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
@@ -2654,7 +2653,7 @@ const styles = StyleSheet.create({
   suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
   composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#18b99b', shadowOpacity: 0.24, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
+  sendButton: { width: 44, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center', shadowColor: '#05a77b', shadowOpacity: 0.22, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
   progressTrack: { height: 10, borderRadius: 8, overflow: 'hidden' },
   progressFill: { height: '100%', borderRadius: 8 },
   scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
