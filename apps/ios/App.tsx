@@ -1611,7 +1611,7 @@ function PaywallScreen({
   const totalWins = home ? home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents : 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
           <Crown color={theme.accent} size={36} />
@@ -1839,10 +1839,11 @@ function SubscriptionsScreen({ audit, onChanged }: { audit: SubscriptionAuditVie
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Subscription Audit</Text><Text style={styles.zenPageSubtitle}>Quietly review what repeats</Text></View><CreditCard color={theme.accent} size={19} /></View>
       <SubscriptionMetricStrip audit={audit} />
       {audit.items.map((item) => (
-        <View key={item.recurringStreamId} style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+        <ZenGlass key={item.recurringStreamId} style={[styles.primaryPanel, styles.auditCard]}>
           <View style={styles.panelHeader}>
             <CreditCard color={item.isCancelCandidate ? theme.gold : theme.accent} size={20} />
             <Text style={[styles.panelKicker, { color: item.isCancelCandidate ? theme.gold : theme.accent }]}>
@@ -1855,7 +1856,7 @@ function SubscriptionsScreen({ audit, onChanged }: { audit: SubscriptionAuditVie
           </Text>
           {item.priceCreep ? <Text style={[styles.actionMeta, { color: theme.gold }]}>Price creep: {usd(item.priceCreepCents)}</Text> : null}
           {item.isCancelCandidate ? <SecondaryButton label="I canceled this" icon={CheckCircle2} onPress={() => cancel(item.recurringStreamId)} /> : null}
-        </View>
+        </ZenGlass>
       ))}
     </ScrollView>
   );
@@ -1958,7 +1959,8 @@ function WinsScreen({
     onChanged();
   }
   return (
-    <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Money Wins</Text><Text style={styles.zenPageSubtitle}>Celebrate the money you kept</Text></View><PiggyBank color={theme.accent} size={19} /></View>
       <View style={[styles.primaryPanel, { backgroundColor: theme.surface, borderColor: theme.border }]}>
         <View style={styles.panelHeader}>
           <ShieldCheck color={theme.accent} size={20} />
@@ -3031,6 +3033,7 @@ const styles = StyleSheet.create({
   transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   transactionsBudgetLink: { minHeight: 48, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#8E44AD14', borderWidth: 1, borderColor: '#8E44AD4D', flexDirection: 'row', alignItems: 'center', gap: 8 },
   transactionsBudgetText: { flex: 1, color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  auditCard: { gap: 10 },
   zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
   profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
