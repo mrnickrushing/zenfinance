@@ -3,6 +3,7 @@ import type { Db } from '../db/client.js';
 import { insights, items, users } from '../db/schema.js';
 import { recordAiUsage } from '../enrichment/cost.js';
 import { computeRecentRollups } from '../features/rollup.js';
+import { sendPushToUser } from '../lib/push.js';
 import { detectAnomalies } from './anomalies.js';
 import { assembleCoachingContext } from './derive.js';
 import { recordSpendReductionWins, verifyMoneyWins } from './moneyWins.js';
@@ -135,7 +136,14 @@ export async function runFirstLookForUser(db: Db, provider: InsightProvider, use
 
   await computeRecentRollups(db, userId, 12);
   await detectAnomalies(db, userId);
-  await generateAndStoreBrief(db, provider, userId, 'first_look');
+  const stored = await generateAndStoreBrief(db, provider, userId, 'first_look');
+  if (stored) {
+    await sendPushToUser(db, userId, {
+      title: 'Your first look is ready',
+      body: 'Tap to see your first ZenFinance money brief.',
+      data: { tab: 'brief' },
+    });
+  }
 }
 
 /**
@@ -151,7 +159,14 @@ export async function runWeeklyBriefForUser(db: Db, provider: InsightProvider, u
   if (context.weekStart) {
     await recordSpendReductionWins(db, userId, context.weekStart);
   }
-  await generateAndStoreBrief(db, provider, userId, 'weekly_brief');
+  const stored = await generateAndStoreBrief(db, provider, userId, 'weekly_brief');
+  if (stored) {
+    await sendPushToUser(db, userId, {
+      title: 'Your weekly money brief',
+      body: 'A fresh read on your spending and one calm move for the week.',
+      data: { tab: 'brief' },
+    });
+  }
 }
 
 /** Weekly driver for every user with a linked item. */

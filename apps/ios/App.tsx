@@ -138,6 +138,7 @@ Notifications.setNotificationHandler({
 });
 
 type TabKey = 'brief' | 'coach' | 'transactions' | 'profile' | 'goals' | 'subs' | 'wins' | 'settings' | 'budget' | 'score';
+const ALL_TABS = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'subs', 'wins', 'settings', 'budget', 'score']);
 const PREMIUM_TABS = new Set<TabKey>(['coach', 'subs', 'wins']);
 
 type RevenueCatCustomerInfo = Awaited<ReturnType<typeof Purchases.restorePurchases>>;
@@ -1047,6 +1048,23 @@ function ProductShell() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Deep-link notification taps to the right tab. The server sends a
+  // `data.tab` hint (e.g. weekly-brief pushes carry { tab: 'brief' }); route
+  // both foreground taps and a cold start launched from a notification.
+  useEffect(() => {
+    const routeFromData = (data: unknown) => {
+      const tab = (data as { tab?: string } | undefined)?.tab;
+      if (tab && ALL_TABS.has(tab as TabKey)) setTab(tab as TabKey);
+    };
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      routeFromData(response.notification.request.content.data);
+    });
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response) routeFromData(response.notification.request.content.data);
+    });
+    return () => sub.remove();
+  }, []);
 
   const content = useMemo(() => {
     if (!home) {
