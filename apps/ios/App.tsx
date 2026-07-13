@@ -561,11 +561,11 @@ function ZenScoreCard({ score }: { score: number }) {
   );
 }
 
-function ZenScorePill({ score }: { score: number }) {
+function ZenScorePill({ score }: { score: number | null }) {
   return (
     <ZenGlass style={styles.zenScorePill}>
       <View style={styles.zenScoreIcon}><ZenLotus size={15} /></View>
-      <Text style={styles.zenScoreText}>Zen Score: {score}/100</Text>
+      <Text style={styles.zenScoreText}>{score === null ? 'Zen Score: building' : `Zen Score: ${score}/100`}</Text>
       <View style={styles.zenScoreDot} />
     </ZenGlass>
   );
@@ -946,7 +946,7 @@ function ProductShell() {
     }
     if (tab === 'coach') return <CoachScreen />;
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
-    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
+    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
     if (tab === 'score') return <ZenScoreDetailsScreen home={home} />;
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
@@ -1184,7 +1184,7 @@ function BriefScreen({
           {refreshing ? <ActivityIndicator color={theme.accent} size="small" /> : <RefreshCcw color={theme.muted} size={17} />}
         </Pressable>
       </View>
-      <ZenScorePill score={88} />
+      <ZenScorePill score={home.zenScore.score} />
       {brief ? (
         <MoneyBriefHero
           home={home}
@@ -1528,7 +1528,7 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
   );
 }
 
-function ZenProfileScreen({ billing, onSettings, onScore, onBudget }: { billing: BillingStatusView; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
+function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { billing: BillingStatusView; score: number | null; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const rows = [
     { label: 'Settings', icon: SlidersHorizontal, onPress: onSettings },
@@ -1543,7 +1543,7 @@ function ZenProfileScreen({ billing, onSettings, onScore, onBudget }: { billing:
       <View style={styles.profileAvatar}><ZenLotus size={38} /></View>
       <Text style={styles.profileName}>ZenFinance Member</Text>
       <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
-      <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>88/100</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
+      <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
       <ZenGlass style={styles.profileMenu}>
         {rows.map((row, index) => {
           const Icon = row.icon;
@@ -1620,19 +1620,29 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   );
 }
 
+const SCORE_COMPONENT_ICON: Record<string, IconComponent> = {
+  mindful_spending: CircleDollarSign,
+  growth_savings: PiggyBank,
+  consistency: CheckCircle2,
+};
+
 function ZenScoreDetailsScreen({ home }: { home: MobileHomeSummaryView }) {
   const theme = useTheme();
-  const goalProgress = home.goals[0] ? Math.round(home.goals[0].pacing.progressRatio * 100) : 85;
-  const metrics = [
-    ['Mindful Spending', 'Great job staying within budget.', `${Math.min(100, goalProgress + 4)}%`, CircleDollarSign],
-    ['Growth & Savings', 'You are building a consistent rhythm.', `${Math.max(0, goalProgress - 2)}%`, PiggyBank],
-    ['Consistency', 'Small steps are becoming a habit.', '85%', CheckCircle2],
-  ] as const;
+  const { score, caption, components } = home.zenScore;
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Score Details</Text><Text style={styles.zenPageSubtitle}>Your progress, reflected</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
-      <ZenGlass style={styles.scoreHero}><Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text><ZenLotus size={84} /><Text style={styles.scoreHeroNumber}>88</Text><Text style={styles.scoreHeroMeta}>Your financial wellness is blooming.</Text></ZenGlass>
-      <View style={styles.scoreMetricStack}>{metrics.map(([name, copy, value, Icon], index) => <ZenGlass key={name} style={styles.scoreMetric}><View style={styles.scoreMetricIcon}><Icon color={index === 1 ? theme.violet : theme.accent} size={18} /></View><View style={styles.flexShrink}><Text style={styles.scoreMetricName}>{name}</Text><Text style={styles.scoreMetricCopy}>{copy}</Text></View><Text style={styles.scoreMetricValue}>{value}</Text></ZenGlass>)}</View>
+      <ZenGlass style={styles.scoreHero}><Text style={styles.zenScoreEyebrow}>ZEN SCORE</Text><ZenLotus size={84} /><Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text><Text style={styles.scoreHeroMeta}>{caption}</Text></ZenGlass>
+      <View style={styles.scoreMetricStack}>{components.map((c, index) => {
+        const Icon = SCORE_COMPONENT_ICON[c.key] ?? CircleDollarSign;
+        return (
+          <ZenGlass key={c.key} style={styles.scoreMetric}>
+            <View style={styles.scoreMetricIcon}><Icon color={index === 1 ? theme.violet : theme.accent} size={18} /></View>
+            <View style={styles.flexShrink}><Text style={styles.scoreMetricName}>{c.label}</Text><Text style={styles.scoreMetricCopy}>{c.detail}</Text></View>
+            <Text style={styles.scoreMetricValue}>{c.value === null ? '—' : `${c.value}%`}</Text>
+          </ZenGlass>
+        );
+      })}</View>
     </ScrollView>
   );
 }
