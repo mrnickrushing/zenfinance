@@ -354,6 +354,16 @@ async function clearRevenueCatIdentity(): Promise<void> {
   configuredRevenueCatUserId = null;
 }
 
+async function signOutUser(): Promise<void> {
+  const refreshToken = useAppStore.getState().refreshToken;
+  if (refreshToken) {
+    await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
+  }
+  await clearRevenueCatIdentity();
+  await persistTokens(null);
+  useAppStore.getState().setTokens(null);
+}
+
 function restorePayloadFromCustomerInfo(billing: BillingStatusView, customerInfo: RevenueCatCustomerInfo): RestorePayload {
   const activeEntitlement = customerInfo.entitlements.active[billing.entitlementId];
   const entitlement = activeEntitlement ?? customerInfo.entitlements.all[billing.entitlementId];
@@ -1829,26 +1839,33 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
 
 function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { billing: BillingStatusView; score: number | null; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
   const theme = useTheme();
-  const rows = [
-    { label: 'Settings', icon: SlidersHorizontal, onPress: onSettings },
-    { label: 'Security', icon: LockKeyhole, onPress: onSettings },
-    { label: 'Linked Banks', icon: Landmark, onPress: onSettings },
-    { label: 'Notifications', icon: Bell, onPress: onSettings },
-    { label: 'Smart Budgeting', icon: CircleDollarSign, onPress: onBudget },
+  const rows: Array<{ label: string; icon: MaterialSymbolName; onPress: () => void }> = [
+    { label: 'Settings', icon: 'settings', onPress: onSettings },
+    { label: 'Security', icon: 'security', onPress: onSettings },
+    { label: 'Linked Banks', icon: 'link', onPress: onSettings },
+    { label: 'Notifications', icon: 'notifications', onPress: onSettings },
+    { label: 'Smart Budgeting', icon: 'account_balance_wallet', onPress: onBudget },
   ];
   return (
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
       <View style={styles.profileAvatar}><ZenLotus size={64} /></View>
       <Text style={styles.profileName}>ZenFinance Member</Text>
-      <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      <View style={styles.profileRoleRow}>
+        <ZenLotus size={13} />
+        <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      </View>
       <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
       <ZenGlass style={styles.profileMenu}>
-        {rows.map((row, index) => {
-          const Icon = row.icon;
-          return <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}><Icon color={theme.muted} size={18} /><Text style={styles.profileMenuText}>{row.label}</Text><ChevronRight color={theme.muted} size={17} /></Pressable>;
-        })}
+        {rows.map((row, index) => (
+          <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}>
+            <MaterialSymbol name={row.icon} color={theme.muted} size={18} />
+            <Text style={styles.profileMenuText}>{row.label}</Text>
+            <ChevronRight color={theme.muted} size={17} />
+          </Pressable>
+        ))}
       </ZenGlass>
+      <SecondaryButton label="Sign Out" icon={LogOut} onPress={signOutUser} />
       <SecondaryButton label="Open full settings" icon={SlidersHorizontal} onPress={onSettings} />
     </ScrollView>
   );
@@ -3254,16 +3271,6 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     void Linking.openURL(url);
   }
 
-  async function signOut() {
-    const refreshToken = useAppStore.getState().refreshToken;
-    if (refreshToken) {
-      await requestApi('/api/auth/logout', { method: 'POST', body: JSON.stringify({ refreshToken }) }).catch(() => {});
-    }
-    await clearRevenueCatIdentity();
-    await persistTokens(null);
-    setTokens(null);
-  }
-
   async function deleteAccount() {
     Alert.alert('Delete account', 'This permanently deletes your ZenFinance data from the app database.', [
       { text: 'Cancel', style: 'cancel' },
@@ -3576,7 +3583,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           onPress={checkForUpdate}
         />
       </ZenGlass>
-      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOut} />
+      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOutUser} />
       <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
     </ScrollView>
   );
@@ -3972,7 +3979,8 @@ const styles = StyleSheet.create({
   profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
   profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
   profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, textAlign: 'center', marginTop: 10 },
-  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11, textAlign: 'center', marginTop: 3 },
+  profileRoleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 3 },
+  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11 },
   profileScore: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', marginTop: 12 },
   profileScoreText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
   profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
