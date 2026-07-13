@@ -98,6 +98,29 @@ describe('computeZenScore', () => {
     }
   });
 
+  it('counts spend between paychecks against the savings rate (biweekly income)', async () => {
+    const userId = await makeUser('biweekly@example.com');
+    // One payday week, then three spend-only weeks with no income.
+    await seedWeek(userId, WEEKS[0], { incomeCents: 500000, spendCents: 50000 });
+    await seedWeek(userId, WEEKS[1], { spendCents: 200000 });
+    await seedWeek(userId, WEEKS[2], { spendCents: 200000 });
+    await seedWeek(userId, WEEKS[3], { spendCents: 200000 });
+    const view = await computeZenScore(db, userId);
+    // net = 5000 − 500 − (2000 × 3) = −1500 on 5000 income → negative rate → floored.
+    expect(component(view, 'growth_savings').value).toBe(20);
+  });
+
+  it('ignores zero-activity rollup weeks so an idle account stays in onboarding', async () => {
+    const userId = await makeUser('idle@example.com');
+    // The rollup job emits zeroed _total rows for weeks with no transactions.
+    for (const week of WEEKS) {
+      await seedWeek(userId, week, { incomeCents: 0, spendCents: 0, discretionaryRatio: 0 });
+    }
+    const view = await computeZenScore(db, userId);
+    expect(view.score).toBeNull();
+    expect(view.components.every((c) => c.value === null)).toBe(true);
+  });
+
   it('omits components without data from the weighted average', async () => {
     const userId = await makeUser('partial@example.com');
     // Only spend + discretionary ratio for two weeks — no income, no goals.
