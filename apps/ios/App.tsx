@@ -29,6 +29,8 @@ import {
   PiggyBank,
   Plus,
   RefreshCcw,
+  RotateCcw,
+  CloudOff,
   Send,
   ShoppingCart,
   ShieldCheck,
@@ -54,6 +56,7 @@ import {
   Linking,
   Platform,
   Pressable,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   Share,
@@ -498,7 +501,11 @@ function ZenLotus({ size = 18 }: { size?: number }) {
   }, [breathe]);
 
   return (
-    <Animated.View style={{ opacity: breathe }}>
+    <Animated.View
+      style={{ opacity: breathe }}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
       <Svg width={size} height={size} viewBox="0 0 100 100">
         <Defs>
           <LinearGradient id={sid} gradientUnits="userSpaceOnUse" x1="50" y1="28" x2="50" y2="74">
@@ -624,6 +631,14 @@ function AuthScreen() {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
+  const [mode, setMode] = useState<'register' | 'login'>('register');
+  const [touched, setTouched] = useState(false);
+
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const passwordValid = password.length >= 8;
+  const formValid = emailValid && passwordValid;
+  const emailError = touched && email.length > 0 && !emailValid ? 'Enter a valid email address.' : null;
+  const passwordError = touched && password.length > 0 && !passwordValid ? 'Use at least 8 characters.' : null;
 
   function generateBrief() {
     const input = transaction.trim().toLowerCase();
@@ -647,12 +662,15 @@ function AuthScreen() {
     });
   }
 
-  async function submit(path: 'register' | 'login') {
+  async function submit() {
+    setTouched(true);
+    if (!formValid) return;
+    const path = mode;
     setBusy(true);
     try {
       const tokens = await requestApi<AuthTokens>(
         `/api/auth/${path}`,
-        { method: 'POST', body: JSON.stringify({ email, password }) },
+        { method: 'POST', body: JSON.stringify({ email: email.trim(), password }) },
         false,
       );
       await persistTokens(tokens);
@@ -662,7 +680,10 @@ function AuthScreen() {
         body: JSON.stringify({ name: path === 'register' ? 'onboarding:registered' : 'onboarding:logged_in' }),
       }).catch(() => {});
     } catch (err) {
-      Alert.alert('Sign-in failed', err instanceof Error ? err.message : 'Unknown error');
+      Alert.alert(
+        path === 'register' ? 'Could not create account' : 'Sign-in failed',
+        err instanceof Error ? err.message : 'Unknown error',
+      );
     } finally {
       setBusy(false);
     }
@@ -691,25 +712,52 @@ function AuthScreen() {
         </Text>
 
         <View style={[styles.authPanelV2, { borderColor: theme.border }]}>
+          <Text style={styles.authModeTitle}>{mode === 'register' ? 'Create your account' : 'Welcome back'}</Text>
           <TextInput
-            style={styles.authInputV2}
+            style={[styles.authInputV2, emailError ? styles.authInputError : null]}
             placeholder="Email"
             placeholderTextColor={theme.muted}
             autoCapitalize="none"
+            autoComplete="email"
             keyboardType="email-address"
             value={email}
             onChangeText={setEmail}
+            onBlur={() => setTouched(true)}
+            accessibilityLabel="Email"
           />
+          {emailError ? <Text style={styles.authFieldError}>{emailError}</Text> : null}
           <TextInput
-            style={styles.authInputV2}
-            placeholder="Password"
+            style={[styles.authInputV2, passwordError ? styles.authInputError : null]}
+            placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'}
             placeholderTextColor={theme.muted}
             secureTextEntry
+            autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+            textContentType={mode === 'register' ? 'newPassword' : 'password'}
             value={password}
             onChangeText={setPassword}
+            onBlur={() => setTouched(true)}
+            accessibilityLabel="Password"
           />
-          <PrimaryButton label={busy ? 'Working...' : 'Sign in'} icon={ShieldCheck} disabled={busy} onPress={() => submit('login')} />
-          <SecondaryButton label="Create account" disabled={busy} onPress={() => submit('register')} />
+          {passwordError ? <Text style={styles.authFieldError}>{passwordError}</Text> : null}
+          <PrimaryButton
+            label={busy ? 'Working...' : mode === 'register' ? 'Create account' : 'Sign in'}
+            icon={mode === 'register' ? UserPlus : ShieldCheck}
+            disabled={busy || (touched && !formValid)}
+            onPress={submit}
+          />
+          <Pressable
+            style={styles.authModeToggle}
+            onPress={() => {
+              setMode((m) => (m === 'register' ? 'login' : 'register'));
+              setTouched(false);
+            }}
+            accessibilityRole="button"
+          >
+            <Text style={styles.authModeToggleText}>
+              {mode === 'register' ? 'Already have an account? ' : 'New to ZenFinance? '}
+              <Text style={styles.authModeToggleLink}>{mode === 'register' ? 'Sign in' : 'Create account'}</Text>
+            </Text>
+          </Pressable>
           <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
         </View>
 
@@ -756,6 +804,20 @@ function AuthScreen() {
   );
 }
 
+function HomeLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const theme = useTheme();
+  return (
+    <View style={styles.centerGrow}>
+      <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+        <CloudOff color={theme.accent} size={34} />
+      </View>
+      <Text style={[styles.panelTitle, styles.loadErrorTitle, { color: theme.ink }]}>We couldn't load your money brief</Text>
+      <Text style={[styles.panelBody, styles.loadErrorBody, { color: theme.muted }]}>{message}</Text>
+      <PrimaryButton label="Try again" icon={RotateCcw} onPress={onRetry} />
+    </View>
+  );
+}
+
 function ProductShell() {
   const theme = useTheme();
   const home = useAppStore((s) => s.home);
@@ -763,6 +825,7 @@ function ProductShell() {
   const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
   const [tab, setTab] = useState<TabKey>('brief');
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -773,9 +836,17 @@ function ProductShell() {
       ]);
       setHome(nextHome);
       setNotificationPrefs(prefs);
+      setLoadError(null);
     } catch (err) {
       Sentry.captureException(err);
-      Alert.alert('Could not refresh', err instanceof Error ? err.message : 'Unknown error');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setLoadError(message);
+      // With data already on screen, surface a non-blocking alert but keep the
+      // last-known home visible. On first load there's nothing to keep, so the
+      // inline error state below takes over instead of an endless spinner.
+      if (useAppStore.getState().home) {
+        Alert.alert('Could not refresh', message);
+      }
     } finally {
       setRefreshing(false);
     }
@@ -787,6 +858,9 @@ function ProductShell() {
 
   const content = useMemo(() => {
     if (!home) {
+      if (loadError && !refreshing) {
+        return <HomeLoadError message={loadError} onRetry={refresh} />;
+      }
       return (
         <View style={styles.centerGrow}>
           <ActivityIndicator color={theme.accent} />
@@ -809,7 +883,7 @@ function ProductShell() {
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
-  }, [home, refresh, refreshing, tab, theme.accent]);
+  }, [home, loadError, refresh, refreshing, tab, theme.accent]);
 
   const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score']).has(tab);
 
@@ -842,7 +916,7 @@ function ProductShell() {
           </View>
         ) : null}
         <View style={styles.content}>{content}</View>
-        {home ? <TabBar active={tab} onChange={setTab} /> : null}
+        {home ? <TabBar active={tab} onChange={setTab} isPremium={home.billing.isPremium} /> : null}
       </View>
     </SafeAreaView>
   );
@@ -920,7 +994,7 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Connect Bank</Text><Text style={styles.zenPageSubtitle}>Link securely in three calm steps</Text></View><Text style={styles.connectClose}>Close</Text></View>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Connect Bank</Text><Text style={styles.zenPageSubtitle}>Link securely in three calm steps</Text></View></View>
       <View style={styles.connectSteps}>{['Select Bank', 'Verify', 'Sync'].map((step, index) => <View key={step} style={styles.connectStep}><View style={[styles.connectStepDot, index === 0 ? styles.connectStepActive : null]}><Text style={styles.connectStepNumber}>{index + 1}</Text></View><Text style={styles.connectStepText}>{step}</Text></View>)}</View>
       <SectionBand>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
@@ -1024,7 +1098,9 @@ function BriefScreen({
   return (
     <ScrollView
       contentContainerStyle={styles.zenHomeScroll}
-      refreshControl={undefined}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} colors={[theme.accent]} />
+      }
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.zenHomeHeader}>
@@ -1050,7 +1126,14 @@ function BriefScreen({
           onStopVoice={stopVoiceBrief}
         />
       ) : (
-        <EmptyMini title="Your first brief is still warming up" copy="Pull to refresh after sync finishes." />
+        <EmptyMini
+          title={home.transactionCount === 0 ? 'Reading your accounts' : 'Your first brief is warming up'}
+          copy={
+            home.transactionCount === 0
+              ? 'Syncing your transactions now — pull down to refresh in a moment.'
+              : 'Your coaching brief is being prepared. Pull down to refresh.'
+          }
+        />
       )}
       {brief ? <DailyFocusCard brief={brief} /> : null}
       {brief ? <ZenDailyWidget brief={brief} /> : null}
@@ -1303,6 +1386,16 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
           <UserRound color={theme.accent} size={18} strokeWidth={2} />
         </Pressable>
       </View>
+      {home.items.length === 0 ? (
+        <ZenGlass style={styles.txnEmptyCta}>
+          <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
+            <Landmark color={theme.accent} size={30} />
+          </View>
+          <Text style={styles.txnEmptyTitle}>No accounts linked yet</Text>
+          <Text style={styles.txnEmptyBody}>Connect a bank to see balances and real transactions here.</Text>
+          <PrimaryButton label="Link a bank" icon={Landmark} onPress={onConnect} />
+        </ZenGlass>
+      ) : null}
       <Text style={styles.transactionsSectionTitle}>Linked Accounts</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRail}>
         {displayedCards.map(({ item, account, key }, index) => {
@@ -2853,7 +2946,7 @@ function Toggle({ label, value, onValueChange }: { label: string; value: boolean
   );
 }
 
-function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) => void }) {
+function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (tab: TabKey) => void; isPremium: boolean }) {
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
     { key: 'brief', icon: Home, label: 'Overview' },
@@ -2867,6 +2960,7 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const selected = active === tab.key;
+        const locked = PREMIUM_TABS.has(tab.key) && !isPremium;
         return (
           <Pressable
             key={tab.key}
@@ -2875,8 +2969,18 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
               selected ? [styles.tabItemActive, { backgroundColor: theme.accentSoft, borderColor: theme.accent }] : null,
             ]}
             onPress={() => onChange(tab.key)}
+            accessibilityRole="button"
+            accessibilityState={{ selected }}
+            accessibilityLabel={locked ? `${tab.label}, premium` : tab.label}
           >
-            <Icon color={selected ? theme.accent : theme.muted} size={selected ? 22 : 20} />
+            <View style={styles.tabIconWrap}>
+              <Icon color={selected ? theme.accent : theme.muted} size={selected ? 22 : 20} />
+              {locked ? (
+                <View style={[styles.tabLockBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+                  <LockKeyhole color={theme.gold} size={9} strokeWidth={2.5} />
+                </View>
+              ) : null}
+            </View>
             <Text style={[styles.tabText, { color: selected ? theme.ink : theme.muted }]} numberOfLines={1}>
               {tab.label}
             </Text>
@@ -3292,7 +3396,6 @@ const styles = StyleSheet.create({
   goalsSummaryTarget: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
   goalProgressTrack: { height: 8, borderRadius: 4, backgroundColor: '#FFFFFF14', overflow: 'hidden' },
   goalProgressFill: { height: '100%', borderRadius: 4, backgroundColor: '#00D2D3' },
-  connectClose: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
   connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
   connectStep: { alignItems: 'center', gap: 5 },
   connectStepDot: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: '#FFFFFF40', alignItems: 'center', justifyContent: 'center' },
@@ -3411,6 +3514,19 @@ const styles = StyleSheet.create({
   tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 16, borderWidth: 1, borderColor: 'transparent' },
   tabItemActive: { shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
   tabText: { fontSize: 11, fontWeight: '800' },
+  tabIconWrap: { position: 'relative' },
+  tabLockBadge: { position: 'absolute', top: -6, right: -10, width: 15, height: 15, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  loadErrorTitle: { textAlign: 'center', marginTop: 16 },
+  loadErrorBody: { textAlign: 'center', marginTop: 8, marginBottom: 20, paddingHorizontal: 24 },
+  authModeTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginBottom: 2 },
+  authInputError: { borderColor: '#FF7A9A' },
+  authFieldError: { color: '#FF7A9A', fontSize: 12, marginTop: -4, marginLeft: 4 },
+  authModeToggle: { alignItems: 'center', paddingVertical: 6 },
+  authModeToggleText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13 },
+  authModeToggleLink: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold' },
+  txnEmptyCta: { alignItems: 'center', gap: 8, padding: 20, marginTop: 8 },
+  txnEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 4 },
+  txnEmptyBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
   chatList: { flexGrow: 1, padding: 20, gap: 10 },
   coachCard: { borderWidth: 1, borderRadius: 24, padding: 14, gap: 8, marginBottom: 10, shadowColor: '#8E44AD', shadowOpacity: 0.38, shadowRadius: 24, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   violetChatGlow: { backgroundColor: '#8E44AD14' },
