@@ -2006,6 +2006,13 @@ function CoachScreen() {
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<CoachTurn[]>([]);
+  const listRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (turns.length > 0) {
+      requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
+    }
+  }, [turns.length]);
 
   async function ask() {
     const trimmed = question.trim();
@@ -2023,6 +2030,7 @@ function CoachScreen() {
         body: JSON.stringify({ name: 'coach:asked_question' }),
       }).catch(() => {});
     } catch (err) {
+      setQuestion(trimmed);
       Alert.alert('Coach failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
@@ -2035,6 +2043,7 @@ function CoachScreen() {
         <Text style={styles.coachHeaderTitle}>Zen AI Coach</Text>
       </View>
       <FlatList
+        ref={listRef}
         data={turns}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatList}
