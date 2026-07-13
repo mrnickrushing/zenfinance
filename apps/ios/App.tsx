@@ -21,6 +21,7 @@ import {
   Home,
   Landmark,
   LockKeyhole,
+  Minus,
   LogOut,
   MessageCircle,
   Moon,
@@ -55,8 +56,9 @@ import {
   Share,
   StyleSheet,
   Switch,
-  Text,
+  Text as RNText,
   TextInput,
+  type TextProps,
   useColorScheme,
   View,
   Easing,
@@ -376,6 +378,10 @@ function moneyPhysicalPayloadFromCustomerInfo(
 function useTheme() {
   useColorScheme();
   return midnightZen;
+}
+
+function Text({ style, ...props }: TextProps) {
+  return <RNText {...props} style={[styles.globalText, style]} />;
 }
 
 function ZenBackdrop() {
@@ -1230,6 +1236,13 @@ function ZenProfileScreen({ billing, onSettings, onScore, onBudget }: { billing:
 
 function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   const theme = useTheme();
+  const [editing, setEditing] = useState(false);
+  const [budgetTarget, setBudgetTarget] = useState('3000');
+  const [draftBudgetTarget, setDraftBudgetTarget] = useState('3000');
+  const [period, setPeriod] = useState<'monthly' | 'weekly'>('monthly');
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [roundupsEnabled, setRoundupsEnabled] = useState(false);
+  const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({});
   const categories = useMemo(() => {
     const grouped = new Map<string, number>();
     for (const txn of home.recentTransactions) {
@@ -1239,17 +1252,48 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
     return [...grouped.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
   }, [home.recentTransactions]);
   const total = categories.reduce((sum, [, amount]) => sum + amount, 0);
+  const targetCents = Math.max(0, Math.round(Number(budgetTarget.replace(/[$,\s]/g, '')) * 100) || 0);
+  const availableCents = Math.max(0, targetCents - total);
+
+  function openEditor() {
+    setDraftBudgetTarget(budgetTarget);
+    setEditing(true);
+  }
+
+  function saveBudget() {
+    const next = Number(draftBudgetTarget.replace(/[$,\s]/g, ''));
+    if (!Number.isFinite(next) || next <= 0) return;
+    setBudgetTarget(String(Math.round(next)));
+    setEditing(false);
+  }
+
+  function adjustCategoryCap(category: string, amountCents: number, delta: number) {
+    setCategoryCaps((current) => {
+      const currentCap = current[category] ?? Math.max(50, Math.round(amountCents / 100));
+      return { ...current, [category]: Math.max(25, currentCap + delta) };
+    });
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Text style={styles.zenHeaderEdit}>Edit</Text></View>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
+      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>Monthly budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder="$3,000" placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} onPress={saveBudget} /></View></ZenGlass> : null}
       <ZenGlass style={styles.budgetHero}>
-        <View style={styles.budgetRing}><Text style={styles.budgetHeroAmount}>{usd(total, true)}</Text><Text style={styles.budgetHeroMeta}>Available Funds</Text></View>
+        <View style={styles.budgetRing}><Text style={styles.budgetHeroAmount}>{usd(availableCents, true)}</Text><Text style={styles.budgetHeroMeta}>Available Funds</Text></View>
         <View style={styles.budgetLegend}><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.accent }]} /><Text style={styles.budgetLegendText}>Essentials</Text></View><View style={styles.legendLine}><View style={[styles.legendDot, { backgroundColor: theme.violet }]} /><Text style={styles.budgetLegendText}>Flexible</Text></View></View>
+      </ZenGlass>
+      <ZenGlass style={styles.budgetControls}>
+        <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget rhythm</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
+        <View style={styles.budgetSegmented}><Pressable style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => setPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
+        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Nudge me before a category runs hot</Text></View><Switch value={alertsEnabled} onValueChange={setAlertsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
+        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Round-up buffer</Text><Text style={styles.budgetToggleMeta}>Move spare change into savings</Text></View><Switch value={roundupsEnabled} onValueChange={setRoundupsEnabled} trackColor={{ false: '#FFFFFF26', true: theme.violet }} thumbColor="#FFFFFF" /></View>
       </ZenGlass>
       <Text style={styles.zenSectionLabel}>SPENDING FLOW</Text>
       <View style={styles.budgetBubbleGrid}>
         {categories.map(([category, amount], index) => <View key={category} style={[styles.budgetBubble, index === 0 ? styles.budgetBubbleLarge : null, { borderColor: index % 2 ? theme.violet : theme.accent }]}><Text style={styles.budgetBubbleName}>{category}</Text><Text style={styles.budgetBubbleAmount}>{usd(amount, true)}</Text><Text style={styles.budgetBubbleMeta}>{total ? `${Math.round((amount / total) * 100)}%` : '0%'}</Text></View>)}
       </View>
+      <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
+      <ZenGlass style={styles.categoryCapsPanel}>{categories.map(([category, amount], index) => { const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100)); return <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}><View style={styles.flexShrink}><Text style={styles.categoryCapName}>{category}</Text><Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text></View><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, -50)}><Minus color={theme.muted} size={14} /></Pressable><Text style={styles.categoryCapValue}>${cap}</Text><Pressable style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, 50)}><Plus color={theme.accent} size={14} /></Pressable></View>; })}</ZenGlass>
       <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
     </ScrollView>
   );
@@ -2653,7 +2697,8 @@ function TabBar({ active, onChange }: { active: TabKey; onChange: (tab: TabKey) 
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
     { key: 'brief', icon: Home, label: 'Home' },
     { key: 'coach', icon: MessageCircle, label: 'Coach' },
-    { key: 'transactions', icon: CircleDollarSign, label: 'Transactions' },
+    { key: 'budget', icon: CircleDollarSign, label: 'Budget' },
+    { key: 'transactions', icon: WalletCards, label: 'Transactions' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
   return (
@@ -2889,6 +2934,7 @@ function SecondaryButton({
 }
 
 const styles = StyleSheet.create({
+  globalText: { fontFamily: 'Inter_400Regular', letterSpacing: 0 },
   flex: { flex: 1 },
   flexShrink: { flex: 1, minWidth: 0 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -2998,6 +3044,7 @@ const styles = StyleSheet.create({
   profileMenuText: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 13 },
   zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 10 },
   zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  zenEditButton: { minHeight: 32, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
   budgetHero: { minHeight: 210, alignItems: 'center', justifyContent: 'center', gap: 16 },
   budgetRing: { width: 142, height: 142, borderRadius: 71, borderWidth: 10, borderColor: '#00D2D366', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
   budgetHeroAmount: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 23 },
@@ -3015,6 +3062,29 @@ const styles = StyleSheet.create({
   budgetInsight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   budgetInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetInsightBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
+  budgetEditPanel: { gap: 10, borderColor: '#00D2D34D' },
+  budgetEditTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  budgetEditBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
+  budgetInput: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF26', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 13, fontFamily: 'Inter_500Medium', fontSize: 16 },
+  budgetEditActions: { flexDirection: 'row', gap: 8 },
+  budgetControls: { gap: 10 },
+  budgetControlHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  budgetControlTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 14 },
+  budgetControlMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
+  budgetSegmented: { flexDirection: 'row', minHeight: 36, padding: 3, borderRadius: 12, backgroundColor: '#FFFFFF0D', gap: 3 },
+  budgetSegment: { flex: 1, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  budgetSegmentActive: { backgroundColor: '#00D2D326', borderWidth: 1, borderColor: '#00D2D34D' },
+  budgetSegmentText: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 11 },
+  budgetSegmentTextActive: { color: '#FFFFFF' },
+  budgetToggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  budgetToggleTitle: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  budgetToggleMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  categoryCapsPanel: { paddingVertical: 4 },
+  categoryCapRow: { minHeight: 58, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  categoryCapName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  categoryCapMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  capButton: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
+  categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
   scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 52, lineHeight: 56, marginTop: -8 },
   scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11 },
