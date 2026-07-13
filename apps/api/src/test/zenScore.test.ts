@@ -101,10 +101,9 @@ describe('computeZenScore', () => {
   it('counts spend between paychecks against the savings rate (biweekly income)', async () => {
     const userId = await makeUser('biweekly@example.com');
     // One payday week, then three spend-only weeks with no income.
-    await seedWeek(userId, WEEKS[0], { incomeCents: 500000, spendCents: 50000 });
-    await seedWeek(userId, WEEKS[1], { spendCents: 200000 });
-    await seedWeek(userId, WEEKS[2], { spendCents: 200000 });
-    await seedWeek(userId, WEEKS[3], { spendCents: 200000 });
+    const [payday, ...spendOnly] = WEEKS.slice(0, 4);
+    await seedWeek(userId, payday!, { incomeCents: 500000, spendCents: 50000 });
+    for (const week of spendOnly) await seedWeek(userId, week, { spendCents: 200000 });
     const view = await computeZenScore(db, userId);
     // net = 5000 − 500 − (2000 × 3) = −1500 on 5000 income → negative rate → floored.
     expect(component(view, 'growth_savings').value).toBe(20);
