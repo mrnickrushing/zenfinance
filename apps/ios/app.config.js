@@ -13,11 +13,16 @@ module.exports = {
     ios: {
       bundleIdentifier: 'com.rushingtechnologies.zenfinance',
       supportsTablet: false,
+      // Adds the "Sign in with Apple" capability/entitlement to the native
+      // target. The token is verified server-side against this bundle id
+      // (APPLE_BUNDLE_ID) in /api/auth/apple.
+      usesAppleSignIn: true,
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
       },
     },
     plugins: [
+      'expo-apple-authentication',
       'expo-font',
       'expo-secure-store',
       [

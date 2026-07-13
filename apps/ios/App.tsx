@@ -1,7 +1,9 @@
 import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
+import * as Crypto from 'expo-crypto';
 import { useFonts } from 'expo-font';
 import * as Notifications from 'expo-notifications';
 import * as SecureStore from 'expo-secure-store';
@@ -633,6 +635,13 @@ function AuthScreen() {
   const [showLogin, setShowLogin] = useState(false);
   const [mode, setMode] = useState<'register' | 'login'>('register');
   const [touched, setTouched] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    void AppleAuthentication.isAvailableAsync()
+      .then(setAppleAvailable)
+      .catch(() => setAppleAvailable(false));
+  }, []);
 
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const passwordValid = password.length >= 8;
@@ -684,6 +693,51 @@ function AuthScreen() {
         path === 'register' ? 'Could not create account' : 'Sign-in failed',
         err instanceof Error ? err.message : 'Unknown error',
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function signInWithApple() {
+    setBusy(true);
+    try {
+      // Firebase-style nonce: send Apple the SHA-256 of a raw nonce, then hand
+      // the server the raw value. /api/auth/apple re-hashes it and matches the
+      // token's nonce claim, so a stolen identity token can't be replayed.
+      const rawNonce = `${Crypto.randomUUID()}${Crypto.randomUUID()}`.replace(/-/g, '');
+      const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce: hashedNonce,
+      });
+      if (!credential.identityToken) throw new Error('Apple did not return an identity token');
+      const tokens = await requestApi<AuthTokens>(
+        '/api/auth/apple',
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            identityToken: credential.identityToken,
+            rawNonce,
+            ...(credential.email ? { email: credential.email } : {}),
+          }),
+        },
+        false,
+      );
+      await persistTokens(tokens);
+      setTokens(tokens);
+      void requestApi('/api/app-events', {
+        method: 'POST',
+        body: JSON.stringify({ name: 'onboarding:apple_sign_in' }),
+      }).catch(() => {});
+    } catch (err) {
+      // User dismissed the native sheet — not an error worth surfacing.
+      if (err && typeof err === 'object' && 'code' in err && (err as { code?: string }).code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+      Alert.alert('Apple sign-in failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setBusy(false);
     }
@@ -745,6 +799,22 @@ function AuthScreen() {
             disabled={busy || (touched && !formValid)}
             onPress={submit}
           />
+          {appleAvailable ? (
+            <>
+              <View style={styles.authDivider}>
+                <View style={styles.authDividerLine} />
+                <Text style={styles.authDividerText}>or</Text>
+                <View style={styles.authDividerLine} />
+              </View>
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={14}
+                style={styles.appleButton}
+                onPress={signInWithApple}
+              />
+            </>
+          ) : null}
           <Pressable
             style={styles.authModeToggle}
             onPress={() => {
@@ -3524,6 +3594,10 @@ const styles = StyleSheet.create({
   authModeToggle: { alignItems: 'center', paddingVertical: 6 },
   authModeToggleText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13 },
   authModeToggleLink: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold' },
+  authDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 2 },
+  authDividerLine: { flex: 1, height: 1, backgroundColor: '#FFFFFF1A' },
+  authDividerText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12 },
+  appleButton: { height: 48, width: '100%' },
   txnEmptyCta: { alignItems: 'center', gap: 8, padding: 20, marginTop: 8 },
   txnEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 4 },
   txnEmptyBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
