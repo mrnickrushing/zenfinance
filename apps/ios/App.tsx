@@ -213,13 +213,13 @@ const useAppStore = createStore<AppState>((set) => ({
 
 const midnightZen = {
   bg: '#0B0E14',
-  surface: '#FFFFFF14',
-  surfaceAlt: '#FFFFFF0D',
+  surface: '#FFFFFF0D',
+  surfaceAlt: '#FFFFFF08',
   ink: '#FFFFFF',
-  muted: '#FFFFFFB3',
-  border: '#FFFFFF1A',
+  muted: '#FFFFFF99',
+  border: '#FFFFFF26',
   accent: '#00D2D3',
-  accentBright: '#8AFFFF',
+  accentBright: '#48EFEF',
   accentSoft: '#00D2D326',
   violet: '#8E44AD',
   violetSoft: '#8E44AD26',
@@ -621,7 +621,7 @@ function ZenGlass({ children, style }: { children: ReactNode; style?: object }) 
   const theme = useTheme();
   return (
     <View style={[styles.zenGlass, { borderColor: theme.border }, style]}>
-      <BlurView intensity={18} tint="dark" style={styles.zenGlassBlur as any} />
+      <BlurView intensity={28} tint="dark" style={styles.zenGlassBlur as any} />
       <View pointerEvents="none" style={styles.zenGlassTint} />
       {children}
     </View>
@@ -1756,7 +1756,7 @@ function MoneyBriefHero({
       </View>
       <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
       <Text style={styles.zenInsightBody}>{brief.body}</Text>
-      <SecondaryButton label="View Swap" compact onPress={onViewSwap} />
+      <SecondaryButton label="View Swap" accent onPress={onViewSwap} />
       <View style={styles.zenInsightFooter}>
         <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel={home.billing.isPremium && voiceBrief ? 'Play voice brief' : 'Mark insight helpful'} hitSlop={12} onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
@@ -2425,7 +2425,8 @@ function CoachScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <View style={styles.coachScreenHeader}>
-        <Text style={styles.coachHeaderTitle}>Zen AI Coach</Text>
+        <Text style={styles.coachHeaderTitle}>Coach</Text>
+        <Text style={styles.coachHeaderSubtitle}>MINDFUL PRESENCE</Text>
       </View>
       <FlatList
         ref={listRef}
@@ -2487,10 +2488,7 @@ function UserMessageBubble({ text }: { text: string }) {
   return (
     <View style={styles.userMessageWrap}>
       <View style={styles.userBubble}>
-        <Text style={styles.userBubbleText}>
-          <Text style={styles.userBubblePrefix}>User: </Text>
-          {text}
-        </Text>
+        <Text style={styles.userBubbleText}>{text}</Text>
       </View>
     </View>
   );
@@ -2502,10 +2500,8 @@ function ChatBubble({ answer }: { answer: ChatAnswerView }) {
     <View style={styles.aiMessageRow}>
       <ZenAiAvatar />
       <CoachCard>
-        <Text style={[styles.panelBody, { color: theme.ink }]}>
-          <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
-          {answer.answer}
-        </Text>
+        <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
+        <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
         <InsightLedger facts={answer.facts} />
         {answer.actions.map((action) => (
           <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
@@ -2545,8 +2541,8 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
       <View style={styles.aiMessageRow}>
         <ZenAiAvatar />
         <ZenGlass style={styles.chatMessageBubble}>
+          <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
           <Text style={styles.chatMessageText}>
-            <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
             Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.
           </Text>
         </ZenGlass>
@@ -2554,15 +2550,15 @@ function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
       <View style={styles.aiMessageRow}>
         <ZenAiAvatar />
         <ZenGlass style={styles.chatMessageBubble}>
+          <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
           <Text style={styles.chatMessageText}>
-            <Text style={styles.aiBubblePrefix}>Zen AI: </Text>
             Ask me about a charge, a goal, or what you can comfortably spend next.
           </Text>
         </ZenGlass>
       </View>
       <ZenGlass style={styles.coachInsightsCard}>
         <Text style={styles.coachInsightsTitle}>Your Path to Zen</Text>
-        <Text style={styles.coachInsightsSubtitle}>Recent milestones</Text>
+        <Text style={styles.coachInsightsSubtitle}>Recent Milestones</Text>
         {[['Emergency Fund Goal Reached', 'You successfully saved $1,000', CheckCircle2], ['Mindful Spending Tip', 'Try tracking your coffee purchases', Target], ['Weekly Budget Review Completed', 'Good job staying within your limits', Sparkles]].map(([title, copy, Icon]) => {
           const InsightIcon = Icon as typeof Sparkles;
           return <View key={title as string} style={styles.coachInsightRow}><View style={styles.coachInsightIcon}><InsightIcon color="#00D2D3" size={15} /></View><View style={styles.flexShrink}><Text style={styles.coachInsightTitle}>{title as string}</Text><Text style={styles.coachInsightCopy}>{copy as string}</Text></View></View>;
@@ -2825,11 +2821,14 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Savings Goals</Text><Text style={styles.zenPageSubtitle}>Small steps, meaningful progress</Text></View><Target color={theme.accent} size={19} /></View>
       <ZenGlass style={styles.mindfulSavingsHero}>
         <MaterialSymbol name="savings" size={54} color="#FFFFFF1F" style={styles.mindfulSavingsWatermark} />
-        <Text style={styles.mindfulSavingsLabel}>Mindful Savings</Text>
+        <Text style={styles.mindfulSavingsLabel}>Total Savings</Text>
         <Text style={styles.mindfulSavingsAmount}>{usd(goals.reduce((sum, goal) => sum + goal.currentAmountCents, 0))}</Text>
-        <Text style={styles.mindfulSavingsCaption}>Total Saved</Text>
+        <Text style={styles.mindfulSavingsCaption}>Across {goals.length} active {goals.length === 1 ? 'goal' : 'goals'}</Text>
       </ZenGlass>
-      <SectionHeader title="Your Goals" />
+      <View style={styles.goalsSectionRow}>
+        <Text style={styles.zenSectionLabel}>YOUR INTENTIONS</Text>
+        <Text style={styles.goalsSectionCount}>{goals.length} Active {goals.length === 1 ? 'Goal' : 'Goals'}</Text>
+      </View>
       {milestoneGoal ? (
         <MilestoneModal
           goal={milestoneGoal}
@@ -2857,10 +2856,6 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
             <MoneyMetric label="Target" value={usd(goal.targetAmountCents, true)} icon={Target} />
             <MoneyMetric label="Pace" value={pacingLabel(goal.pacing.pacingStatus)} icon={SlidersHorizontal} />
           </StatusRail>
-          <ProgressBar value={goal.pacing.progressRatio} />
-          <Text style={[styles.rowDetail, { color: theme.muted }]}>
-            {usd(goal.currentAmountCents, true)} of {usd(goal.targetAmountCents, true)} · {goal.pacing.pacingStatus.replace('_', ' ')}
-          </Text>
           <Text style={[styles.factLine, { color: theme.muted }]}>
             Projected completion: {dateLabel(goal.pacing.projectedCompletionDate)}
           </Text>
@@ -4073,6 +4068,7 @@ function SecondaryButton({
   disabled,
   compact,
   danger,
+  accent,
   onPress,
 }: {
   label: string;
@@ -4080,6 +4076,7 @@ function SecondaryButton({
   disabled?: boolean;
   compact?: boolean;
   danger?: boolean;
+  accent?: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -4088,7 +4085,8 @@ function SecondaryButton({
       style={[
         styles.secondaryButton,
         compact ? styles.compactButton : null,
-        { borderColor: danger ? theme.danger : theme.border, backgroundColor: theme.surface },
+        accent ? styles.accentButton : null,
+        { borderColor: danger ? theme.danger : accent ? theme.accent : theme.border, backgroundColor: accent ? 'transparent' : theme.surface },
       ]}
       disabled={disabled}
       onPress={onPress}
@@ -4097,7 +4095,7 @@ function SecondaryButton({
       accessibilityLabel={label}
     >
       {Icon ? <Icon color={danger ? theme.danger : theme.accent} size={17} /> : null}
-      <Text style={[styles.secondaryButtonText, { color: danger ? theme.danger : theme.ink }]} numberOfLines={2}>
+      <Text style={[styles.secondaryButtonText, accent ? { color: theme.accent, fontWeight: '700' } : { color: danger ? theme.danger : theme.ink }]} numberOfLines={2}>
         {label}
       </Text>
     </Pressable>
@@ -4127,13 +4125,13 @@ const styles = StyleSheet.create({
   appScreen: { flex: 1 },
   content: { flex: 1 },
   zenBackdrop: StyleSheet.absoluteFill,
-  meshTeal: { position: 'absolute', width: 260, height: 220, left: -80, top: 80, borderRadius: 140, backgroundColor: '#00D2D31A' },
-  meshViolet: { position: 'absolute', width: 300, height: 250, right: -100, top: 20, borderRadius: 160, backgroundColor: '#8E44AD1A' },
+  meshTeal: { position: 'absolute', width: 340, height: 300, left: -100, top: 60, borderRadius: 180, backgroundColor: '#00D2D340' },
+  meshViolet: { position: 'absolute', width: 380, height: 320, right: -120, top: 0, borderRadius: 200, backgroundColor: '#8E44AD40' },
   zenFrame: { flex: 1, marginHorizontal: 12, marginTop: 8, marginBottom: 8, borderRadius: 28, borderWidth: 1, borderColor: '#FFFFFF26', overflow: 'hidden' },
-  zenHomeScroll: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 24, gap: 14 },
+  zenHomeScroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 16 },
   zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
   zenLotusMark: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  zenBrand: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  zenBrand: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
   zenHeaderAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   zenScorePill: { alignSelf: 'center', minHeight: 34, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 7 },
   zenScoreCard: { alignItems: 'center', paddingVertical: 18, gap: 3, borderColor: '#FFFFFF38' },
@@ -4154,7 +4152,7 @@ const styles = StyleSheet.create({
   zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
   zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
-  zenInsightTitle: { color: '#FFFFFF', fontSize: 27, lineHeight: 31, fontFamily: 'Inter_700Bold' },
+  zenInsightTitle: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, fontFamily: 'Inter_700Bold' },
   zenInsightBody: { color: '#FFFFFFB3', fontSize: 13, lineHeight: 18 },
   zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
   zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
@@ -4170,12 +4168,10 @@ const styles = StyleSheet.create({
   zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
   zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
   zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  zenSwapButton: { minHeight: 32, borderRadius: 16, paddingHorizontal: 11, justifyContent: 'center', backgroundColor: '#FFFFFFB3' },
-  zenSwapText: { color: '#0B0E14', fontSize: 10, fontWeight: '900' },
   zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
   zenVoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 4 },
+  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26', gap: 4 },
   zenStatCardLabel: { color: '#FFFFFF', fontSize: 13, fontFamily: 'Inter_700Bold' },
   zenStatCardBody: { color: '#FFFFFFB3', fontSize: 12, lineHeight: 16 },
   zenLinkGrid: { flexDirection: 'row', gap: 10 },
@@ -4306,14 +4302,16 @@ const styles = StyleSheet.create({
   mindfulSavingsLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 13 },
   mindfulSavingsAmount: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 30 },
   mindfulSavingsCaption: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
+  goalsSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+  goalsSectionCount: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 11 },
   goalCardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   goalCardIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
   goalCardName: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
   goalCardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   goalCardAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12 },
   goalCardPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  goalProgressTrack: { height: 8, borderRadius: 4, backgroundColor: '#FFFFFF14', overflow: 'hidden' },
-  goalProgressFill: { height: '100%', borderRadius: 4, backgroundColor: '#00D2D3' },
+  goalProgressTrack: { height: 12, borderRadius: 6, backgroundColor: '#FFFFFF14', overflow: 'visible' },
+  goalProgressFill: { height: '100%', borderRadius: 6, backgroundColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
   connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
   connectStep: { alignItems: 'center', gap: 5 },
   connectStepDot: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: '#FFFFFF40', alignItems: 'center', justifyContent: 'center' },
@@ -4388,6 +4386,7 @@ const styles = StyleSheet.create({
   primaryButtonText: { flexShrink: 1, fontFamily: 'Inter_600SemiBold', fontSize: 15, textAlign: 'center' },
   secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
   compactButton: { minHeight: 38, flex: 1 },
+  accentButton: { borderWidth: 1.5, borderRadius: 18, alignSelf: 'flex-start', flex: 0, paddingHorizontal: 18 },
   secondaryButtonText: { flexShrink: 1, fontFamily: 'Inter_500Medium', fontSize: 14, textAlign: 'center' },
   emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
   largeIcon: { width: 72, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26' },
@@ -4464,10 +4463,10 @@ const styles = StyleSheet.create({
   chatBubbleIconGlyph: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 15, fontStyle: 'italic' },
   chatBubbleKicker: { color: '#FFFFFFB3', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 },
   chatPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, alignItems: 'center' },
+  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, alignItems: 'center', gap: 3 },
   coachHeaderTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 19 },
-  aiBubblePrefix: { color: '#48EFEF', fontFamily: 'Inter_700Bold' },
-  userBubblePrefix: { color: '#FFFFFF', fontFamily: 'Inter_700Bold' },
+  coachHeaderSubtitle: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.5 },
+  aiBubblePrefix: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1, marginBottom: 4 },
   userMessageWrap: { alignItems: 'flex-end' },
   userBubble: { maxWidth: '85%', backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1F', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 16 },
   userBubbleText: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
