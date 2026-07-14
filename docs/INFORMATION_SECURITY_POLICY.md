@@ -6,7 +6,7 @@
 | **Product** | ZenFinance (iOS application and API) |
 | **Policy owner** | Nicholas Rushing, Founder |
 | **Security contact** | support@rushingtechnologies.com (monitored) |
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Adopted** | 2026-07-14 |
 | **Next scheduled review** | 2027-01-14 |
 
@@ -71,9 +71,10 @@ and report suspected incidents to the security contact immediately.
 - This policy **MUST** be reviewed at least every six months and upon any
   material change to architecture, data categories, or processors. Reviews and
   revisions are recorded in §22.
-- Exceptions to any **MUST** requirement **MUST** be documented in this file
-  with scope, rationale, compensating control, and an expiry or re-review
-  date. Undocumented deviations are treated as findings under §5.
+- Exceptions to any **MUST** requirement, and deferrals of any **SHOULD**
+  control, **MUST** be documented in this file with scope, rationale,
+  compensating control, and an expiry or re-review date. Undocumented
+  deviations are treated as findings under §5.
 - This policy is version-controlled in the product repository; changes flow
   through the same pull-request and review pipeline as code (§11).
 
@@ -111,10 +112,12 @@ Accepted risks, applied remediations, and assessment results are recorded in
 All data handled by ZenFinance **MUST** be treated according to its
 classification in §2.
 
-- **Restricted** data **MUST NOT** leave the server environment, appear in
-  logs or telemetry, or be sent to any LLM or analytics processor. Bank
-  provider access tokens are additionally encrypted at the application layer
-  before storage (§8) so that database access alone does not disclose them.
+- **Restricted** data **MUST NOT** appear in logs or telemetry or be sent to
+  any LLM or analytics processor, and **MUST NOT** leave the server
+  environment except when presented over TLS to the processor that issued it
+  (e.g., a Plaid access token in an outbound Plaid API call). Bank provider
+  access tokens are additionally encrypted at the application layer before
+  storage (§8) so that database access alone does not disclose them.
 - **Confidential** data **MUST** be transmitted only over TLS, stored only in
   the production database or the processors enumerated in §17, and minimized
   before any LLM processing (compact, redacted summaries; never raw
@@ -168,12 +171,16 @@ classification in §2.
   rotated immediately as part of incident containment (§15). Rotating the
   token-encryption key orphans stored provider tokens by design; affected
   users are prompted to relink, which is the documented recovery path.
-- **Webhook authenticity:** inbound webhooks **MUST** be cryptographically
-  verified before processing. Plaid webhooks are verified as ES256 JWTs with
-  key-ID resolution against Plaid's JWKS, an issued-at freshness window of
-  300 seconds, and a SHA-256 hash comparison of the raw request body.
-  RevenueCat webhooks require both the shared-secret Authorization header and
-  a valid HMAC signature.
+- **Webhook authenticity:** in production, inbound webhooks **MUST** be
+  cryptographically verified before processing. Plaid webhooks are verified
+  as ES256 JWTs with key-ID resolution against Plaid's JWKS, an issued-at
+  freshness window of 300 seconds, and a SHA-256 hash comparison of the raw
+  request body. RevenueCat webhooks require both the shared-secret
+  Authorization header and a valid HMAC signature. The secrets these checks
+  depend on are enforced at production start-up by §9's fail-closed
+  validation. Outside production, unverified webhooks are accepted only in
+  isolated development and test environments, which run mock providers and
+  hold no real user data.
 
 ## 9. Platform, Network, and Configuration Security
 
@@ -210,8 +217,12 @@ classification in §2.
   through recursive scrubbing of token-, secret-, credential-, cookie-,
   authorization-, and email-like keys before send, with `sendDefaultPii`
   disabled; server console logs use a log-safe error summary that excludes
-  outgoing request configuration and authorization headers (third-party
-  providers' error response bodies may be logged for failure diagnosis).
+  outgoing request configuration and authorization headers. Processors'
+  structured error responses (error codes, messages, request identifiers)
+  may be logged for failure diagnosis only through that summary; if a
+  processor is found to echo credentials or user financial data in its error
+  responses, logging of its response bodies **MUST** be suspended pending an
+  explicit field allowlist.
 
 ## 11. Change Management
 
@@ -240,7 +251,8 @@ classification in §2.
   Sentry with the PII scrubbing described in §10, tagged by route and release
   for triage.
 - Provider integration failures are logged with log-safe summaries that
-  include the provider's error body (never our credentials) so that root
+  include the provider's structured error response (never our credentials or
+  request configuration), subject to the constraint in §10, so that root
   cause is diagnosable without exposing Restricted data.
 - Security-relevant state transitions — item reauthentication requirements,
   disconnections, account deletions — are recorded; account deletion writes a
@@ -324,9 +336,12 @@ Users can at any time, in-app or via the API:
   item's accounts and transactions are hard-deleted (foreign-key cascade).
 - **Export** their data (`GET /api/me/export`).
 - **Delete** their account (`DELETE /api/me`) — provider items are revoked
-  (revocation failure never blocks the user's deletion right and is retried
-  via a pending-revocation process), all rows cascade-delete, and a non-PII
-  deletion audit event is written.
+  (revocation failure never blocks the user's deletion right; a persisted
+  revocation job retries automatically on a one-minute sweep with
+  exponential backoff capped at 24 hours until the provider confirms
+  revocation, recording attempt count and last error for review, and sweep
+  failures alert through §13's error monitoring), all rows cascade-delete,
+  and a non-PII deletion audit event is written.
 
 Account data is retained only while the account exists. Residual copies in
 platform backups age out with the backup retention window disclosed in the
@@ -377,3 +392,4 @@ records the assurance activities actually performed.
 | 1.0 | 2026-07-14 | Initial adoption: policy rollup of existing practices. |
 | 1.1 | 2026-07-14 | Scoped the log/telemetry scrubbing claim to match code guarantees (review finding). |
 | 2.0 | 2026-07-14 | Expanded to full program structure: classifications, governance and exceptions, key management, SDLC, change management, vulnerability SLAs, incident severity levels and procedure, continuity/recovery, personnel and acceptable use, compliance posture. |
+| 2.1 | 2026-07-14 | Review findings: scoped webhook verification to production with non-production isolation, clarified Restricted-data egress to issuing processors, constrained provider error-body logging, extended the exception process to SHOULD deferrals, documented revocation retry behavior. |
