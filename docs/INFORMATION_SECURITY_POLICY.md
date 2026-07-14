@@ -6,7 +6,7 @@
 | **Product** | ZenFinance (iOS application and API) |
 | **Policy owner** | Nicholas Rushing, Founder |
 | **Security contact** | support@rushingtechnologies.com (monitored) |
-| **Version** | 2.1 |
+| **Version** | 2.2 |
 | **Adopted** | 2026-07-14 |
 | **Next scheduled review** | 2027-01-14 |
 
@@ -160,7 +160,16 @@ classification in §2.
 - **At rest:** the production Postgres database is hosted on Railway with
   provider-managed encryption at rest. Bank provider access tokens are
   additionally encrypted at the application layer with AES-256-GCM under a
-  dedicated 256-bit key (`TOKEN_ENC_KEY`) before storage.
+  dedicated 256-bit key (`TOKEN_ENC_KEY`) before storage. The same cipher
+  additionally protects Plaid-sourced consumer-identifying text — account
+  name, official name, and mask; transaction name and merchant name; and the
+  cleaned merchant name produced by enrichment — applied transparently at
+  the schema layer so every read and write goes through it with no
+  per-query code change. Transaction amounts and posted dates are
+  deliberately left plaintext, since rollups, goal pacing, and recurring
+  detection sum and range-filter them directly in SQL. Rows written before
+  this control existed remain plaintext until next touched by a sync; there
+  is no backfill migration.
 - **Key generation:** secrets and keys **MUST** be generated with a
   cryptographically secure random source at 256-bit strength (e.g., `openssl
   rand -hex 32`).
@@ -393,3 +402,4 @@ records the assurance activities actually performed.
 | 1.1 | 2026-07-14 | Scoped the log/telemetry scrubbing claim to match code guarantees (review finding). |
 | 2.0 | 2026-07-14 | Expanded to full program structure: classifications, governance and exceptions, key management, SDLC, change management, vulnerability SLAs, incident severity levels and procedure, continuity/recovery, personnel and acceptable use, compliance posture. |
 | 2.1 | 2026-07-14 | Review findings: scoped webhook verification to production with non-production isolation, clarified Restricted-data egress to issuing processors, constrained provider error-body logging, extended the exception process to SHOULD deferrals, documented revocation retry behavior. |
+| 2.2 | 2026-07-14 | Extended application-layer AES-256-GCM encryption from provider access tokens to Plaid-sourced consumer-identifying text (account/transaction/merchant names, official name, mask), applied transparently at the schema layer; noted the deliberate exclusion of amounts/dates and the lack of a backfill migration. |

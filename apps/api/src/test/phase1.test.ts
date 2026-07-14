@@ -1,10 +1,11 @@
 import type { Express } from 'express';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { db } from '../db/client.js';
 import { transactions } from '../db/schema.js';
-import { decryptToken, encryptToken } from '../lib/crypto.js';
+import { decryptField, decryptToken, encryptField, encryptToken } from '../lib/crypto.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
 
 let app: Express;
@@ -53,6 +54,51 @@ describe('token encryption', () => {
     const stored = encryptToken('access-sandbox-secret');
     expect(stored).not.toContain('access-sandbox-secret');
     expect(decryptToken(stored)).toBe('access-sandbox-secret');
+  });
+});
+
+describe('field encryption', () => {
+  it('round-trips and never stores plaintext', () => {
+    const stored = encryptField('Whole Foods Market');
+    expect(stored).not.toContain('Whole Foods Market');
+    expect(decryptField(stored)).toBe('Whole Foods Market');
+  });
+
+  it('passes plaintext through unchanged, for rows written before field encryption existed', () => {
+    expect(decryptField('Whole Foods Market')).toBe('Whole Foods Market');
+  });
+
+  it('encrypts Plaid-sourced account and transaction text at rest, decrypted transparently on read', async () => {
+    const { access } = await registerAndAuth();
+    const link = await linkBank(access);
+
+    const rawAccounts = (
+      await db.execute(sql`select name, official_name, mask from accounts where item_id = ${link.itemId}`)
+    ).rows as Array<{ name: string; official_name: string; mask: string }>;
+    expect(rawAccounts.length).toBeGreaterThan(0);
+    for (const row of rawAccounts) {
+      expect(row.name).toMatch(/^v1:/);
+      expect(row.official_name).toMatch(/^v1:/);
+      expect(row.mask).toMatch(/^v1:/);
+    }
+
+    const rawTransactions = (
+      await db.execute(
+        sql`select t.name, t.merchant_name from transactions t join accounts a on a.id = t.account_id where a.item_id = ${link.itemId} limit 5`,
+      )
+    ).rows as Array<{ name: string; merchant_name: string | null }>;
+    expect(rawTransactions.length).toBeGreaterThan(0);
+    for (const row of rawTransactions) {
+      expect(row.name).toMatch(/^v1:/);
+      if (row.merchant_name) expect(row.merchant_name).toMatch(/^v1:/);
+    }
+
+    // The ORM and every API response still see plaintext — the mock
+    // provider's deterministic account name/mask from providers/mock.ts.
+    const itemsRes = await request(app).get('/api/items').set('Authorization', `Bearer ${access}`);
+    expect(itemsRes.status).toBe(200);
+    const checking = itemsRes.body.items[0].accounts.find((a: { mask: string }) => a.mask === '4321');
+    expect(checking.name).toBe('Everyday Checking');
   });
 });
 

@@ -37,6 +37,7 @@ These are not in the production API request path. Recheck monthly and after new 
 - Household Sharing routes expose only household metadata, shared goals, and contributions; linked accounts and transactions stay outside household responses.
 - Voice Briefs are generated from already-guarded insight text, run through on-device iOS speech playback, and do not introduce a new external TTS processor.
 - Money Physical reports are deterministic server-side summaries from already-owned user data, keyed by RevenueCat non-subscription transaction id, included in export, and deleted through the user cascade.
+- Plaid-sourced consumer-identifying text (account/transaction/merchant names, official name, mask, and enrichment's cleaned merchant name) is application-layer encrypted with AES-256-GCM at the schema layer (`accounts`, `transactions`, `transaction_enrichments`), on top of Railway's disk-level encryption at rest — extending the app-layer encryption previously applied only to the Plaid access token. Amounts and posted dates stay plaintext because rollups, goal pacing, and recurring detection depend on summing and range-filtering them in SQL. Applied going forward only; existing rows stay plaintext until next written by a sync (no backfill migration).
 
 ## Required Release Checks
 

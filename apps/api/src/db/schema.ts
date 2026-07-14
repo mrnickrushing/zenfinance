@@ -1,6 +1,7 @@
 import {
   bigint,
   boolean,
+  customType,
   date,
   index,
   integer,
@@ -14,8 +15,29 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+import { decryptField, encryptField } from '../lib/crypto.js';
 
 export const supportStatusEnum = pgEnum('support_status', ['open', 'resolved']);
+
+// App-layer AES-256-GCM encryption for Plaid-sourced, consumer-identifying
+// free text (account/transaction/merchant names, account mask). Stored SQL
+// type is unchanged (`text`) — encryption/decryption happens transparently
+// on every read and write through this column, so no call site needs to
+// know the column is encrypted. Numeric/date columns (amounts, posted
+// dates) are deliberately NOT wrapped this way: they're summed and
+// range-filtered directly in SQL for rollups, goal pacing, and recurring
+// detection, which ciphertext would break.
+const encryptedText = customType<{ data: string; driverData: string }>({
+  dataType() {
+    return 'text';
+  },
+  toDriver(value: string): string {
+    return encryptField(value);
+  },
+  fromDriver(value: string): string {
+    return decryptField(value);
+  },
+});
 
 export const waitlistSignups = pgTable(
   'waitlist_signups',
@@ -144,11 +166,11 @@ export const accounts = pgTable(
       .notNull()
       .references(() => items.id, { onDelete: 'cascade' }),
     providerAccountId: text('provider_account_id').notNull(),
-    name: text('name').notNull(),
-    officialName: text('official_name'),
+    name: encryptedText('name').notNull(),
+    officialName: encryptedText('official_name'),
     type: text('type').notNull(), // depository | credit | loan | ...
     subtype: text('subtype'),
-    mask: text('mask'),
+    mask: encryptedText('mask'),
     currentBalanceCents: bigint('current_balance_cents', { mode: 'number' }),
     isoCurrency: text('iso_currency').notNull().default('USD'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -174,8 +196,8 @@ export const transactions = pgTable(
     amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
     isoCurrency: text('iso_currency').notNull().default('USD'),
     postedDate: date('posted_date').notNull(),
-    name: text('name').notNull(),
-    merchantName: text('merchant_name'),
+    name: encryptedText('name').notNull(),
+    merchantName: encryptedText('merchant_name'),
     providerCategory: text('provider_category'), // provider's own category, pre-AI
     pending: boolean('pending').notNull().default(false),
     pendingTxnId: text('pending_txn_id'), // provider id of the pending row this posted txn supersedes
@@ -208,7 +230,7 @@ export const transactionEnrichments = pgTable(
       .notNull()
       .references(() => transactions.id, { onDelete: 'cascade' }),
     category: text('category').notNull(),
-    merchantClean: text('merchant_clean'),
+    merchantClean: encryptedText('merchant_clean'),
     isRecurring: boolean('is_recurring').notNull().default(false),
     isDiscretionary: boolean('is_discretionary').notNull().default(false),
     confidence: real('confidence').notNull(),

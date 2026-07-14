@@ -30,3 +30,27 @@ export function decryptToken(stored: string): string {
     decipher.final(),
   ]).toString('utf8');
 }
+
+// App-layer encryption for Plaid-sourced consumer-identifying text (account
+// and transaction names, merchant names, account mask) — same cipher as
+// above, exposed under its own name for call-site clarity. Rows written
+// before this was introduced are still plaintext; decryptField only
+// decrypts values matching the encrypted format so existing rows keep
+// reading correctly with no backfill migration required.
+const ENCRYPTED_FIELD_FORMAT = /^v1:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+:[A-Za-z0-9_-]+$/;
+
+export function encryptField(plaintext: string): string {
+  return encryptToken(plaintext);
+}
+
+export function decryptField(stored: string): string {
+  if (!ENCRYPTED_FIELD_FORMAT.test(stored)) return stored;
+  try {
+    return decryptToken(stored);
+  } catch {
+    // Looked like our format but failed to decrypt (e.g. wrong key after
+    // rotation) — surface the raw value rather than throwing, since this
+    // path backs read queries across the product and must not 500.
+    return stored;
+  }
+}
