@@ -22,13 +22,11 @@ const CHAT_JSON_SCHEMA = {
     answer: { type: 'string', minLength: 1, maxLength: 2000 },
     fact_indexes: {
       type: 'array',
-      maxItems: 12,
       items: { type: 'integer', minimum: 0 },
     },
     actions: {
       type: 'array',
       minItems: 1,
-      maxItems: 3,
       items: { type: 'string', minLength: 1, maxLength: 300 },
     },
   },
