@@ -14,10 +14,17 @@ let redisPromise: Promise<Redis> | null = null;
 
 async function redisClient(): Promise<Redis | null> {
   if (!env.REDIS_URL) return null;
-  redisPromise ??= Promise.resolve(new Redis(env.REDIS_URL!, {
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-  }));
+  if (!redisPromise) {
+    const client = new Redis(env.REDIS_URL!, {
+      maxRetriesPerRequest: 2,
+      enableOfflineQueue: false,
+      retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
+    });
+    client.on('error', (err) => {
+      console.error('[rate-limit] Redis connection error:', safeErrorSummary(err));
+    });
+    redisPromise = Promise.resolve(client);
+  }
   return redisPromise;
 }
 
