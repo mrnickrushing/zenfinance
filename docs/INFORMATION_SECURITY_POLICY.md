@@ -92,9 +92,12 @@ remediations are recorded in `SECURITY_AUDIT.md`.
   set `Cache-Control: no-store` on financial/session data; standard
   hardening headers via Helmet; CORS restricted to first-party origins in
   production.
-- Error handling is centralized: clients never receive stack traces, and
-  logs/telemetry are scrubbed of tokens, secrets, credentials, and
-  email-like keys before leaving the server.
+- Error handling is centralized and clients never receive stack traces.
+  Telemetry events (Sentry, server and iOS) are scrubbed of tokens,
+  secrets, credentials, and email-like keys before send. Server console
+  logs use a log-safe error summary that excludes outgoing request
+  configuration and authorization headers; third-party providers' error
+  response bodies may be logged for diagnosis of provider failures.
 
 ## 6. Monitoring and Incident Response
 
