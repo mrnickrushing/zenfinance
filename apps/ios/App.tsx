@@ -2015,22 +2015,25 @@ const BUDGET_STATUS_COLOR: Record<BudgetNodeStatus, string> = {
   quiet: '#FFFFFF4D',
 };
 
-// Hand-placed like the Stitch render's scattered hub-and-spoke layout — a
-// strict grid reads too mechanical for "floating glass spheres."
-const BUDGET_HUB = { leftPct: 50, top: 96, size: 196 };
+// Matches the Stitch render: two categories float above a soft overlapping
+// "flower" of translucent circles, with the total hub nested in the flower
+// and the remaining two categories sitting at its lower edges. No connector
+// lines in the source — the flower cluster itself implies the relationship.
+const BUDGET_HUB = { leftPct: 50, top: 168, size: 168 };
 const BUDGET_NODE_SLOTS = [
-  { leftPct: 24, top: 300, size: 168 },
-  { leftPct: 74, top: 200, size: 148 },
-  { leftPct: 68, top: 392, size: 158 },
-  { leftPct: 20, top: 486, size: 108 },
+  { leftPct: 26, top: 20, size: 116 },
+  { leftPct: 76, top: 20, size: 106 },
+  { leftPct: 18, top: 340, size: 100 },
+  { leftPct: 78, top: 330, size: 116 },
 ];
-const BUDGET_GRAPH_HEIGHT = 570;
-// [-1, n] connects the hub to node n; [a, b] connects node a to node b.
-const BUDGET_CONNECTORS: Array<[number, number]> = [
-  [-1, 0],
-  [-1, 1],
-  [0, 3],
-  [1, 2],
+const BUDGET_GRAPH_HEIGHT = 520;
+const BUDGET_FLOWER_PETALS = [
+  { leftPct: 50, top: 160, size: 170 },
+  { leftPct: 24, top: 230, size: 160 },
+  { leftPct: 76, top: 230, size: 160 },
+  { leftPct: 32, top: 300, size: 150 },
+  { leftPct: 68, top: 300, size: 150 },
+  { leftPct: 50, top: 320, size: 170 },
 ];
 
 function BudgetNodeGraph({
@@ -2042,9 +2045,6 @@ function BudgetNodeGraph({
   categories: Array<[string, number]>;
   caps: Record<string, number>;
 }) {
-  const { width: screenWidth } = useWindowDimensions();
-  const graphWidth = screenWidth - 32; // matches zenScreenScroll's horizontal padding
-
   const nodes = categories.slice(0, 4).map(([category, amountCents], index) => {
     const slot = BUDGET_NODE_SLOTS[index];
     const capDollars = caps[category] ?? Math.max(50, Math.round(amountCents / 100));
@@ -2052,33 +2052,24 @@ function BudgetNodeGraph({
     return { category, amountCents, capDollars, ratio, slot, status: budgetNodeStatus(ratio) };
   });
 
-  function centerOf(slot: { leftPct: number; top: number; size: number }) {
-    return { x: (slot.leftPct / 100) * graphWidth, y: slot.top + slot.size / 2 };
-  }
-  const hubCenter = centerOf(BUDGET_HUB);
-
   return (
     <View style={[styles.budgetGraph, { height: BUDGET_GRAPH_HEIGHT }]}>
-      <Svg width="100%" height={BUDGET_GRAPH_HEIGHT} style={StyleSheet.absoluteFill}>
-        {BUDGET_CONNECTORS.map(([fromIdx, toIdx]) => {
-          const to = nodes[toIdx];
-          if (!to) return null;
-          const from = fromIdx === -1 ? hubCenter : nodes[fromIdx] ? centerOf(nodes[fromIdx].slot) : null;
-          if (!from) return null;
-          const toCenter = centerOf(to.slot);
-          return (
-            <SvgLine
-              key={`${fromIdx}-${toIdx}`}
-              x1={from.x}
-              y1={from.y}
-              x2={toCenter.x}
-              y2={toCenter.y}
-              stroke="#FFFFFF26"
-              strokeWidth={3}
-            />
-          );
-        })}
-      </Svg>
+      {BUDGET_FLOWER_PETALS.map((petal, index) => (
+        <View
+          key={index}
+          style={[
+            styles.budgetFlowerPetal,
+            {
+              left: `${petal.leftPct}%`,
+              marginLeft: -petal.size / 2,
+              top: petal.top,
+              width: petal.size,
+              height: petal.size,
+              borderRadius: petal.size / 2,
+            },
+          ]}
+        />
+      ))}
       <ZenGlass
         style={[
           styles.budgetHubNode,
@@ -2093,11 +2084,12 @@ function BudgetNodeGraph({
           },
         ]}
       >
+        <Text style={styles.budgetHubLabel}>TOTAL</Text>
         <Text style={styles.budgetHubAmount}>{usd(availableCents, true)}</Text>
-        <Text style={styles.budgetHubLabel}>Available Funds</Text>
       </ZenGlass>
       {nodes.map((node) => {
         const color = BUDGET_STATUS_COLOR[node.status];
+        const isWarning = node.status === 'warning';
         return (
           <ZenGlass
             key={node.category}
@@ -2111,13 +2103,18 @@ function BudgetNodeGraph({
                 height: node.slot.size,
                 borderRadius: node.slot.size / 2,
                 borderColor: color,
+                shadowColor: color,
               },
             ]}
           >
+            <MaterialSymbol name={budgetCategoryIcon(node.category)} size={18} color={color} />
             <Text style={styles.budgetNodeName} numberOfLines={1}>{node.category}</Text>
-            <Text style={styles.budgetNodeAmount} numberOfLines={1}>{usd(node.amountCents, true)} / ${node.capDollars}</Text>
-            <MaterialSymbol name={budgetCategoryIcon(node.category)} size={18} color={color} style={styles.budgetNodeIcon} />
-            {node.status === 'warning' ? <Text style={styles.budgetNodeWarning}>Mindfulness Needed</Text> : null}
+            <Text style={[styles.budgetNodeAmount, isWarning ? { color } : null]} numberOfLines={1}>{usd(node.amountCents, true)}</Text>
+            {isWarning ? (
+              <View style={[styles.budgetNodeTag, { backgroundColor: `${color}33`, borderColor: `${color}80` }]}>
+                <Text style={[styles.budgetNodeTagText, { color }]}>HIGH FLOW</Text>
+              </View>
+            ) : null}
           </ZenGlass>
         );
       })}
@@ -4207,14 +4204,15 @@ const styles = StyleSheet.create({
   zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
   zenEditButton: { minHeight: 32, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
   budgetGraph: { position: 'relative' },
+  budgetFlowerPetal: { position: 'absolute', backgroundColor: '#00D2D31A', borderWidth: 1, borderColor: '#00D2D326' },
   budgetHubNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 8, borderWidth: 2, shadowColor: '#00D2D3', shadowOpacity: 0.35, shadowRadius: 24 },
-  budgetHubAmount: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24 },
-  budgetHubLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12, marginTop: 4 },
-  budgetNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 10, borderWidth: 2, shadowOpacity: 0.3, shadowRadius: 18 },
-  budgetNodeName: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 13 },
-  budgetNodeAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 2 },
-  budgetNodeIcon: { marginTop: 6 },
-  budgetNodeWarning: { color: '#F5A623', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 4, textAlign: 'center' },
+  budgetHubAmount: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 26, marginTop: 2 },
+  budgetHubLabel: { color: '#FFFFFF99', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.5 },
+  budgetNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 10, borderWidth: 1.5, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
+  budgetNodeName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 5 },
+  budgetNodeAmount: { color: '#FFFFFFCC', fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 1 },
+  budgetNodeTag: { marginTop: 4, borderRadius: 8, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
+  budgetNodeTagText: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 0.5 },
   budgetInsight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   budgetInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   budgetInsightBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
