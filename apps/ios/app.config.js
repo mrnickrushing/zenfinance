@@ -3,7 +3,7 @@
 // environment via env vars, without hand-editing this file per build.
 module.exports = {
   expo: {
-    name: 'ZenFinance',
+    name: 'Zen-Finance',
     slug: 'zenfinance',
     version: '0.1.1',
     orientation: 'portrait',

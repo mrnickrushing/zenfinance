@@ -15,6 +15,7 @@ import * as Updates from 'expo-updates';
 import { StatusBar } from 'expo-status-bar';
 import {
   Bell,
+  Brain,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -45,6 +46,7 @@ import {
   UserPlus,
   Users,
   Volume2,
+  Wallet,
   WalletCards,
 } from 'lucide-react-native';
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
@@ -405,7 +407,7 @@ async function signOutUser(): Promise<void> {
     if (!removed) {
       Alert.alert(
         'Sign-out paused',
-        'ZenFinance could not disable financial notifications for this device. Check your connection and try signing out again.',
+        'Zen-Finance could not disable financial notifications for this device. Check your connection and try signing out again.',
       );
       return;
     }
@@ -597,15 +599,19 @@ function ZenBackdrop() {
             <Stop offset="0" stopColor="#1D74B7" stopOpacity="0.22" />
             <Stop offset="1" stopColor="#1D74B7" stopOpacity="0" />
           </RadialGradient>
+          <RadialGradient id="greenGlow" cx="50%" cy="50%" r="50%">
+            <Stop offset="0" stopColor="#3FE0A5" stopOpacity="0.3" />
+            <Stop offset="1" stopColor="#3FE0A5" stopOpacity="0" />
+          </RadialGradient>
         </Defs>
         <Rect width="100%" height="100%" fill="#0B0E14" />
-        <Ellipse cx="10%" cy="18%" rx="58%" ry="32%" fill="url(#tealGlow)" />
-        <Ellipse cx="88%" cy="14%" rx="52%" ry="30%" fill="url(#violetGlow)" />
-        <Ellipse cx="78%" cy="72%" rx="64%" ry="38%" fill="url(#blueGlow)" />
-        <SvgCircle cx="20%" cy="82%" r="30%" fill="url(#violetGlow)" opacity="0.55" />
+        <Ellipse cx="8%" cy="12%" rx="62%" ry="36%" fill="url(#tealGlow)" />
+        <Ellipse cx="90%" cy="10%" rx="58%" ry="34%" fill="url(#violetGlow)" />
+        <Ellipse cx="82%" cy="68%" rx="68%" ry="42%" fill="url(#blueGlow)" />
+        <Ellipse cx="12%" cy="60%" rx="60%" ry="38%" fill="url(#greenGlow)" />
+        <SvgCircle cx="20%" cy="82%" r="34%" fill="url(#violetGlow)" opacity="0.6" />
+        <SvgCircle cx="55%" cy="40%" r="40%" fill="url(#greenGlow)" opacity="0.4" />
       </Svg>
-      <Animated.View style={[styles.meshTeal, reduceMotion ? null : tealTransform]} />
-      <Animated.View style={[styles.meshViolet, reduceMotion ? null : violetTransform]} />
       <Animated.View style={[StyleSheet.absoluteFill, reduceMotion ? null : starTransform]}>
         <Svg width="100%" height="200%" viewBox="0 0 100 200" preserveAspectRatio="none">
           {ZEN_STAR_DOTS.map((d) => (
@@ -759,10 +765,20 @@ function ZenScoreCard({ score }: { score: number }) {
   );
 }
 
+function ZenStonesIcon({ size = 15 }: { size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24">
+      <Ellipse cx="12" cy="19" rx="9" ry="3.2" fill="#5B6B7A" />
+      <Ellipse cx="12" cy="13" rx="7" ry="2.9" fill="#71828F" />
+      <Ellipse cx="12" cy="7.5" rx="5" ry="2.4" fill="#8A98A3" />
+    </Svg>
+  );
+}
+
 function ZenScorePill({ score }: { score: number | null }) {
   return (
     <ZenGlass style={styles.zenScorePill}>
-      <View style={styles.zenScoreIcon}><ZenLotus size={15} /></View>
+      <View style={styles.zenScoreIcon}><ZenStonesIcon size={16} /></View>
       <Text style={styles.zenScoreText}>{score === null ? 'Zen Score: building' : `Zen Score: ${score}/100`}</Text>
       <View style={styles.zenScoreDot} />
     </ZenGlass>
@@ -777,7 +793,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
   componentDidCatch(error: Error, info: ErrorInfo) { Sentry.captureException(error, { contexts: { react: { componentStack: info.componentStack } } }); }
   render() {
     if (this.state.failed) {
-      return <SafeAreaView style={[styles.center, { backgroundColor: midnightZen.bg }]}><Text style={{ color: midnightZen.ink }}>ZenFinance hit an unexpected problem.</Text><SecondaryButton label="Try again" onPress={() => this.setState({ failed: false })} /></SafeAreaView>;
+      return <SafeAreaView style={[styles.center, { backgroundColor: midnightZen.bg }]}><Text style={{ color: midnightZen.ink }}>Zen-Finance hit an unexpected problem.</Text><SecondaryButton label="Try again" onPress={() => this.setState({ failed: false })} /></SafeAreaView>;
     }
     return this.props.children;
   }
@@ -1040,7 +1056,7 @@ function AuthScreen() {
           <View style={[styles.authLogo, { backgroundColor: theme.surface }]}>
             <Sparkles color={theme.accent} size={24} />
           </View>
-          <Text style={styles.authBrandText}>ZenFinance</Text>
+          <Text style={styles.authBrandText}>Zen-Finance</Text>
         </View>
 
         <Text style={styles.heroTitleV2}>
@@ -1171,7 +1187,7 @@ function AuthScreen() {
             accessibilityRole="button"
           >
             <Text style={styles.authModeToggleText}>
-              {mode === 'register' ? 'Already have an account? ' : 'New to ZenFinance? '}
+              {mode === 'register' ? 'Already have an account? ' : 'New to Zen-Finance? '}
               <Text style={styles.authModeToggleLink}>{mode === 'register' ? 'Sign in' : 'Create account'}</Text>
             </Text>
           </Pressable>
@@ -1187,7 +1203,7 @@ function AuthScreen() {
               <Text style={styles.authModeToggleLink}>Forgot password?</Text>
             </Pressable>
           ) : null}
-          <Text style={styles.disclosureV2}>Educational only. ZenFinance does not provide investment, tax, or legal advice.</Text>
+          <Text style={styles.disclosureV2}>Educational only. Zen-Finance does not provide investment, tax, or legal advice.</Text>
         </View>
         )}
 
@@ -1345,10 +1361,10 @@ function ProductShell() {
                 <View style={[styles.tinyLogo, { backgroundColor: theme.accentSoft }]}>
                   <Sparkles color={theme.accent} size={16} />
                 </View>
-                <Text style={[styles.appTitle, { color: theme.ink }]}>ZenFinance Coach</Text>
+                <Text style={[styles.appTitle, { color: theme.ink }]}>Zen-Finance Coach</Text>
               </View>
               <Text style={[styles.appSub, { color: theme.muted }]}>
-                {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'ZenFinance money cockpit'}
+                {home && home.items.length > 0 ? latestSyncLabel(home.items) : 'Zen-Finance money cockpit'}
               </Text>
             </View>
             <Pressable accessibilityLabel="Refresh dashboard" style={[styles.iconButton, { backgroundColor: theme.surfaceAlt }]} onPress={refresh}>
@@ -1568,6 +1584,16 @@ function BriefScreen({
     setSpeaking(false);
   }
 
+  const [moveReviewed, setMoveReviewed] = useState(false);
+  async function reviewMove() {
+    if (!brief) return;
+    setMoveReviewed(true);
+    await requestApi(`/api/insights/${brief.id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating: 'up' }),
+    }).catch(() => {});
+  }
+
   return (
     <ScrollView
       contentContainerStyle={styles.zenHomeScroll}
@@ -1581,7 +1607,7 @@ function BriefScreen({
           <View style={styles.zenLotusMark}>
             <ZenLotus size={18} />
           </View>
-          <Text style={styles.zenBrand}>ZenFinance</Text>
+          <Text style={styles.zenBrand}>Zen-Finance</Text>
         </View>
         <Pressable style={styles.zenHeaderAction} onPress={onRefresh} accessibilityLabel="Refresh home">
           {refreshing ? <ActivityIndicator color={theme.accent} size="small" /> : <RefreshCcw color={theme.muted} size={17} />}
@@ -1609,8 +1635,6 @@ function BriefScreen({
           }
         />
       )}
-      {brief ? <DailyFocusCard brief={brief} /> : null}
-      {brief ? <ZenDailyWidget brief={brief} /> : null}
       <StatusRail>
         <View style={styles.zenStatCard}>
           <Text style={styles.zenStatCardLabel}>Recent Activity:</Text>
@@ -1649,6 +1673,14 @@ function BriefScreen({
         <MoneyMetric label="Recurring" value={usd(home.subscriptionAudit.totalMonthlyCents, true)} icon={CreditCard} />
       </StatusRail>
       <SectionHeader title="Next Best Actions" />
+      {brief ? (
+        <ActionRow
+          icon={CheckCircle2}
+          title={moveReviewed ? 'Move reviewed' : 'Review my move'}
+          detail={brief.action.description}
+          onPress={moveReviewed ? undefined : reviewMove}
+        />
+      ) : null}
       <ActionRow
         icon={Target}
         title={home.goals[0]?.name ?? 'Create one savings goal'}
@@ -1735,77 +1767,26 @@ function MoneyBriefHero({
   onViewSwap: () => void;
 }) {
   const theme = useTheme();
-  const impact = brief.action.estimatedImpactCents ? usd(brief.action.estimatedImpactCents, true) : '1 move';
-
-  async function feedback(rating: 'up' | 'down') {
-    await requestApi(`/api/insights/${brief.id}/feedback`, {
-      method: 'POST',
-      body: JSON.stringify({ rating }),
-    }).catch((err) => Alert.alert('Feedback failed', err instanceof Error ? err.message : 'Unknown error'));
-  }
 
   return (
     <ZenGlass style={styles.zenInsightCard}>
-      <View style={styles.zenInsightHeader}>
-        <View style={styles.zenInsightIcon}>
-          <Sparkles color={theme.accent} size={18} />
-        </View>
-        <Text style={styles.zenInsightKicker}>AI COACH</Text>
-        <View style={styles.flexShrink} />
-        <Text style={styles.zenImpact}>{impact}</Text>
-      </View>
       <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
       <Text style={styles.zenInsightBody}>{brief.body}</Text>
       <SecondaryButton label="View Swap" accent onPress={onViewSwap} />
-      <View style={styles.zenInsightFooter}>
-        <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel={home.billing.isPremium && voiceBrief ? 'Play voice brief' : 'Mark insight helpful'} hitSlop={12} onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
-          <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={17} />
-        </Pressable>
-      </View>
+      {home.billing.isPremium && voiceBrief ? (
+        <View style={styles.zenInsightFooter}>
+          <View style={styles.flexShrink} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Play voice brief" hitSlop={12} onPress={onPlayVoice}>
+            <Volume2 color={theme.accent} size={17} />
+          </Pressable>
+        </View>
+      ) : null}
       {home.billing.isPremium && voiceBrief ? (
         <View style={styles.zenVoiceRow}>
           <Text style={styles.zenDailyMeta}>{speaking ? 'Playing voice brief' : voiceBusy ? 'Preparing audio summary...' : `${Math.round(voiceBrief.durationSeconds / 6) / 10} min audio summary`}</Text>
           {speaking ? <Pressable accessibilityRole="button" accessibilityLabel="Stop voice brief" hitSlop={12} onPress={onStopVoice}><Square color={theme.accent} size={16} /></Pressable> : null}
         </View>
       ) : null}
-    </ZenGlass>
-  );
-}
-
-function DailyFocusCard({ brief }: { brief: InsightView }) {
-  const theme = useTheme();
-  const [reviewed, setReviewed] = useState(false);
-
-  async function reviewMove() {
-    setReviewed(true);
-    await requestApi(`/api/insights/${brief.id}/feedback`, {
-      method: 'POST',
-      body: JSON.stringify({ rating: 'up' }),
-    }).catch(() => {});
-  }
-
-  return (
-    <ZenGlass style={styles.zenDailyCard}>
-      <View style={styles.zenDailyCardHeader}>
-        <View style={styles.zenDailyIcon}><Target color={theme.accent} size={19} /></View>
-        <View style={styles.flexShrink}>
-          <Text style={styles.zenDailyKicker}>DAILY FOCUS</Text>
-          <Text style={styles.zenDailyCardTitle}>One calm move for today</Text>
-        </View>
-        <Text style={styles.zenDailyMeta}>{brief.action.timeframe}</Text>
-      </View>
-      <Text style={styles.zenDailyCardBody}>{brief.action.description}</Text>
-      <PrimaryButton label={reviewed ? 'Move reviewed' : 'Review my move'} icon={CheckCircle2} disabled={reviewed} onPress={reviewMove} />
-    </ZenGlass>
-  );
-}
-
-function ZenDailyWidget({ brief }: { brief: InsightView }) {
-  return (
-    <ZenGlass style={styles.dailyWidget}>
-      <View style={styles.dailyWidgetIcon}><Bell color="#00D2D3" size={16} /></View>
-      <View style={styles.flexShrink}><Text style={styles.dailyWidgetTitle}>Good morning!</Text><Text style={styles.dailyWidgetBody}>{brief.action.description}</Text><Text style={styles.dailyWidgetBrand}>ZenFinance</Text></View>
     </ZenGlass>
   );
 }
@@ -1976,7 +1957,7 @@ function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { b
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
       <View style={styles.profileAvatar}><ZenLotus size={64} /></View>
-      <Text style={styles.profileName}>ZenFinance Member</Text>
+      <Text style={styles.profileName}>Zen-Finance Member</Text>
       <View style={styles.profileRoleRow}>
         <ZenLotus size={13} />
         <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
@@ -2694,12 +2675,12 @@ function PaywallScreen({
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>ZenFinance Coach</Text><Text style={styles.zenPageSubtitle}>A calmer way to make your next money move</Text></View><Crown color={theme.gold} size={19} /></View>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen-Finance Coach</Text><Text style={styles.zenPageSubtitle}>A calmer way to make your next money move</Text></View><Crown color={theme.gold} size={19} /></View>
       <ZenGlass style={styles.paywallHero}>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
           <Crown color={theme.accent} size={36} />
         </View>
-        <Text style={[styles.panelTitle, { color: theme.ink }]}>Keep the dollars ZenFinance already found.</Text>
+        <Text style={[styles.panelTitle, { color: theme.ink }]}>Keep the dollars Zen-Finance already found.</Text>
         <Text style={[styles.panelBody, { color: theme.muted }]}>{billing.pricingExperiment.paywallBody}</Text>
         <StatusRail>
           <MoneyMetric label="Found" value={home ? usd(totalWins, true) : 'Coach'} icon={CircleDollarSign} />
@@ -3277,7 +3258,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         return;
       }
       await Updates.fetchUpdateAsync();
-      Alert.alert('Update ready', 'ZenFinance will restart now to apply the latest bundle.', [
+      Alert.alert('Update ready', 'Zen-Finance will restart now to apply the latest bundle.', [
         { text: 'Restart', onPress: () => void Updates.reloadAsync() },
       ]);
     } catch (err) {
@@ -3291,7 +3272,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     const item = items.find((candidate) => candidate.id === itemId);
     Alert.alert(
       'Disconnect bank?',
-      `This removes ${item?.institutionName ?? 'this bank'} and its imported transaction history from ZenFinance.`,
+      `This removes ${item?.institutionName ?? 'this bank'} and its imported transaction history from Zen-Finance.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -3332,7 +3313,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     try {
       const data = await requestApi<UserDataExportView>('/api/me/export');
       await Share.share({
-        title: 'ZenFinance data export',
+        title: 'Zen-Finance data export',
         message: JSON.stringify(data, null, 2),
       });
     } catch (err) {
@@ -3343,7 +3324,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   async function shareReferral() {
     if (!referral) return;
     await Share.share({
-      title: 'Join ZenFinance',
+      title: 'Join Zen-Finance',
       message: referral.shareText,
     });
   }
@@ -3359,7 +3340,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
       setReferral(res.referral);
       setRedeemCode('');
       onChanged();
-      Alert.alert('Referral applied', 'Thirty days of ZenFinance Coach credit was added.');
+      Alert.alert('Referral applied', 'Thirty days of Zen-Finance Coach credit was added.');
     } catch (err) {
       Alert.alert('Referral failed', err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -3430,7 +3411,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         body: JSON.stringify({ email: householdInviteEmail.trim().toLowerCase() }),
       });
       setHouseholdInviteEmail('');
-      await Share.share({ title: 'Join my ZenFinance household', message: res.shareText });
+      await Share.share({ title: 'Join my Zen-Finance household', message: res.shareText });
       await loadHousehold();
     } catch (err) {
       Alert.alert('Invite failed', err instanceof Error ? err.message : 'Unable to create invite');
@@ -3505,7 +3486,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }
 
   async function deleteAccount() {
-    Alert.alert('Delete account', 'This permanently deletes your ZenFinance data from the app database.', [
+    Alert.alert('Delete account', 'This permanently deletes your Zen-Finance data from the app database.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
@@ -3528,7 +3509,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Settings</Text><Text style={styles.zenPageSubtitle}>Keep your ZenFinance space in balance</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
+      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Settings</Text><Text style={styles.zenPageSubtitle}>Keep your Zen-Finance space in balance</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
       <SectionHeader title="Billing" />
       <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
@@ -3648,7 +3629,7 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </>
         ) : (
           <Text style={[styles.panelBody, { color: theme.muted }]}>
-            Available with ZenFinance Coach.
+            Available with Zen-Finance Coach.
           </Text>
         )}
       </ZenGlass>
@@ -3843,8 +3824,8 @@ function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (ta
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
     { key: 'brief', icon: Home, label: 'Home' },
-    { key: 'transactions', icon: WalletCards, label: 'Transactions' },
-    { key: 'coach', icon: MessageCircle, label: 'Coach' },
+    { key: 'transactions', icon: Wallet, label: 'Transactions' },
+    { key: 'coach', icon: Brain, label: 'Coach' },
     { key: 'budget', icon: CircleDollarSign, label: 'Budget' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
@@ -3857,24 +3838,24 @@ function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (ta
         return (
           <Pressable
             key={tab.key}
-            style={[
-              styles.tabItem,
-              selected ? [styles.tabItemActive, { backgroundColor: theme.accentSoft, borderColor: theme.accent }] : null,
-            ]}
+            style={styles.tabItem}
             onPress={() => onChange(tab.key)}
             accessibilityRole="button"
             accessibilityState={{ selected }}
             accessibilityLabel={locked ? `${tab.label}, premium` : tab.label}
           >
             <View style={styles.tabIconWrap}>
-              <Icon color={selected ? theme.accent : theme.muted} size={selected ? 22 : 20} />
+              <View style={selected ? [styles.tabIconGlow, { shadowColor: theme.accentBright }] : null}>
+                <Icon color={selected ? theme.accentBright : theme.muted} size={selected ? 22 : 20} />
+              </View>
+              {selected ? <View style={[styles.tabActiveBar, { backgroundColor: theme.accentBright, shadowColor: theme.accentBright }]} /> : null}
               {locked ? (
                 <View style={[styles.tabLockBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                   <LockKeyhole color={theme.gold} size={9} strokeWidth={2.5} />
                 </View>
               ) : null}
             </View>
-            <Text style={[styles.tabText, { color: selected ? theme.ink : theme.muted }]} numberOfLines={1}>
+            <Text style={[styles.tabText, { color: selected ? theme.accentBright : theme.muted }]} numberOfLines={1}>
               {tab.label}
             </Text>
           </Pressable>
@@ -4140,7 +4121,7 @@ const styles = StyleSheet.create({
   zenScoreNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 34, letterSpacing: 1 },
   zenScoreDenom: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 15, letterSpacing: 0 },
   zenScoreCaption: { color: '#79E6B0', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  zenScoreIcon: { width: 22, height: 22, borderRadius: 7, backgroundColor: '#FFFFFF33', alignItems: 'center', justifyContent: 'center' },
+  zenScoreIcon: { width: 24, height: 24, borderRadius: 8, backgroundColor: '#DCEBF2', alignItems: 'center', justifyContent: 'center' },
   zenScoreText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
   zenScoreDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#79E6B0' },
   zenGlass: { backgroundColor: '#FFFFFF0D', borderWidth: 1, borderRadius: 24, padding: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
@@ -4148,25 +4129,8 @@ const styles = StyleSheet.create({
   zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
   primaryButtonPulse: { width: '100%' },
   zenInsightCard: { gap: 12, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 20 },
-  zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
-  zenInsightTitle: { color: '#FFFFFF', fontSize: 30, lineHeight: 35, fontFamily: 'Inter_700Bold' },
-  zenInsightBody: { color: '#FFFFFFB3', fontSize: 13, lineHeight: 18 },
-  zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
-  zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
-  zenDailyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  zenDailyIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  zenDailyCardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
-  zenDailyCardBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
-  dailyWidget: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#00D2D34D', backgroundColor: '#00D2D314' },
-  dailyWidgetIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  dailyWidgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  dailyWidgetBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 2 },
-  dailyWidgetBrand: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3 },
-  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
-  zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
+  zenInsightTitle: { color: '#FFFFFF', fontSize: 32, lineHeight: 38, fontFamily: 'Inter_700Bold' },
+  zenInsightBody: { color: '#E0E0E0', fontSize: 16, lineHeight: 22 },
   zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
   zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
@@ -4432,10 +4396,11 @@ const styles = StyleSheet.create({
   amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
   smallIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   tabBar: { marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 22, flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 7, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10, backgroundColor: '#FFFFFF14' },
-  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 16, borderWidth: 1, borderColor: 'transparent' },
-  tabItemActive: { shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
+  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 16 },
   tabText: { fontSize: 11, fontWeight: '800' },
-  tabIconWrap: { position: 'relative' },
+  tabIconWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
+  tabIconGlow: { shadowOpacity: 0.6, shadowRadius: 8, shadowOffset: { width: 0, height: 0 } },
+  tabActiveBar: { position: 'absolute', bottom: -10, width: 22, height: 3, borderRadius: 2, shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
   tabLockBadge: { position: 'absolute', top: -6, right: -10, width: 15, height: 15, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   loadErrorTitle: { textAlign: 'center', marginTop: 16 },
   loadErrorBody: { textAlign: 'center', marginTop: 8, marginBottom: 20, paddingHorizontal: 24 },
