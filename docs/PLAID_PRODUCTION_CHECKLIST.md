@@ -8,7 +8,10 @@ This is the production-access checklist to execute in Plaid before closed beta.
 
 - App name: ZenFinance
 - Bundle ID: `com.rushingtechnologies.zenfinance`
-- Redirect URI / scheme: `zenfinance://`
+- Redirect URI: an HTTPS universal link, e.g. `https://api.zenfinance.rushingtechnologies.com/plaid-oauth-return` —
+  Plaid rejects custom schemes like `zenfinance://` for iOS OAuth. Allow-list it in
+  Dashboard → API → Allowed redirect URIs and set `PLAID_REDIRECT_URI` on Railway
+  (full setup: DEPLOY.md "Plaid OAuth redirect").
 - Website: `https://zenfinance.rushingtechnologies.com`
 - Privacy policy: `https://zenfinance.rushingtechnologies.com/privacy`
 - Terms: `https://zenfinance.rushingtechnologies.com/terms`
@@ -19,7 +22,9 @@ This is the production-access checklist to execute in Plaid before closed beta.
 - Products: Transactions.
 - Access: read-only.
 - Account scopes: depository and credit accounts.
-- Webhook URL: `https://zenfinance.rushingtechnologies.com/api/webhooks/plaid`.
+- Webhook URL: `https://api.zenfinance.rushingtechnologies.com/api/webhooks/plaid`
+  (the `api.` subdomain — the root domain is the static marketing Worker and
+  does not serve `/api/*`).
 
 ## Webhooks Implemented In Repo
 
