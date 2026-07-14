@@ -3842,9 +3842,9 @@ function Toggle({ label, value, onValueChange }: { label: string; value: boolean
 function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (tab: TabKey) => void; isPremium: boolean }) {
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
-    { key: 'brief', icon: Home, label: 'Overview' },
-    { key: 'transactions', icon: WalletCards, label: 'Accounts' },
-    { key: 'coach', icon: MessageCircle, label: 'AI Coach' },
+    { key: 'brief', icon: Home, label: 'Home' },
+    { key: 'transactions', icon: WalletCards, label: 'Transactions' },
+    { key: 'coach', icon: MessageCircle, label: 'Coach' },
     { key: 'budget', icon: CircleDollarSign, label: 'Budget' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
