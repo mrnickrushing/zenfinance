@@ -39,6 +39,7 @@ DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 | `TRANSACTION_PROVIDER` | `plaid` |
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | from the Plaid dashboard (sandbox keys until production access is approved) |
 | `PLAID_ENV` | `sandbox` → `production` after Plaid approves the app |
+| `PLAID_REDIRECT_URI` | needed for OAuth banks in production — see "Plaid OAuth redirect" below |
 | `APPLE_BUNDLE_ID` | `com.rushingtechnologies.zenfinance` (Apple Sign-In verification) |
 | `REDIS_URL` | injected automatically from the Redis service reference; sync/enrichment/rollup jobs run on BullMQ |
 | `ENRICHMENT_PROVIDER` | `anthropic` |
@@ -60,6 +61,20 @@ DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 
 **Plaid webhook:** in the Plaid dashboard, set the transactions webhook URL to
 `https://api.zenfinance.rushingtechnologies.com/api/webhooks/plaid`.
+
+**Plaid OAuth redirect (required before enabling `PLAID_ENV=production`):**
+Link on iOS needs a `redirect_uri` for OAuth institutions — effectively every
+major US bank in production. Sandbox test institutions don't exercise this
+path, which is why it can go unnoticed until real production traffic hits
+`/api/link/token`.
+1. Pick an HTTPS URL you control, e.g. `https://api.zenfinance.rushingtechnologies.com/plaid-oauth-return`.
+2. Add it to the allowed redirect URIs list in the Plaid Dashboard.
+3. Host an Apple App Site Association file at that domain's `/.well-known/apple-app-site-association`
+   associating it with `<Apple Team ID>.com.rushingtechnologies.zenfinance`, and add the
+   matching `associatedDomains` entitlement (`applinks:<domain>`) to the iOS app config.
+4. Set `PLAID_REDIRECT_URI` to the URL from step 1.
+
+Custom URL schemes are not accepted here — Plaid requires a real universal link for iOS.
 
 **RevenueCat webhook:** in RevenueCat, set the webhook URL to
 `https://api.zenfinance.rushingtechnologies.com/api/webhooks/revenuecat`, set the

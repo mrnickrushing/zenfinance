@@ -1,6 +1,11 @@
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
+// Express 4 does not forward a rejected promise from an `async (req, res) =>
+// {}` handler to the error middleware below — it silently drops it, so the
+// request never gets a response and the client hangs until its own timeout.
+// This patches Router/Route to catch those rejections and call next(err).
+import 'express-async-errors';
 import helmet from 'helmet';
 import * as Sentry from '@sentry/node';
 import { env } from './env.js';
@@ -99,9 +104,11 @@ export function createApp(): express.Express {
       res.status(415).json({ error: { code: 'unsupported_media_type', message: 'Unsupported request encoding' } });
       return;
     }
-    console.error('[api] unhandled error:', safeErrorSummary(err));
+    const summary = safeErrorSummary(err);
+    console.error('[api] unhandled error:', summary);
     Sentry.captureException(err, {
       tags: { route: req.path, method: req.method },
+      extra: { providerStatus: summary.providerStatus, providerError: summary.providerError },
     });
     res.status(500).json({ error: { code: 'internal', message: 'Internal server error' } });
   });

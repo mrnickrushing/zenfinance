@@ -46,6 +46,11 @@ export class PlaidProvider implements TransactionProvider {
     if (!env.PLAID_CLIENT_ID || !env.PLAID_SECRET) {
       throw new Error('PLAID_CLIENT_ID and PLAID_SECRET are required when TRANSACTION_PROVIDER=plaid');
     }
+    if (env.PLAID_ENV === 'production' && !env.PLAID_REDIRECT_URI) {
+      console.warn(
+        '[plaid] PLAID_REDIRECT_URI is not set — Link will fail for OAuth institutions (most major US banks) in production. See DEPLOY.md "Plaid OAuth redirect".',
+      );
+    }
     this.client = new PlaidApi(
       new Configuration({
         basePath: PlaidEnvironments[env.PLAID_ENV]!,
@@ -67,6 +72,10 @@ export class PlaidProvider implements TransactionProvider {
       country_codes: [CountryCode.Us],
       language: 'en',
       transactions: { days_requested: 90 }, // first-look brief needs 90 days on day one
+      // Required for OAuth institutions on iOS (virtually every major US
+      // bank in production); must match a universal link allow-listed in
+      // the Plaid Dashboard. Omitted in sandbox/dev where it isn't set.
+      ...(env.PLAID_REDIRECT_URI ? { redirect_uri: env.PLAID_REDIRECT_URI } : {}),
     });
     return { linkToken: res.data.link_token };
   }
