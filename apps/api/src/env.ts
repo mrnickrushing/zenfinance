@@ -35,6 +35,11 @@ const envSchema = z.object({
   PLAID_CLIENT_ID: z.string().optional(),
   PLAID_SECRET: z.string().optional(),
   PLAID_ENV: z.enum(['sandbox', 'production']).default('sandbox'),
+  // Universal link (HTTPS, not a custom scheme) that Plaid Link on iOS
+  // redirects back to after an OAuth institution's bank-hosted auth step.
+  // Required for OAuth institutions — i.e. effectively all major US banks —
+  // to work in production; must also be allow-listed in the Plaid Dashboard.
+  PLAID_REDIRECT_URI: z.string().url().optional(),
   APPLE_BUNDLE_ID: z.string().optional(),
   REDIS_URL: z.string().optional(),
   ENRICHMENT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
@@ -87,6 +92,11 @@ const envSchema = z.object({
     if (!value.PLAID_SECRET) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PLAID_SECRET'], message: 'PLAID_SECRET is required when TRANSACTION_PROVIDER=plaid' });
     }
+    // Not fail-closed like the checks above: PLAID_REDIRECT_URI also needs a
+    // matching Plaid Dashboard allow-list entry and iOS associated-domains
+    // setup (see DEPLOY.md) before it does anything, so requiring it at boot
+    // would crash-loop the whole API over a Plaid Link-only gap. Its absence
+    // is logged instead — see PlaidProvider.createLinkToken.
   }
 
   if (
