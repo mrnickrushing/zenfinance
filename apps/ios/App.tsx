@@ -778,7 +778,7 @@ function ZenStonesIcon({ size = 15 }: { size?: number }) {
 function ZenScorePill({ score }: { score: number | null }) {
   return (
     <ZenGlass style={styles.zenScorePill}>
-      <View style={styles.zenScoreIcon}><ZenStonesIcon size={16} /></View>
+      <View style={styles.zenScoreIcon}><ZenStonesIcon size={19} /></View>
       <Text style={styles.zenScoreText}>{score === null ? 'Zen Score: building' : `Zen Score: ${score}/100`}</Text>
       <View style={styles.zenScoreDot} />
     </ZenGlass>
@@ -1605,7 +1605,7 @@ function BriefScreen({
       <View style={styles.zenHomeHeader}>
         <View style={styles.appTitleRow}>
           <View style={styles.zenLotusMark}>
-            <ZenLotus size={18} />
+            <ZenLotus size={24} />
           </View>
           <Text style={styles.zenBrand}>Zen-Finance</Text>
         </View>
@@ -4111,19 +4111,19 @@ const styles = StyleSheet.create({
   zenFrame: { flex: 1, marginHorizontal: 12, marginTop: 8, marginBottom: 8, borderRadius: 28, borderWidth: 1, borderColor: '#FFFFFF26', overflow: 'hidden' },
   zenHomeScroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 16 },
   zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
-  zenLotusMark: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  zenBrand: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
+  zenLotusMark: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
+  zenBrand: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
   zenHeaderAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  zenScorePill: { alignSelf: 'center', minHeight: 34, paddingVertical: 7, paddingHorizontal: 10, borderRadius: 11, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  zenScorePill: { alignSelf: 'center', minHeight: 44, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
   zenScoreCard: { alignItems: 'center', paddingVertical: 18, gap: 3, borderColor: '#FFFFFF38' },
   zenScoreAura: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D31A', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
   zenScoreEyebrow: { color: '#FFFFFF99', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 2, marginTop: 5 },
   zenScoreNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 34, letterSpacing: 1 },
   zenScoreDenom: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 15, letterSpacing: 0 },
   zenScoreCaption: { color: '#79E6B0', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  zenScoreIcon: { width: 24, height: 24, borderRadius: 8, backgroundColor: '#DCEBF2', alignItems: 'center', justifyContent: 'center' },
-  zenScoreText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800' },
-  zenScoreDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#79E6B0' },
+  zenScoreIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#DCEBF2', alignItems: 'center', justifyContent: 'center' },
+  zenScoreText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
+  zenScoreDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#79E6B0' },
   zenGlass: { backgroundColor: '#FFFFFF0D', borderWidth: 1, borderRadius: 24, padding: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
   zenGlassBlur: StyleSheet.absoluteFill,
   zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
