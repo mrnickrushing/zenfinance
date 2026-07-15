@@ -120,6 +120,13 @@
       "when": 1783966851420,
       "tag": "0016_nappy_adam_warlock",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1784144748126,
+      "tag": "0017_add_missing_fk_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { AdminPage } from './pages/Admin';
 import { LandingPage } from './pages/Landing';
@@ -15,21 +16,25 @@ const isAdminBuild = import.meta.env.VITE_APP_TARGET === 'admin';
 export default function App() {
   if (isAdminBuild) {
     return (
-      <Routes>
-        <Route path="*" element={<AdminPage />} />
-      </Routes>
+      <ErrorBoundary>
+        <Routes>
+          <Route path="*" element={<AdminPage />} />
+        </Routes>
+      </ErrorBoundary>
     );
   }
 
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<LandingPage />} />
-        <Route path="insights" element={<InsightsPage />} />
-        <Route path="support" element={<SupportPage />} />
-        <Route path="privacy" element={<PrivacyPage />} />
-        <Route path="terms" element={<TermsPage />} />
-      </Route>
-    </Routes>
+    <ErrorBoundary>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<LandingPage />} />
+          <Route path="insights" element={<InsightsPage />} />
+          <Route path="support" element={<SupportPage />} />
+          <Route path="privacy" element={<PrivacyPage />} />
+          <Route path="terms" element={<TermsPage />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
   );
 }

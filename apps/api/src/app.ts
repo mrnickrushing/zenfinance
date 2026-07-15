@@ -45,6 +45,7 @@ export function createApp(): express.Express {
     cors({
       origin: env.NODE_ENV === 'production' ? [env.FRONTEND_URL, env.ADMIN_URL] : true,
       credentials: true,
+      methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
     }),
   );
   app.use(
