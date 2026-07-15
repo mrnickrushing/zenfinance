@@ -529,7 +529,7 @@ function seededStars(seed: number, count: number) {
     x: rand() * 100,
     y: rand() * 100,
     r: 0.4 + rand() * 1.1,
-    o: 0.12 + rand() * 0.28,
+    o: 0.04 + rand() * 0.08,
   }));
 }
 const ZEN_STARS = seededStars(42, 40);
@@ -543,7 +543,7 @@ const ZEN_STAR_DOTS = ZEN_STARS.flatMap((star, i) => [
 function ZenBackdrop() {
   const phase = useRef(new Animated.Value(0)).current;
   const starDrift = useRef(new Animated.Value(0)).current;
-  const { height: screenHeight } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const reduceMotion = useReduceMotion();
 
   useEffect(() => {
@@ -615,7 +615,10 @@ function ZenBackdrop() {
       <Animated.View style={[StyleSheet.absoluteFill, reduceMotion ? null : starTransform]}>
         <Svg width="100%" height="200%" viewBox="0 0 100 200" preserveAspectRatio="none">
           {ZEN_STAR_DOTS.map((d) => (
-            <SvgCircle key={d.key} cx={d.cx} cy={d.cy} r={d.r} fill="#FFFFFF" opacity={d.o} />
+            // The viewBox is stretched non-uniformly to fill the screen, so a
+            // uniform ry (rather than r) keeps these round instead of turning
+            // into stretched "raindrop" ellipses.
+            <Ellipse key={d.key} cx={d.cx} cy={d.cy} rx={d.r} ry={d.r * (screenWidth / screenHeight)} fill="#FFFFFF" opacity={d.o} />
           ))}
         </Svg>
       </Animated.View>
@@ -2234,7 +2237,7 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Cancel editing budget' : 'Edit budget'} style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
-      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>{period === 'monthly' ? 'Monthly' : 'Weekly'} budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending for this {period === 'monthly' ? 'month' : 'week'}.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder={period === 'monthly' ? '$3,000' : '$750'} placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} onPress={saveBudget} /></View></ZenGlass> : null}
+      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>{period === 'monthly' ? 'Monthly' : 'Weekly'} budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending for this {period === 'monthly' ? 'month' : 'week'}.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder={period === 'monthly' ? '$3,000' : '$750'} placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} compact onPress={saveBudget} /></View></ZenGlass> : null}
       <BudgetNodeGraph availableCents={availableCents} categories={categories} caps={categoryCaps} />
       <ZenGlass style={styles.budgetControls}>
         <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget rhythm</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
@@ -4000,11 +4003,13 @@ function PrimaryButton({
   label,
   icon: Icon,
   disabled,
+  compact,
   onPress,
 }: {
   label: string;
   icon?: typeof Sparkles;
   disabled?: boolean;
+  compact?: boolean;
   onPress: () => void;
 }) {
   const theme = useTheme();
@@ -4023,7 +4028,7 @@ function PrimaryButton({
   }, [disabled, pulse, reduceMotion]);
   const contentColor = disabled ? theme.muted : '#06292A';
   return (
-    <Animated.View style={[styles.primaryButtonPulse, { transform: [{ scale: disabled ? 1 : pulse }] }]}>
+    <Animated.View style={[styles.primaryButtonPulse, compact ? styles.primaryButtonPulseCompact : null, { transform: [{ scale: disabled ? 1 : pulse }] }]}>
       <Pressable
         style={[styles.primaryButton, { backgroundColor: disabled ? theme.surfaceAlt : theme.accent }]}
         disabled={disabled}
@@ -4126,6 +4131,7 @@ const styles = StyleSheet.create({
   zenGlassBlur: StyleSheet.absoluteFill,
   zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
   primaryButtonPulse: { width: '100%' },
+  primaryButtonPulseCompact: { width: undefined, flex: 1 },
   zenInsightCard: { gap: 12, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 20 },
   zenInsightTitle: { color: '#FFFFFF', fontSize: 32, lineHeight: 38, fontFamily: 'Inter_700Bold' },
   zenInsightBody: { color: '#E0E0E0', fontSize: 16, lineHeight: 22 },
