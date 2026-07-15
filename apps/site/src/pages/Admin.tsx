@@ -322,9 +322,11 @@ function WaitlistSection() {
   const pageSize = 25;
 
   useEffect(() => {
+    let cancelled = false;
     adminFetch<Paginated<WaitlistEntry>>(`/api/admin/waitlist?page=${page}&pageSize=${pageSize}`)
-      .then(setData)
-      .catch(() => setData(null));
+      .then((result) => { if (!cancelled) setData(result); })
+      .catch(() => { if (!cancelled) setData(null); });
+    return () => { cancelled = true; };
   }, [page]);
 
   async function exportCsv() {

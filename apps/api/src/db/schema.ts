@@ -569,6 +569,8 @@ export const moneyWins = pgTable(
     uniqueIndex('money_wins_user_dedupe_idx').on(t.userId, t.dedupeKey),
     index('money_wins_user_idx').on(t.userId),
     index('money_wins_user_status_idx').on(t.userId, t.status),
+    index('money_wins_insight_idx').on(t.insightId),
+    index('money_wins_source_recurring_stream_idx').on(t.sourceRecurringStreamId),
   ],
 );
 
@@ -792,6 +794,7 @@ export const referralRedemptions = pgTable(
   (t) => [
     uniqueIndex('referral_redemptions_referred_idx').on(t.referredUserId),
     index('referral_redemptions_referrer_idx').on(t.referrerUserId),
+    index('referral_redemptions_code_idx').on(t.codeId),
   ],
 );
 
@@ -815,6 +818,7 @@ export const referralCredits = pgTable(
   (t) => [
     index('referral_credits_recipient_idx').on(t.recipientUserId, t.expiresAt),
     index('referral_credits_redemption_idx').on(t.redemptionId),
+    index('referral_credits_source_user_idx').on(t.sourceUserId),
   ],
 );
 
@@ -886,6 +890,8 @@ export const householdInvites = pgTable(
   (t) => [
     index('household_invites_household_idx').on(t.householdId, t.status),
     index('household_invites_email_idx').on(t.email, t.status),
+    index('household_invites_invited_by_idx').on(t.invitedByUserId),
+    index('household_invites_accepted_by_idx').on(t.acceptedByUserId),
   ],
 );
 
