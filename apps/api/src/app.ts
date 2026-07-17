@@ -21,6 +21,7 @@ import { createHouseholdsRouter } from './routes/households.js';
 import { createLinkRouter } from './routes/link.js';
 import { createMobileRouter } from './routes/mobile.js';
 import { createMoneyPhysicalRouter } from './routes/moneyPhysical.js';
+import { createPlaidOauthRouter } from './routes/plaidOauth.js';
 import { createPrivacyRouter } from './routes/privacy.js';
 import { createReferralsRouter } from './routes/referrals.js';
 import { createSupportRouter } from './routes/support.js';
@@ -65,6 +66,7 @@ export function createApp(): express.Express {
   });
 
   app.use(createHealthRouter());
+  app.use(createPlaidOauthRouter());
   app.use(createWaitlistRouter());
   app.use(createSupportRouter());
   app.use(createContentRouter());

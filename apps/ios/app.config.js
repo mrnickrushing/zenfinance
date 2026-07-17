@@ -17,6 +17,12 @@ module.exports = {
       // target. The token is verified server-side against this bundle id
       // (APPLE_BUNDLE_ID) in /api/auth/apple.
       usesAppleSignIn: true,
+      // Universal link so Plaid Link can redirect back into the app after an
+      // OAuth institution's bank-hosted auth step (see DEPLOY.md "Plaid OAuth
+      // redirect"). Requires the AASA file served at
+      // https://api.zenfinance.rushingtechnologies.com/.well-known/apple-app-site-association
+      // and PLAID_REDIRECT_URI set server-side to the matching URL.
+      associatedDomains: ['applinks:api.zenfinance.rushingtechnologies.com'],
       infoPlist: {
         ITSAppUsesNonExemptEncryption: false,
         NSAppTransportSecurity: {
