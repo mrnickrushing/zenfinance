@@ -99,6 +99,24 @@ export class PlaidProvider implements TransactionProvider {
     }));
   }
 
+  // /accounts/balance/get, unlike /accounts/get (fetchAccounts above), always
+  // hits the institution live rather than returning Plaid's cache -- what
+  // "real-time balance" pull-to-refresh actually needs. Gated behind the
+  // Balance product in production.
+  async refreshBalances(accessToken: string): Promise<ProviderAccount[]> {
+    const res = await this.client.accountsBalanceGet({ access_token: accessToken });
+    return res.data.accounts.map((a) => ({
+      providerAccountId: a.account_id,
+      name: a.name,
+      officialName: a.official_name ?? null,
+      type: a.type,
+      subtype: a.subtype ?? null,
+      mask: a.mask ?? null,
+      currentBalanceCents: a.balances.current == null ? null : toCents(a.balances.current),
+      isoCurrency: a.balances.iso_currency_code ?? 'USD',
+    }));
+  }
+
   async syncTransactions(accessToken: string, cursor: string | null): Promise<SyncPage> {
     const res = await this.client.transactionsSync({
       access_token: accessToken,

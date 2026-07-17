@@ -3,36 +3,17 @@ import { and, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, items, transactions } from '../db/schema.js';
 import { decryptToken } from '../lib/crypto.js';
-import type { ProviderTransaction, TransactionProvider } from '../providers/types.js';
+import type { ProviderAccount, ProviderTransaction, TransactionProvider } from '../providers/types.js';
 
 const TRANSFER_WINDOW_DAYS = 3;
 const TRANSFER_HINT = /transfer/i;
 
-/**
- * Cursor-based sync for one item: upserts added/modified pages, soft-removes
- * provider-removed rows, reconciles pending→posted, then runs transfer-pair
- * detection across the owning user's accounts. Returns the item's userId so
- * the caller (the queue layer) can chain an enrichment pass — kept out of
- * this module to avoid a sync/engine.ts <-> queue/index.ts import cycle.
- */
-export async function syncItem(
-  db: Db,
-  provider: TransactionProvider,
-  itemId: number,
-): Promise<{ userId: number } | null> {
-  const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
-  if (!item || item.status === 'disconnected') return null;
-
-  const accessToken = decryptToken(item.encryptedAccessToken);
-  // Refresh and upsert the account set before consuming transaction pages.
-  // Providers may add an account to an existing Item after its first link;
-  // its transactions must have a local account id during this same sync.
-  const providerAccounts = await provider.fetchAccounts(accessToken);
+async function upsertAccounts(db: Db, itemId: number, providerAccounts: ProviderAccount[]): Promise<void> {
   for (const providerAccount of providerAccounts) {
     await db
       .insert(accounts)
       .values({
-        itemId: item.id,
+        itemId,
         providerAccountId: providerAccount.providerAccountId,
         name: providerAccount.name,
         officialName: providerAccount.officialName,
@@ -56,6 +37,48 @@ export async function syncItem(
         },
       });
   }
+}
+
+/**
+ * On-demand live balance refresh for pull-to-refresh -- forces a fresh check
+ * with each linked institution (provider.refreshBalances) rather than running
+ * a full transaction sync, so it stays fast. Returns the user's items so the
+ * caller doesn't need a second query.
+ */
+export async function refreshUserBalances(
+  db: Db,
+  provider: TransactionProvider,
+  userId: number,
+): Promise<void> {
+  const userItems = await db.select().from(items).where(and(eq(items.userId, userId), ne(items.status, 'disconnected')));
+  for (const item of userItems) {
+    const accessToken = decryptToken(item.encryptedAccessToken);
+    const providerAccounts = await provider.refreshBalances(accessToken);
+    await upsertAccounts(db, item.id, providerAccounts);
+  }
+}
+
+/**
+ * Cursor-based sync for one item: upserts added/modified pages, soft-removes
+ * provider-removed rows, reconciles pending→posted, then runs transfer-pair
+ * detection across the owning user's accounts. Returns the item's userId so
+ * the caller (the queue layer) can chain an enrichment pass — kept out of
+ * this module to avoid a sync/engine.ts <-> queue/index.ts import cycle.
+ */
+export async function syncItem(
+  db: Db,
+  provider: TransactionProvider,
+  itemId: number,
+): Promise<{ userId: number } | null> {
+  const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
+  if (!item || item.status === 'disconnected') return null;
+
+  const accessToken = decryptToken(item.encryptedAccessToken);
+  // Refresh and upsert the account set before consuming transaction pages.
+  // Providers may add an account to an existing Item after its first link;
+  // its transactions must have a local account id during this same sync.
+  const providerAccounts = await provider.fetchAccounts(accessToken);
+  await upsertAccounts(db, item.id, providerAccounts);
   const accountRows = await db.select().from(accounts).where(eq(accounts.itemId, item.id));
   const accountIdByProvider = new Map(accountRows.map((a) => [a.providerAccountId, a.id]));
   const accountIds = accountRows.map((a) => a.id);

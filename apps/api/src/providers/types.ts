@@ -43,6 +43,11 @@ export interface TransactionProvider {
   createLinkToken(userId: number): Promise<{ linkToken: string }>;
   exchangePublicToken(publicToken: string): Promise<ExchangeResult>;
   fetchAccounts(accessToken: string): Promise<ProviderAccount[]>;
+  // Forces a live balance check with the institution rather than returning
+  // whatever the provider has cached (what fetchAccounts returns). Requires
+  // the Balance product to be enabled in production, separate from
+  // Transactions -- see DEPLOY.md.
+  refreshBalances(accessToken: string): Promise<ProviderAccount[]>;
   syncTransactions(accessToken: string, cursor: string | null): Promise<SyncPage>;
   removeItem(accessToken: string): Promise<void>;
   verifyWebhook?(rawBody: Buffer, verificationHeader: string | undefined): Promise<boolean>;

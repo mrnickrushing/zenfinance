@@ -21,10 +21,34 @@ import { defaultDiscretionaryFor, isValidCategory } from '../enrichment/categori
 import { applyEnrichment } from '../enrichment/pipeline.js';
 import { cleanMerchantName, merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
 import { requireUser } from '../middleware/userAuth.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { validateBody } from '../middleware/validate.js';
+import { getProvider } from '../providers/index.js';
+import { safeErrorSummary } from '../lib/safeError.js';
+import { refreshUserBalances } from '../sync/engine.js';
 
 export function createTransactionsRouter(): ReturnType<typeof Router> {
   const router = Router();
+
+  // Pull-to-refresh: forces a live balance check with each linked
+  // institution instead of waiting for the next scheduled sync. Kept
+  // separate from a full transaction resync so it stays fast.
+  router.post('/api/accounts/refresh-balances', requireUser, userRateLimit('refresh-balances', {
+    windowMs: 60 * 1000,
+    limit: 6,
+    message: 'Too many balance refreshes. Please wait a minute.',
+  }), async (_req, res) => {
+    const userId = res.locals.userId as number;
+    try {
+      await refreshUserBalances(db, getProvider(), userId);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[accounts] refreshBalances failed:', safeErrorSummary(err));
+      res.status(502).json({
+        error: { code: 'balance_refresh_failed', message: 'Could not refresh balances right now. Please try again in a moment.' },
+      });
+    }
+  });
 
   router.get('/api/transactions', requireUser, async (req, res) => {
     const userId = res.locals.userId as number;

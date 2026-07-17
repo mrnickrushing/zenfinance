@@ -57,6 +57,10 @@ export class MockProvider implements TransactionProvider {
     ];
   }
 
+  async refreshBalances(accessToken: string): Promise<ProviderAccount[]> {
+    return this.fetchAccounts(accessToken);
+  }
+
   private backfill(id: string): ProviderTransaction[] {
     const checking = `${id}-checking`;
     const savings = `${id}-savings`;

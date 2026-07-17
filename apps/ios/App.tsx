@@ -1340,7 +1340,7 @@ function ProductShell() {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen />;
-    if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} />;
+    if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
     if (tab === 'score') return <ZenScoreDetailsScreen home={home} onImprove={() => setTab('coach')} />;
@@ -1847,9 +1847,23 @@ function activityIconForCategory(category: string): { icon: MaterialSymbolName; 
   }
 }
 
-function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { home: MobileHomeSummaryView; onBack: () => void; onProfile: () => void; onConnect: () => void; onBudget: () => void }) {
+function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRefresh }: { home: MobileHomeSummaryView; onBack: () => void; onProfile: () => void; onConnect: () => void; onBudget: () => void; onRefresh: () => Promise<void> }) {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const [refreshingBalances, setRefreshingBalances] = useState(false);
+
+  async function handleRefresh() {
+    setRefreshingBalances(true);
+    try {
+      await requestApi('/api/accounts/refresh-balances', { method: 'POST' });
+    } catch {
+      // Live balance check failed (e.g. rate-limited, provider hiccup) —
+      // fall through to reload whatever's already in the database instead
+      // of leaving the pull-to-refresh spinner stuck.
+    }
+    await onRefresh();
+    setRefreshingBalances(false);
+  }
   const accountCards = home.items.flatMap((item) =>
     item.accounts.map((account, accountIndex) => ({
       item,
@@ -1865,7 +1879,14 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget }: { 
   const activityRows = home.recentTransactions.slice(0, 4);
 
   return (
-    <ScrollView ref={scrollRef} contentContainerStyle={styles.transactionsScreenScroll} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      ref={scrollRef}
+      contentContainerStyle={styles.transactionsScreenScroll}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshingBalances} onRefresh={handleRefresh} tintColor={theme.accent} colors={[theme.accent]} />
+      }
+    >
       <View style={styles.transactionsHeader}>
         <Pressable style={styles.transactionsHeaderIconButton} onPress={onBack} accessibilityLabel="Back to overview">
           <ChevronLeft color={theme.ink} size={22} />
