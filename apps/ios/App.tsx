@@ -1460,7 +1460,18 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
             setBusy(false);
           }
         },
-        onExit: () => setBusy(false),
+        onExit: (linkExit) => {
+          setBusy(false);
+          if (linkExit?.error) {
+            Sentry.captureException(new Error(`Plaid Link exited: ${linkExit.error.errorCode ?? linkExit.error.errorType ?? 'unknown'}`), {
+              extra: { linkExit },
+            });
+            Alert.alert(
+              'Bank connection failed',
+              linkExit.error.errorMessage || linkExit.error.displayMessage || 'Unable to finish linking your bank. Please try again.',
+            );
+          }
+        },
         onEvent: () => {},
       });
       await session.open();
