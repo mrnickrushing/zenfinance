@@ -1,11 +1,13 @@
 import {
   appEventSchema,
+  budgetPlanSchema,
   chatQuestionSchema,
   notificationPreferencesSchema,
   pushTokenSchema,
   whatIfSchema,
   type AnomalyView,
   type AppEventInput,
+  type BudgetPlanInput,
   type ChatAnswerView,
   type ChatFactView,
   type EnrichedTransactionView,
@@ -26,6 +28,7 @@ import { and, asc, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Response } from 'express';
 import { Router } from 'express';
 import { assertPremium, getBillingStatus } from '../billing/service.js';
+import { buildBudgetPlan } from '../budget/planner.js';
 import { generateGroundedChatAnswer } from '../chat/anthropic.js';
 import { assembleCoachingContext } from '../coaching/derive.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
@@ -883,6 +886,21 @@ export function createMobileRouter(): ReturnType<typeof Router> {
     }
     const input = res.locals.body as { question: string };
     streamAnswer(res, await buildChatAnswer(userId, input.question));
+  });
+
+  router.post('/api/budget/plan', requireUser, userRateLimit('budget-plan', { windowMs: 60_000, limit: 10, message: 'Too many budget plan requests. Please wait a minute.' }), validateBody(budgetPlanSchema), async (_req, res) => {
+    const userId = res.locals.userId as number;
+    const premium = await assertPremium(db, userId, 'ai_budget_plan');
+    if (!premium.ok) {
+      res.status(402).json(premium.payload);
+      return;
+    }
+    const plan = await buildBudgetPlan(db, userId, res.locals.body as BudgetPlanInput);
+    if (!plan) {
+      res.status(404).json({ error: { code: 'goal_not_found', message: 'Choose an active savings goal for this budget plan.' } });
+      return;
+    }
+    res.json(plan);
   });
 
   router.post('/api/what-if', requireUser, userRateLimit('what-if', { windowMs: 60_000, limit: 20, message: 'Too many scenario requests. Please wait a minute.' }), validateBody(whatIfSchema), async (_req, res) => {

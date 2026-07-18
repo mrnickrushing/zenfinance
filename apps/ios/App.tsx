@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
+import { appliedBudgetTarget, appliedCategoryCaps, buildBudgetPlanRequest, canApplyBudgetPlan } from './src/budgetPlan';
 import {
   PROFILE_MENU_GROUPS,
   SETTINGS_SECTION_COPY,
@@ -110,6 +111,7 @@ import type {
   AnomalyView,
   AuthTokens,
   BillingStatusView,
+  BudgetPlanView,
   ChatAnswerView,
   FreelancerSummaryView,
   GoalView,
@@ -136,7 +138,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'Savings forecast duration · 2026-07-18.3';
+const OTA_DIAGNOSTIC_LABEL = 'AI goal budget plan · 2026-07-18.4';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -1392,7 +1394,7 @@ function ProductShell() {
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('link')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
     if (tab === 'link') return <LinkingScreen onLinked={() => { void refresh(); setTab('transactions'); }} onBack={() => openSettings('banks')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen accountProfile={accountProfile} billing={home.billing} score={home.zenScore.score} onNavigate={navigateFromProfile} />;
-    if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
+    if (tab === 'budget') return <SmartBudgetingScreen home={home} onGoals={() => setTab('goals')} />;
     if (tab === 'score') {
       return (
         <ZenScoreDetailsScreen
@@ -2392,7 +2394,18 @@ async function fetchBudgetTransactions(): Promise<EnrichedTransactionView[]> {
   return collected;
 }
 
-function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
+function budgetPlanStatusCopy(status: BudgetPlanView['status']): { label: string; color: string } {
+  if (status === 'ready') return { label: 'Balanced plan', color: '#48EFEF' };
+  if (status === 'tight') return { label: 'Lean plan', color: '#F5A623' };
+  if (status === 'shortfall') return { label: 'Shortfall', color: '#FF8FB3' };
+  return { label: 'Income needed', color: '#F5A623' };
+}
+
+function budgetPlanMonthLabel(value: string): string {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; onGoals: () => void }) {
   const theme = useTheme();
   const [editing, setEditing] = useState(false);
   const [targets, setTargets] = useState<Record<BudgetPeriod, string>>({ monthly: '', weekly: '' });
@@ -2402,6 +2415,15 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({});
   const [capDraftText, setCapDraftText] = useState<Record<string, string>>({});
   const [transactions, setTransactions] = useState<EnrichedTransactionView[]>(home.recentTransactions);
+  const [showAiPlanner, setShowAiPlanner] = useState(false);
+  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(() => home.goals.find((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0)?.id ?? null);
+  const [monthlySavings, setMonthlySavings] = useState('');
+  const [budgetPlan, setBudgetPlan] = useState<BudgetPlanView | null>(null);
+  const [budgetPlanError, setBudgetPlanError] = useState<string | null>(null);
+  const [buildingBudgetPlan, setBuildingBudgetPlan] = useState(false);
+  const [showAllBills, setShowAllBills] = useState(false);
+  const budgetPlanRequestId = useRef(0);
+  const activeGoals = useMemo(() => home.goals.filter((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0), [home.goals]);
 
   useEffect(() => {
     let active = true;
@@ -2491,6 +2513,50 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
     });
   }
 
+  async function buildAiBudgetPlan() {
+    const request = buildBudgetPlanRequest(selectedGoalId, monthlySavings);
+    if (!request.ok) {
+      budgetPlanRequestId.current += 1;
+      setBudgetPlanError(request.error);
+      return;
+    }
+    const requestId = ++budgetPlanRequestId.current;
+    setBuildingBudgetPlan(true);
+    setBudgetPlan(null);
+    setBudgetPlanError(null);
+    setShowAllBills(false);
+    try {
+      const plan = await requestApi<BudgetPlanView>('/api/budget/plan', {
+        method: 'POST',
+        body: JSON.stringify(request.value),
+      });
+      if (requestId === budgetPlanRequestId.current) setBudgetPlan(plan);
+    } catch (error) {
+      if (requestId === budgetPlanRequestId.current) {
+        setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
+      }
+    } finally {
+      if (requestId === budgetPlanRequestId.current) setBuildingBudgetPlan(false);
+    }
+  }
+
+  function applyAiBudgetPlan() {
+    if (!budgetPlan || !canApplyBudgetPlan(budgetPlan)) return;
+    const monthlyTarget = appliedBudgetTarget(budgetPlan);
+    const nextTargets = { ...targets, monthly: monthlyTarget };
+    const nextCaps = appliedCategoryCaps(budgetPlan);
+    setTargets(nextTargets);
+    setDraftBudgetTarget(monthlyTarget);
+    setPeriod('monthly');
+    setCategoryCaps(nextCaps);
+    setCapDraftText({});
+    persistBudget({ targets: nextTargets, period: 'monthly', alertsEnabled, categoryCaps: nextCaps });
+    Alert.alert(
+      'Monthly plan applied',
+      `Your ${budgetPlanMonthLabel(budgetPlan.planMonth)} spending budget and category caps now reflect ${usd(budgetPlan.goal.plannedSavingsCents, true)} toward ${budgetPlan.goal.name}. No money was moved.`,
+    );
+  }
+
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
       <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Cancel editing budget' : 'Edit budget'} style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
@@ -2500,6 +2566,173 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
         <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget Period</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
         <View style={styles.budgetSegmented}><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'monthly' }} style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'weekly' }} style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
         <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Remember whether budget nudges are enabled</Text></View><Switch value={alertsEnabled} onValueChange={(value) => { setAlertsEnabled(value); persistBudget({ targets, period, alertsEnabled: value, categoryCaps }); }} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
+      </ZenGlass>
+      <ZenGlass style={[styles.aiBudgetCard, { borderColor: budgetPlan ? `${budgetPlanStatusCopy(budgetPlan.status).color}66` : theme.violet }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={showAiPlanner ? 'Collapse AI budget plan' : 'Open AI budget plan'}
+          accessibilityState={{ expanded: showAiPlanner }}
+          style={styles.aiBudgetHeader}
+          onPress={() => setShowAiPlanner((current) => !current)}
+        >
+          <View style={[styles.aiBudgetIcon, { backgroundColor: theme.violetSoft }]}><Brain color={theme.violet} size={20} /></View>
+          <View style={styles.flexShrink}>
+            <Text style={styles.aiBudgetKicker}>AI MONTHLY PLAN</Text>
+            <Text style={styles.aiBudgetTitle}>Plan around a savings goal</Text>
+            <Text style={styles.aiBudgetIntro}>Income − every detected bill − your goal = a budget you can review and apply.</Text>
+          </View>
+          <ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: showAiPlanner ? '90deg' : '0deg' }] }} />
+        </Pressable>
+        {showAiPlanner ? (
+          <View style={styles.aiBudgetBody}>
+            {activeGoals.length === 0 ? (
+              <View style={styles.aiBudgetEmpty}>
+                <Text style={styles.aiBudgetEmptyTitle}>Create a savings goal first</Text>
+                <Text style={styles.aiBudgetEmptyBody}>The plan needs a goal so it knows what to protect before recommending spending.</Text>
+                <SecondaryButton label="Create savings goal" icon={Target} compact onPress={onGoals} />
+              </View>
+            ) : (
+              <>
+                <Text style={styles.aiBudgetFieldLabel}>Savings goal</Text>
+                <View style={styles.aiBudgetGoalChips}>
+                  {activeGoals.map((goal) => {
+                    const selected = selectedGoalId === goal.id;
+                    return (
+                      <Pressable
+                        key={goal.id}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        style={[styles.aiBudgetGoalChip, selected ? { borderColor: theme.accent, backgroundColor: theme.accentSoft } : { borderColor: theme.border }]}
+                        onPress={() => {
+                          budgetPlanRequestId.current += 1;
+                          setBuildingBudgetPlan(false);
+                          setSelectedGoalId(goal.id);
+                          setBudgetPlan(null);
+                          setBudgetPlanError(null);
+                        }}
+                      >
+                        <Target color={selected ? theme.accent : theme.muted} size={14} />
+                        <View style={styles.flexShrink}>
+                          <Text style={[styles.aiBudgetGoalName, { color: selected ? theme.accent : theme.ink }]} numberOfLines={1}>{goal.name}</Text>
+                          <Text style={styles.aiBudgetGoalRemaining}>{usd(goal.pacing.remainingAmountCents, true)} remaining</Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <Text style={styles.aiBudgetFieldLabel}>Save toward it this month</Text>
+                <TextInput
+                  value={monthlySavings}
+                  onChangeText={(value) => {
+                    budgetPlanRequestId.current += 1;
+                    setBuildingBudgetPlan(false);
+                    setMonthlySavings(value);
+                    setBudgetPlan(null);
+                    setBudgetPlanError(null);
+                  }}
+                  keyboardType="decimal-pad"
+                  placeholder="$500"
+                  placeholderTextColor={theme.muted}
+                  style={styles.aiBudgetInput}
+                  accessibilityLabel="Savings amount for this month's AI budget plan"
+                />
+                <View style={styles.aiBudgetPresets}>
+                  {['100', '300', '500'].map((amount) => (
+                    <Pressable key={amount} style={[styles.aiBudgetPreset, { borderColor: theme.border }]} onPress={() => { budgetPlanRequestId.current += 1; setBuildingBudgetPlan(false); setMonthlySavings(amount); setBudgetPlan(null); setBudgetPlanError(null); }}>
+                      <Text style={[styles.aiBudgetPresetText, { color: theme.accent }]}>${amount}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <PrimaryButton label={buildingBudgetPlan ? 'Building your plan...' : 'Build my monthly plan'} icon={Sparkles} disabled={buildingBudgetPlan} onPress={() => void buildAiBudgetPlan()} />
+                <Text style={styles.aiBudgetSafety}>Preview only. Zen uses linked income, recent spending, and every detected recurring bill. No money moves.</Text>
+                {budgetPlanError ? <Text style={styles.aiBudgetError}>{budgetPlanError}</Text> : null}
+                {budgetPlan ? (
+                  <View style={styles.aiBudgetResult}>
+                    <View style={styles.aiBudgetResultHeader}>
+                      <View>
+                        <Text style={styles.aiBudgetResultMonth}>{budgetPlanMonthLabel(budgetPlan.planMonth).toUpperCase()}</Text>
+                        <Text style={styles.aiBudgetResultTitle}>{budgetPlan.goal.name}</Text>
+                      </View>
+                      <View style={[styles.aiBudgetStatus, { borderColor: budgetPlanStatusCopy(budgetPlan.status).color, backgroundColor: `${budgetPlanStatusCopy(budgetPlan.status).color}1F` }]}>
+                        <Text style={[styles.aiBudgetStatusText, { color: budgetPlanStatusCopy(budgetPlan.status).color }]}>{budgetPlanStatusCopy(budgetPlan.status).label}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.aiBudgetExplanation}>{budgetPlan.explanation}</Text>
+                    {budgetPlan.goal.requestedSavingsCents > budgetPlan.goal.plannedSavingsCents ? (
+                      <Text style={styles.aiBudgetGoalCapNote}>Your input is above the amount remaining on this goal, so the plan protects {usd(budgetPlan.goal.plannedSavingsCents, true)} instead.</Text>
+                    ) : null}
+                    <View style={styles.aiBudgetLedger}>
+                      {[
+                        ['Modeled income', budgetPlan.monthlyIncomeCents],
+                        [`All ${budgetPlan.dataCoverage.detectedBillCount} bills`, -budgetPlan.recurringBillsTotalCents],
+                        [`Save for ${budgetPlan.goal.name}`, -budgetPlan.goal.plannedSavingsCents],
+                        ['Recommended spending', budgetPlan.recommendedSpendingCents],
+                        [budgetPlan.shortfallCents > 0 ? 'Shortfall' : 'Unassigned buffer', budgetPlan.shortfallCents > 0 ? -budgetPlan.shortfallCents : budgetPlan.bufferCents],
+                      ].map(([label, amount], index) => (
+                        <View key={String(label)} style={[styles.aiBudgetLedgerRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
+                          <Text style={styles.aiBudgetLedgerLabel}>{label}</Text>
+                          <Text style={[styles.aiBudgetLedgerValue, Number(amount) < 0 ? { color: budgetPlan.shortfallCents > 0 && label === 'Shortfall' ? '#FF8FB3' : theme.muted } : { color: theme.accent }]}>
+                            {Number(amount) < 0 ? '−' : ''}{usd(Math.abs(Number(amount)), true)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                    {budgetPlan.dataCoverage.detectedBillCount > 0 ? (
+                      <Pressable accessibilityRole="button" accessibilityState={{ expanded: showAllBills }} style={styles.aiBudgetDisclosure} onPress={() => setShowAllBills((current) => !current)}>
+                        <View style={styles.flexShrink}>
+                          <Text style={styles.aiBudgetDisclosureTitle}>{budgetPlan.dataCoverage.detectedBillCount} detected bills included</Text>
+                          <Text style={styles.aiBudgetDisclosureMeta}>{budgetPlan.dataCoverage.allDetectedBillsIncluded ? `Every active recurring charge · ${budgetPlan.dataCoverage.weeksAnalyzed} recent week${budgetPlan.dataCoverage.weeksAnalyzed === 1 ? '' : 's'} analyzed` : 'Review data coverage'}</Text>
+                        </View>
+                        <Text style={[styles.aiBudgetDisclosureAction, { color: theme.accent }]}>{showAllBills ? 'Hide' : 'Review all'}</Text>
+                      </Pressable>
+                    ) : (
+                      <View style={styles.aiBudgetDisclosure}>
+                        <View style={styles.flexShrink}>
+                          <Text style={styles.aiBudgetDisclosureTitle}>No recurring bills detected</Text>
+                          <Text style={styles.aiBudgetDisclosureMeta}>Sync linked accounts if you expected bills here.</Text>
+                        </View>
+                      </View>
+                    )}
+                    {showAllBills && budgetPlan.bills.length > 0 ? (
+                      <View style={styles.aiBudgetBillList}>
+                        {budgetPlan.bills.map((bill, index) => (
+                          <View key={bill.recurringStreamId} style={[styles.aiBudgetBillRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
+                            <View style={styles.flexShrink}>
+                              <Text style={styles.aiBudgetBillName}>{bill.merchantClean}</Text>
+                              <Text style={styles.aiBudgetBillMeta}>{bill.cadence}{bill.isAdjustable ? ' · adjustable' : ' · protected'}</Text>
+                            </View>
+                            <Text style={styles.aiBudgetBillAmount}>{usd(bill.monthlyEquivalentCents, true)}/mo</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                    {budgetPlan.categories.length > 0 ? (
+                      <View style={styles.aiBudgetCategoryList}>
+                        <Text style={styles.aiBudgetCategoryHeading}>SUGGESTED CATEGORY CAPS</Text>
+                        {budgetPlan.categories.slice(0, 6).map((category) => (
+                          <View key={category.category} style={styles.aiBudgetCategoryRow}>
+                            <View style={styles.flexShrink}>
+                              <Text style={styles.aiBudgetCategoryName}>{category.label}</Text>
+                              <Text style={styles.aiBudgetCategoryMeta}>{category.isDiscretionary ? 'Adjustable' : 'Essential'}{category.recurringMonthlyCents > 0 ? ' · includes bills' : ''}</Text>
+                            </View>
+                            <Text style={styles.aiBudgetCategoryAmount}>{usd(category.recommendedCents, true)}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                    <PrimaryButton
+                      label={canApplyBudgetPlan(budgetPlan) ? 'Apply this monthly budget' : budgetPlan.status === 'needs_income' ? 'Income data required' : 'Resolve shortfall first'}
+                      icon={CheckCircle2}
+                      disabled={!canApplyBudgetPlan(budgetPlan)}
+                      onPress={applyAiBudgetPlan}
+                    />
+                    <Text style={styles.aiBudgetApplyNote}>Applying updates this device's monthly target and category caps only.</Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </View>
+        ) : null}
       </ZenGlass>
       <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
       <ZenGlass style={styles.categoryCapsPanel}>
@@ -5078,6 +5311,55 @@ const styles = StyleSheet.create({
   budgetToggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
   budgetToggleTitle: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   budgetToggleMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
+  aiBudgetCard: { gap: 0, borderWidth: 1.5, backgroundColor: '#8E44AD12' },
+  aiBudgetHeader: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  aiBudgetIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  aiBudgetKicker: { color: '#B982D2', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.3 },
+  aiBudgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
+  aiBudgetIntro: { color: '#FFFFFF8F', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 },
+  aiBudgetBody: { marginTop: 14, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#FFFFFF1A', gap: 11 },
+  aiBudgetEmpty: { gap: 9 },
+  aiBudgetEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  aiBudgetEmptyBody: { color: '#FFFFFF8F', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
+  aiBudgetFieldLabel: { color: '#FFFFFFCC', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  aiBudgetGoalChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  aiBudgetGoalChip: { minHeight: 54, flexGrow: 1, flexBasis: '47%', maxWidth: '100%', borderRadius: 15, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FFFFFF08' },
+  aiBudgetGoalName: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  aiBudgetGoalRemaining: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
+  aiBudgetInput: { minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: '#8E44AD66', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontFamily: 'Inter_600SemiBold', fontSize: 17 },
+  aiBudgetPresets: { flexDirection: 'row', gap: 7 },
+  aiBudgetPreset: { minHeight: 34, paddingHorizontal: 13, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF08' },
+  aiBudgetPresetText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  aiBudgetSafety: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'center' },
+  aiBudgetError: { color: '#FFB0C9', fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FF6B9966', backgroundColor: '#FF6B9914' },
+  aiBudgetResult: { marginTop: 3, gap: 12, padding: 13, borderRadius: 18, borderWidth: 1, borderColor: '#FFFFFF1F', backgroundColor: '#07101999' },
+  aiBudgetResultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  aiBudgetResultMonth: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.2 },
+  aiBudgetResultTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
+  aiBudgetStatus: { minHeight: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  aiBudgetStatusText: { fontFamily: 'Inter_700Bold', fontSize: 9 },
+  aiBudgetExplanation: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
+  aiBudgetGoalCapNote: { color: '#F5D58A', fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 14, padding: 9, borderRadius: 12, borderWidth: 1, borderColor: '#F5D58A4D', backgroundColor: '#F5D58A12' },
+  aiBudgetLedger: { borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF1A', paddingHorizontal: 11, backgroundColor: '#FFFFFF08' },
+  aiBudgetLedgerRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  aiBudgetLedgerLabel: { flex: 1, color: '#FFFFFF99', fontFamily: 'Inter_500Medium', fontSize: 10 },
+  aiBudgetLedgerValue: { fontFamily: 'Inter_700Bold', fontSize: 11, textAlign: 'right' },
+  aiBudgetDisclosure: { minHeight: 52, paddingHorizontal: 11, borderRadius: 14, borderWidth: 1, borderColor: '#00D2D34D', backgroundColor: '#00D2D314', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  aiBudgetDisclosureTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  aiBudgetDisclosureMeta: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 3 },
+  aiBudgetDisclosureAction: { fontFamily: 'Inter_700Bold', fontSize: 9 },
+  aiBudgetBillList: { borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF1A', paddingHorizontal: 11, backgroundColor: '#FFFFFF08' },
+  aiBudgetBillRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  aiBudgetBillName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 10 },
+  aiBudgetBillMeta: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
+  aiBudgetBillAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  aiBudgetCategoryList: { gap: 3 },
+  aiBudgetCategoryHeading: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.1, marginBottom: 3 },
+  aiBudgetCategoryRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  aiBudgetCategoryName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 10 },
+  aiBudgetCategoryMeta: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
+  aiBudgetCategoryAmount: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 11 },
+  aiBudgetApplyNote: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 12, textAlign: 'center' },
   categoryCapsPanel: { paddingVertical: 4 },
   categoryCapRow: { minHeight: 58, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
   categoryCapName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },

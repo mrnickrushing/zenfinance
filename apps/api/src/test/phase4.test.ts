@@ -203,6 +203,111 @@ describe('Phase 4 mobile product API', () => {
     expect(setback.body.narration).toContain('no longer has a projected completion date');
   });
 
+  it('builds an explainable monthly budget around a savings goal and every detected bill', async () => {
+    const email = 'budget-plan@example.com';
+    const { access } = await registerAndLink(email);
+    const [budgetUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    const goal = await request(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ name: 'Emergency fund', targetAmountCents: 500000, currentAmountCents: 100000 });
+    expect(goal.status).toBe(201);
+
+    const gated = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(gated.status).toBe(402);
+
+    await grantPremium(email);
+    await db.delete(featureRollups).where(eq(featureRollups.userId, budgetUser!.id));
+    await db.insert(featureRollups).values([
+      { aggregateId: 'budget:income:1', userId: budgetUser!.id, weekStart: '2026-07-06', metric: 'income_total', valueCents: 100000 },
+      { aggregateId: 'budget:groceries:1', userId: budgetUser!.id, weekStart: '2026-07-06', metric: 'category_spend', category: 'GROCERIES', valueCents: 20000 },
+      { aggregateId: 'budget:dining:1', userId: budgetUser!.id, weekStart: '2026-07-06', metric: 'category_spend', category: 'RESTAURANTS_AND_DINING', valueCents: 10000 },
+      { aggregateId: 'budget:income:2', userId: budgetUser!.id, weekStart: '2026-07-13', metric: 'income_total', valueCents: 100000 },
+      { aggregateId: 'budget:groceries:2', userId: budgetUser!.id, weekStart: '2026-07-13', metric: 'category_spend', category: 'GROCERIES', valueCents: 20000 },
+      { aggregateId: 'budget:dining:2', userId: budgetUser!.id, weekStart: '2026-07-13', metric: 'category_spend', category: 'RESTAURANTS_AND_DINING', valueCents: 10000 },
+    ]);
+
+    const plan = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(plan.status).toBe(200);
+    expect(plan.body.planMonth).toBe('2026-07-01');
+    expect(plan.body.goal.name).toBe('Emergency fund');
+    expect(plan.body.goal.plannedSavingsCents).toBe(50000);
+    expect(plan.body.monthlyIncomeCents).toBe(433333);
+    expect(plan.body.dataCoverage.weeksAnalyzed).toBe(2);
+    expect(plan.body.dataCoverage.detectedBillCount).toBeGreaterThan(0);
+    expect(plan.body.dataCoverage.allDetectedBillsIncluded).toBe(true);
+    expect(plan.body.bills).toHaveLength(plan.body.dataCoverage.detectedBillCount);
+    expect(plan.body.recurringBillsTotalCents).toBe(
+      plan.body.bills.reduce((sum: number, bill: { monthlyEquivalentCents: number }) => sum + bill.monthlyEquivalentCents, 0),
+    );
+    expect(['ready', 'tight']).toContain(plan.body.status);
+    expect(plan.body.recommendedSpendingCents + plan.body.goal.plannedSavingsCents + plan.body.bufferCents).toBe(plan.body.monthlyIncomeCents);
+    expect(plan.body.categories.some((category: { category: string }) => category.category === 'GROCERIES')).toBe(true);
+    expect(plan.body.explanation).toContain('detected recurring bill');
+
+    const stretchGoal = await request(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ name: 'Home deposit', targetAmountCents: 1000000 });
+    expect(stretchGoal.status).toBe(201);
+    const shortfall = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: stretchGoal.body.id, monthlySavingsCents: 500000, planMonth: '2026-07-01' });
+    expect(shortfall.status).toBe(200);
+    expect(shortfall.body.status).toBe('shortfall');
+    expect(shortfall.body.shortfallCents).toBeGreaterThan(
+      Math.max(0, shortfall.body.goal.plannedSavingsCents + shortfall.body.recurringBillsTotalCents - shortfall.body.monthlyIncomeCents),
+    );
+
+    const savingsLeavingOneDollar = plan.body.monthlyIncomeCents - plan.body.recurringBillsTotalCents - 100;
+    const essentialShortfall = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: savingsLeavingOneDollar, planMonth: '2026-07-01' });
+    expect(essentialShortfall.status).toBe(200);
+    expect(essentialShortfall.body.availableAfterGoalAndBillsCents).toBe(100);
+    expect(essentialShortfall.body.status).toBe('shortfall');
+    expect(essentialShortfall.body.shortfallCents).toBeGreaterThan(0);
+
+    const missingGoal = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: 999999, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(missingGoal.status).toBe(404);
+
+    await db.delete(featureRollups).where(eq(featureRollups.userId, budgetUser!.id));
+    const withoutIncome = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(withoutIncome.status).toBe(200);
+    expect(withoutIncome.body.status).toBe('needs_income');
+    expect(withoutIncome.body.dataCoverage.hasIncomeData).toBe(false);
+
+    await db.insert(featureRollups).values({
+      aggregateId: 'budget:income:zero',
+      userId: budgetUser!.id,
+      weekStart: '2026-07-13',
+      metric: 'income_total',
+      valueCents: 0,
+    });
+    const zeroIncome = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(zeroIncome.status).toBe(200);
+    expect(zeroIncome.body.monthlyIncomeCents).toBe(0);
+    expect(zeroIncome.body.dataCoverage.hasIncomeData).toBe(true);
+    expect(zeroIncome.body.status).toBe('shortfall');
+  });
+
   it('persists push token and per-type notification preferences', async () => {
     const { access } = await registerAndLink('notifications@example.com');
 

@@ -514,6 +514,7 @@ export interface SubscriptionAuditItemView {
   occurrences: number;
   firstSeenDate: string;
   lastSeenDate: string;
+  nextExpectedDate: string | null;
   isCancelCandidate: boolean;
   priceCreep: boolean;
   priceCreepCents: number | null;
@@ -890,6 +891,66 @@ export interface ChatAnswerView {
   facts: ChatFactView[];
   actions: string[];
   createdAt: string;
+}
+
+export const budgetPlanSchema = z.object({
+  goalId: z.number().int().positive(),
+  monthlySavingsCents: z.number().int().positive().max(100_000_00),
+  planMonth: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])-01$/).optional(),
+});
+export type BudgetPlanInput = z.infer<typeof budgetPlanSchema>;
+
+export type BudgetPlanStatus = 'ready' | 'tight' | 'shortfall' | 'needs_income';
+
+export interface BudgetPlanBillView {
+  recurringStreamId: number;
+  merchantClean: string;
+  cadence: RecurringCadence;
+  category: string | null;
+  monthlyEquivalentCents: number;
+  nextExpectedDate: string | null;
+  isAdjustable: boolean;
+}
+
+export interface BudgetPlanCategoryView {
+  category: string;
+  label: string;
+  historicalMonthlyCents: number;
+  recurringMonthlyCents: number;
+  recommendedCents: number;
+  adjustmentCents: number;
+  isDiscretionary: boolean;
+}
+
+export interface BudgetPlanView {
+  planMonth: string;
+  status: BudgetPlanStatus;
+  goal: {
+    id: number;
+    name: string;
+    remainingAmountCents: number;
+    requestedSavingsCents: number;
+    plannedSavingsCents: number;
+  };
+  monthlyIncomeCents: number;
+  recurringBillsTotalCents: number;
+  availableAfterGoalAndBillsCents: number;
+  recommendedSpendingCents: number;
+  flexibleSpendingCents: number;
+  bufferCents: number;
+  shortfallCents: number;
+  bills: BudgetPlanBillView[];
+  categories: BudgetPlanCategoryView[];
+  dataCoverage: {
+    weeksAnalyzed: number;
+    detectedBillCount: number;
+    allDetectedBillsIncluded: boolean;
+    uncategorizedBillCount: number;
+    hasIncomeData: boolean;
+  };
+  explanation: string;
+  explanationSource: 'anthropic' | 'deterministic';
+  actions: string[];
 }
 
 export const whatIfSchema = z
