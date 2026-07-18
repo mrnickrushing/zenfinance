@@ -690,6 +690,26 @@ function weeksBetweenDates(later: string | null, earlier: string | null): number
   return Math.round((Date.parse(later) - Date.parse(earlier)) / 604800000);
 }
 
+function currentMonthStart(): Date {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function addCalendarMonths(date: Date, months: number): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+}
+
+function calendarMonthLabel(value: string): string {
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function monthDurationLabel(months: number): string {
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'}`;
+  const years = Math.floor(months / 12);
+  const remainder = months % 12;
+  return `${years} year${years === 1 ? '' : 's'}${remainder ? `, ${remainder} month${remainder === 1 ? '' : 's'}` : ''}`;
+}
+
 async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResultView> {
   const [weeklyNet, rows] = await Promise.all([
     getRecentWeeklyNetCents(db, userId),
@@ -701,16 +721,26 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
   ]);
   const weeklyNetChangeCents = Math.round((input.monthlySpendReductionCents + input.monthlyIncomeChangeCents) / 4.345);
   const simulatedWeeklyNet = weeklyNet + weeklyNetChangeCents;
+  const forecastStart = input.forecastStartMonth
+    ? new Date(`${input.forecastStartMonth}T00:00:00Z`)
+    : currentMonthStart();
+  const forecastStartMonth = isoDate(forecastStart);
   const projections: WhatIfGoalProjectionView[] = rows.map((goal) => {
     const current = computeGoalPacing(goal, weeklyNet);
     const simulatedRemaining = Math.max(0, current.remainingAmountCents - input.oneTimeSavingsCents);
     const simulated = projectionDate(simulatedRemaining, simulatedWeeklyNet);
     const faster = weeksBetweenDates(current.projectedCompletionDate, simulated);
+    const plannedMonthsToGoal = input.monthlySavingsCents > 0 ? Math.ceil(simulatedRemaining / input.monthlySavingsCents) : null;
+    const plannedCompletionMonth = plannedMonthsToGoal === null
+      ? null
+      : isoDate(addCalendarMonths(forecastStart, Math.max(0, plannedMonthsToGoal - 1)));
     return {
       goalId: goal.id,
       name: goal.name,
       currentProjectedCompletionDate: current.projectedCompletionDate,
       simulatedProjectedCompletionDate: simulated,
+      plannedMonthsToGoal,
+      plannedCompletionMonth,
       timelineChangeWeeks: faster,
       weeksFaster: faster === null ? null : Math.max(0, faster),
       remainingAmountCents: simulatedRemaining,
@@ -719,6 +749,7 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
   const notable = projections.find((p) => p.timelineChangeWeeks !== null && p.timelineChangeWeeks !== 0);
   const completionAtRisk = projections.find((p) => p.currentProjectedCompletionDate && !p.simulatedProjectedCompletionDate);
   const completionNowAvailable = projections.find((p) => !p.currentProjectedCompletionDate && p.simulatedProjectedCompletionDate);
+  const planned = projections.find((p) => typeof p.plannedMonthsToGoal === 'number' && p.plannedCompletionMonth);
   const cashFlowSummary = weeklyNetChangeCents > 0
     ? `This scenario improves weekly cash flow by ${cents(weeklyNetChangeCents)}.`
     : weeklyNetChangeCents < 0
@@ -733,13 +764,23 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
             Math.abs(notable.timelineChangeWeeks!) === 1 ? '' : 's'
           }.`
         : 'Add or adjust a goal to see a timeline change.';
+  const plannedSummary = planned && typeof planned.plannedMonthsToGoal === 'number' && input.monthlySavingsCents > 0
+    ? planned.plannedMonthsToGoal === 0
+      ? `${planned.name} would be fully funded this month after the one-time savings in this scenario.`
+      : `${input.oneTimeSavingsCents > 0 ? `After adding ${cents(input.oneTimeSavingsCents)} up front, saving` : 'Saving'} ${cents(input.monthlySavingsCents)} each month starting ${calendarMonthLabel(forecastStartMonth)} could fund ${planned.name} in about ${monthDurationLabel(planned.plannedMonthsToGoal)}, around ${calendarMonthLabel(planned.plannedCompletionMonth!)}.`
+    : null;
+  const hasCashFlowAdjustments = input.monthlySpendReductionCents > 0 || input.monthlyIncomeChangeCents !== 0;
   return {
+    forecastStartMonth,
+    monthlySavingsCents: input.monthlySavingsCents,
     weeklyNetChangeCents,
     oneTimeSavingsCents: input.oneTimeSavingsCents,
     monthlySpendReductionCents: input.monthlySpendReductionCents,
     monthlyIncomeChangeCents: input.monthlyIncomeChangeCents,
     projections,
-    narration: `${cashFlowSummary} ${timelineSummary}`,
+    narration: plannedSummary
+      ? `${plannedSummary}${hasCashFlowAdjustments ? ` ${cashFlowSummary}` : ''}`
+      : `${cashFlowSummary} ${timelineSummary}`,
   };
 }
 
