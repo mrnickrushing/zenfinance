@@ -173,6 +173,12 @@ export interface AuthTokens {
   refreshToken: string;
 }
 
+export interface AccountProfileView {
+  email: string;
+  signInMethods: Array<'password' | 'apple'>;
+  createdAt: string;
+}
+
 // ---------- Linking (Phase 1) ----------
 
 export const linkExchangeSchema = z.object({

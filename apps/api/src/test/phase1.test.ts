@@ -105,6 +105,15 @@ describe('field encryption', () => {
 });
 
 describe('user auth', () => {
+  it('returns the signed-in account profile', async () => {
+    const { access } = await registerAndAuth();
+    const profile = await request(app).get('/api/me').set('Authorization', `Bearer ${access}`);
+
+    expect(profile.status).toBe(200);
+    expect(profile.body).toMatchObject({ email: CREDS.email, signInMethods: ['password'] });
+    expect(new Date(profile.body.createdAt).toString()).not.toBe('Invalid Date');
+  });
+
   it('registers, rejects duplicates without enumeration', async () => {
     await registerAndAuth();
     const dup = await request(app).post('/api/auth/register').send(CREDS);

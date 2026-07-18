@@ -1,5 +1,6 @@
 import {
   linkExchangeSchema,
+  type AccountProfileView,
   type LinkExchangeInput,
   type LinkedItem,
 } from '@zenfinance/shared';
@@ -7,7 +8,7 @@ import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Router } from 'express';
 import { FREE_LIMITS, userHasPremium } from '../billing/service.js';
 import { db } from '../db/client.js';
-import { accounts, items } from '../db/schema.js';
+import { accounts, items, users } from '../db/schema.js';
 import { decryptToken, encryptToken } from '../lib/crypto.js';
 import { safeErrorSummary } from '../lib/safeError.js';
 import { userRateLimit } from '../middleware/userRateLimit.js';
@@ -19,6 +20,27 @@ import { enqueueItemSync } from '../queue/index.js';
 
 export function createLinkRouter(): ReturnType<typeof Router> {
   const linkRouter = Router();
+
+  linkRouter.get('/api/me', requireUser, async (_req, res) => {
+    const [user] = await db
+      .select({ email: users.email, passwordHash: users.passwordHash, appleSub: users.appleSub, createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.id, res.locals.userId as number))
+      .limit(1);
+    if (!user) {
+      res.status(404).json({ error: { code: 'not_found', message: 'User not found' } });
+      return;
+    }
+    const profile: AccountProfileView = {
+      email: user.email,
+      signInMethods: [
+        ...(user.passwordHash ? ['password' as const] : []),
+        ...(user.appleSub ? ['apple' as const] : []),
+      ],
+      createdAt: user.createdAt.toISOString(),
+    };
+    res.json(profile);
+  });
 
   linkRouter.post('/api/link/token', requireUser, userRateLimit('link-token', {
     windowMs: 60 * 1000,
