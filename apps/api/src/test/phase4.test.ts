@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
 import { db } from '../db/client.js';
-import { billingEntitlements, users } from '../db/schema.js';
+import { billingEntitlements, featureRollups, users } from '../db/schema.js';
 
 let app: Express;
 
@@ -134,6 +134,12 @@ describe('Phase 4 mobile product API', () => {
   it('runs deterministic what-if simulations without model arithmetic', async () => {
     const { access } = await registerAndLink('whatif@example.com');
     await grantPremium('whatif@example.com');
+    const [whatIfUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, 'whatif@example.com')).limit(1);
+    await db.delete(featureRollups).where(eq(featureRollups.userId, whatIfUser!.id));
+    await db.insert(featureRollups).values([
+      { aggregateId: 'whatif:income', userId: whatIfUser!.id, weekStart: '2026-07-13', metric: 'income_total', valueCents: 100000 },
+      { aggregateId: 'whatif:spend', userId: whatIfUser!.id, weekStart: '2026-07-13', metric: 'total_spend', valueCents: 50000 },
+    ]);
     const goal = await request(app)
       .post('/api/goals')
       .set('Authorization', `Bearer ${access}`)
@@ -154,11 +160,15 @@ describe('Phase 4 mobile product API', () => {
     const setback = await request(app)
       .post('/api/what-if')
       .set('Authorization', `Bearer ${access}`)
-      .send({ goalId: goal.body.id, monthlyIncomeChangeCents: -50000 });
+      .send({ goalId: goal.body.id, monthlyIncomeChangeCents: -300000 });
 
     expect(setback.status).toBe(200);
     expect(setback.body.weeklyNetChangeCents).toBeLessThan(0);
     expect(setback.body.narration).toContain('reduces weekly cash flow');
+    expect(setback.body.projections[0].currentProjectedCompletionDate).not.toBeNull();
+    expect(setback.body.projections[0].simulatedProjectedCompletionDate).toBeNull();
+    expect(setback.body.projections[0].timelineChangeWeeks).toBeNull();
+    expect(setback.body.narration).toContain('no longer has a projected completion date');
   });
 
   it('persists push token and per-type notification preferences', async () => {

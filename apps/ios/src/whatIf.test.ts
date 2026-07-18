@@ -40,6 +40,12 @@ describe('custom savings what-if inputs', () => {
       error: 'Enter at least one amount to run a scenario.',
     });
     expect(buildWhatIfRequest(1, { oneTimeSavings: 'later', monthlySpendReduction: '', monthlyIncomeChange: '' }).ok).toBe(false);
+    for (const malformed of ['1 2', '1,2,3', '1.001']) {
+      expect(buildWhatIfRequest(1, { oneTimeSavings: malformed, monthlySpendReduction: '', monthlyIncomeChange: '' })).toEqual({
+        ok: false,
+        error: 'Enter a valid amount for one-time savings.',
+      });
+    }
     expect(buildWhatIfRequest(1, { oneTimeSavings: '-25', monthlySpendReduction: '', monthlyIncomeChange: '' })).toEqual({
       ok: false,
       error: 'one-time savings cannot be negative.',

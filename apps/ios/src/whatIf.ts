@@ -18,9 +18,11 @@ export type WhatIfRequestResult =
   | { ok: false; error: string };
 
 function parseDollarInput(raw: string, label: string, allowNegative = false): number | string {
-  const normalized = raw.trim().replace(/[$,\s]/g, '');
-  if (!normalized) return 0;
-  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return `Enter a valid amount for ${label}.`;
+  const formatted = raw.trim();
+  if (!formatted) return 0;
+  const currencyPattern = /^(?:[+-]?\$?|\$[+-]?)(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{0,2})?|\.\d{1,2})$/;
+  if (!currencyPattern.test(formatted)) return `Enter a valid amount for ${label}.`;
+  const normalized = formatted.replace(/[$,]/g, '');
 
   const dollars = Number(normalized);
   if (!Number.isFinite(dollars)) return `Enter a valid amount for ${label}.`;

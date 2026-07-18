@@ -3386,7 +3386,16 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
                           {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
                         </Text>
                       </View>
-                      <Text style={[styles.amount, { color: projection.timelineChangeWeeks !== null && projection.timelineChangeWeeks < 0 ? theme.danger : theme.success }]}>
+                      <Text style={[
+                        styles.amount,
+                        {
+                          color: scenarioTimelineTone(projection) === 'danger'
+                            ? theme.danger
+                            : scenarioTimelineTone(projection) === 'muted'
+                              ? theme.muted
+                              : theme.success,
+                        },
+                      ]}>
                         {scenarioTimelineLabel(projection)}
                       </Text>
                     </View>
@@ -3431,10 +3440,21 @@ function pacingLabel(value: GoalView['pacing']['pacingStatus']): string {
 function scenarioTimelineLabel(projection: WhatIfResultView['projections'][number]): string {
   if (projection.currentProjectedCompletionDate && !projection.simulatedProjectedCompletionDate) return 'Completion at risk';
   if (!projection.currentProjectedCompletionDate && projection.simulatedProjectedCompletionDate) return 'Date now available';
+  if (projection.timelineChangeWeeks === undefined) {
+    return projection.weeksFaster !== null && projection.weeksFaster > 0 ? `${projection.weeksFaster}w sooner` : 'Updated forecast';
+  }
   if (projection.timelineChangeWeeks === null) return 'Not enough data';
   if (projection.timelineChangeWeeks > 0) return `${projection.timelineChangeWeeks}w sooner`;
   if (projection.timelineChangeWeeks < 0) return `${Math.abs(projection.timelineChangeWeeks)}w later`;
   return 'Same timeline';
+}
+
+function scenarioTimelineTone(projection: WhatIfResultView['projections'][number]): 'danger' | 'success' | 'muted' {
+  if (projection.currentProjectedCompletionDate && !projection.simulatedProjectedCompletionDate) return 'danger';
+  if (!projection.currentProjectedCompletionDate && projection.simulatedProjectedCompletionDate) return 'success';
+  if (projection.timelineChangeWeeks === undefined) return projection.weeksFaster !== null && projection.weeksFaster > 0 ? 'success' : 'muted';
+  if (projection.timelineChangeWeeks === null) return 'muted';
+  return projection.timelineChangeWeeks < 0 ? 'danger' : 'success';
 }
 
 function ScenarioPreset({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
