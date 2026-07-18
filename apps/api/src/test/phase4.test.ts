@@ -149,13 +149,17 @@ describe('Phase 4 mobile product API', () => {
     const res = await request(app)
       .post('/api/what-if')
       .set('Authorization', `Bearer ${access}`)
-      .send({ goalId: goal.body.id, monthlySpendReductionCents: 20000, oneTimeSavingsCents: 25000 });
+      .send({ goalId: goal.body.id, forecastStartMonth: '2026-07-01', monthlySavingsCents: 20000, oneTimeSavingsCents: 25000 });
 
     expect(res.status).toBe(200);
-    expect(res.body.weeklyNetChangeCents).toBeGreaterThan(0);
+    expect(res.body.monthlySavingsCents).toBe(20000);
+    expect(res.body.weeklyNetChangeCents).toBe(0);
     expect(res.body.projections[0].remainingAmountCents).toBe(225000);
-    expect(res.body.projections[0].timelineChangeWeeks).toBeGreaterThanOrEqual(0);
-    expect(res.body.narration).toContain('$');
+    expect(res.body.projections[0].plannedMonthsToGoal).toBe(12);
+    expect(res.body.forecastStartMonth).toBe('2026-07-01');
+    expect(res.body.projections[0].plannedCompletionMonth).toBe('2027-06-01');
+    expect(res.body.narration).toContain('each month starting');
+    expect(res.body.narration).toContain('1 year');
 
     const setback = await request(app)
       .post('/api/what-if')

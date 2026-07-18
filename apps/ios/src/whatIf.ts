@@ -1,6 +1,7 @@
 export const WHAT_IF_MAX_DOLLARS = 100_000;
 
 export interface WhatIfDraft {
+  monthlySavings: string;
   oneTimeSavings: string;
   monthlySpendReduction: string;
   monthlyIncomeChange: string;
@@ -8,6 +9,8 @@ export interface WhatIfDraft {
 
 export interface WhatIfRequest {
   goalId: number;
+  forecastStartMonth: string;
+  monthlySavingsCents: number;
   oneTimeSavingsCents: number;
   monthlySpendReductionCents: number;
   monthlyIncomeChangeCents: number;
@@ -31,7 +34,14 @@ function parseDollarInput(raw: string, label: string, allowNegative = false): nu
   return Math.round(dollars * 100);
 }
 
-export function buildWhatIfRequest(goalId: number, draft: WhatIfDraft): WhatIfRequestResult {
+export function forecastStartMonth(now = new Date()): string {
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+export function buildWhatIfRequest(goalId: number, draft: WhatIfDraft, now = new Date()): WhatIfRequestResult {
+  const monthlySavingsCents = parseDollarInput(draft.monthlySavings, 'monthly savings');
+  if (typeof monthlySavingsCents === 'string') return { ok: false, error: monthlySavingsCents };
+
   const oneTimeSavingsCents = parseDollarInput(draft.oneTimeSavings, 'one-time savings');
   if (typeof oneTimeSavingsCents === 'string') return { ok: false, error: oneTimeSavingsCents };
 
@@ -41,12 +51,19 @@ export function buildWhatIfRequest(goalId: number, draft: WhatIfDraft): WhatIfRe
   const monthlyIncomeChangeCents = parseDollarInput(draft.monthlyIncomeChange, 'monthly income change', true);
   if (typeof monthlyIncomeChangeCents === 'string') return { ok: false, error: monthlyIncomeChangeCents };
 
-  if (oneTimeSavingsCents === 0 && monthlySpendReductionCents === 0 && monthlyIncomeChangeCents === 0) {
+  if (monthlySavingsCents === 0 && oneTimeSavingsCents === 0 && monthlySpendReductionCents === 0 && monthlyIncomeChangeCents === 0) {
     return { ok: false, error: 'Enter at least one amount to run a scenario.' };
   }
 
   return {
     ok: true,
-    value: { goalId, oneTimeSavingsCents, monthlySpendReductionCents, monthlyIncomeChangeCents },
+    value: {
+      goalId,
+      forecastStartMonth: forecastStartMonth(now),
+      monthlySavingsCents,
+      oneTimeSavingsCents,
+      monthlySpendReductionCents,
+      monthlyIncomeChangeCents,
+    },
   };
 }

@@ -895,12 +895,14 @@ export interface ChatAnswerView {
 export const whatIfSchema = z
   .object({
     goalId: z.number().int().positive().optional(),
+    forecastStartMonth: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])-01$/).optional(),
+    monthlySavingsCents: z.number().int().min(0).max(100_000_00).default(0),
     monthlySpendReductionCents: z.number().int().min(0).max(100_000_00).default(0),
     oneTimeSavingsCents: z.number().int().min(0).max(100_000_00).default(0),
     monthlyIncomeChangeCents: z.number().int().min(-100_000_00).max(100_000_00).default(0),
   })
   .refine(
-    (v) => v.monthlySpendReductionCents > 0 || v.oneTimeSavingsCents > 0 || v.monthlyIncomeChangeCents !== 0,
+    (v) => v.monthlySavingsCents > 0 || v.monthlySpendReductionCents > 0 || v.oneTimeSavingsCents > 0 || v.monthlyIncomeChangeCents !== 0,
     'At least one what-if input must be non-zero',
   );
 export type WhatIfInput = z.infer<typeof whatIfSchema>;
@@ -910,12 +912,16 @@ export interface WhatIfGoalProjectionView {
   name: string;
   currentProjectedCompletionDate: string | null;
   simulatedProjectedCompletionDate: string | null;
+  plannedMonthsToGoal?: number | null;
+  plannedCompletionMonth?: string | null;
   timelineChangeWeeks?: number | null;
   weeksFaster: number | null;
   remainingAmountCents: number;
 }
 
 export interface WhatIfResultView {
+  forecastStartMonth?: string;
+  monthlySavingsCents?: number;
   weeklyNetChangeCents: number;
   oneTimeSavingsCents: number;
   monthlySpendReductionCents: number;

@@ -24,6 +24,7 @@ import { StatusBar } from 'expo-status-bar';
 import {
   Bell,
   Brain,
+  CalendarDays,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -56,6 +57,7 @@ import {
   Volume2,
   Wallet,
   WalletCards,
+  X,
 } from 'lucide-react-native';
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
 import {
@@ -134,7 +136,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'Savings what-if custom inputs · 2026-07-18.1';
+const OTA_DIAGNOSTIC_LABEL = 'Savings forecast duration · 2026-07-18.2';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -3164,12 +3166,14 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
   const [scenarioGoalId, setScenarioGoalId] = useState<number | null>(null);
   const [scenarioDraft, setScenarioDraft] = useState<WhatIfDraft>({
+    monthlySavings: '',
     oneTimeSavings: '',
     monthlySpendReduction: '',
     monthlyIncomeChange: '',
   });
   const [scenarioError, setScenarioError] = useState<string | null>(null);
   const [runningScenario, setRunningScenario] = useState(false);
+  const [showAdvancedScenario, setShowAdvancedScenario] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [dismissedMilestoneIds, setDismissedMilestoneIds] = useState<Set<number>>(new Set());
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
@@ -3198,6 +3202,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
     setScenarioGoalId(goalId);
     setScenario(null);
     setScenarioError(null);
+    setShowAdvancedScenario(false);
   }
 
   function closeScenario() {
@@ -3279,25 +3284,60 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
           <Text style={[styles.factLine, { color: theme.muted }]}>
             Projected completion: {dateLabel(goal.pacing.projectedCompletionDate)}
           </Text>
-          <SecondaryButton
-            label={billing.isPremium ? (scenarioGoalId === goal.id ? 'Close scenario planner' : 'Build a custom what-if') : 'Unlock what-if'}
-            icon={SlidersHorizontal}
-            disabled={runningScenario}
-            onPress={() => (billing.isPremium ? (scenarioGoalId === goal.id ? closeScenario() : openScenario(goal.id)) : setShowPaywall(true))}
-          />
+          {scenarioGoalId !== goal.id ? (
+            <SecondaryButton
+              label={billing.isPremium ? 'Forecast this goal' : 'Unlock goal forecasts'}
+              icon={SlidersHorizontal}
+              disabled={runningScenario}
+              onPress={() => (billing.isPremium ? openScenario(goal.id) : setShowPaywall(true))}
+            />
+          ) : null}
           {scenarioGoalId === goal.id ? (
             <View style={[styles.whatIfPlanner, { borderColor: theme.border }]}>
               <View style={styles.panelHeader}>
                 <SlidersHorizontal color={theme.accent} size={19} />
                 <View style={styles.flexShrink}>
-                  <Text style={[styles.panelKicker, { color: theme.accent }]}>Custom scenario</Text>
-                  <Text style={[styles.whatIfPlannerTitle, { color: theme.ink }]}>What could move {goal.name}?</Text>
+                  <Text style={[styles.panelKicker, { color: theme.accent }]}>Savings forecast</Text>
+                  <Text style={[styles.whatIfPlannerTitle, { color: theme.ink }]}>When will I reach {goal.name}?</Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Close savings forecast"
+                  accessibilityRole="button"
+                  disabled={runningScenario}
+                  onPress={closeScenario}
+                  style={[styles.whatIfCloseButton, { borderColor: theme.border, backgroundColor: theme.surface, opacity: runningScenario ? 0.5 : 1 }]}
+                >
+                  <X color={theme.muted} size={17} />
+                </Pressable>
+              </View>
+              <Text style={[styles.rowDetail, { color: theme.muted }]}>Start with what you plan to save each month. The forecast begins this month and will not move money.</Text>
+              <View style={styles.whatIfField}>
+                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Planned monthly savings</Text>
+                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>What you will deposit into this goal each month</Text>
+                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                  <TextInput
+                    accessibilityLabel="Planned monthly savings amount"
+                    editable={!runningScenario}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={theme.muted}
+                    value={scenarioDraft.monthlySavings}
+                    onChangeText={(value) => updateScenarioDraft('monthlySavings', value)}
+                    style={[styles.whatIfTextInput, { color: theme.ink }]}
+                  />
+                  <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
                 </View>
               </View>
-              <Text style={[styles.rowDetail, { color: theme.muted }]}>Enter any combination. This forecast will not move money or change your goal.</Text>
+              <View style={styles.whatIfPresetRow}>
+                <ScenarioPreset label="$50/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySavings', '50')} />
+                <ScenarioPreset label="$150/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySavings', '150')} />
+                <ScenarioPreset label="$300/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySavings', '300')} />
+                <ScenarioPreset label="$500/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySavings', '500')} />
+              </View>
               <View style={styles.whatIfField}>
-                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>One-time savings</Text>
-                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Money you could add once</Text>
+                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>One-time savings <Text style={{ color: theme.muted }}>(optional)</Text></Text>
+                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Money you plan to add this month before recurring deposits</Text>
                 <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
                   <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
                   <TextInput
@@ -3312,50 +3352,68 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
                   />
                 </View>
               </View>
-              <View style={styles.whatIfField}>
-                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly spending reduction</Text>
-                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>What you could redirect each month</Text>
-                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
-                  <TextInput
-                    accessibilityLabel="Monthly spending reduction amount"
-                    editable={!runningScenario}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={theme.muted}
-                    value={scenarioDraft.monthlySpendReduction}
-                    onChangeText={(value) => updateScenarioDraft('monthlySpendReduction', value)}
-                    style={[styles.whatIfTextInput, { color: theme.ink }]}
-                  />
-                  <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
-                </View>
-              </View>
-              <View style={styles.whatIfField}>
-                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly income change</Text>
-                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Use a minus sign if income may decrease</Text>
-                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
-                  <TextInput
-                    accessibilityLabel="Monthly income change amount"
-                    editable={!runningScenario}
-                    keyboardType="numbers-and-punctuation"
-                    placeholder="+500 or -200"
-                    placeholderTextColor={theme.muted}
-                    value={scenarioDraft.monthlyIncomeChange}
-                    onChangeText={(value) => updateScenarioDraft('monthlyIncomeChange', value)}
-                    style={[styles.whatIfTextInput, { color: theme.ink }]}
-                  />
-                  <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
-                </View>
-              </View>
               <View style={styles.whatIfPresetRow}>
-                <ScenarioPreset label="$50/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySpendReduction', '50')} />
-                <ScenarioPreset label="$150/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySpendReduction', '150')} />
+                <ScenarioPreset label="$250 once" disabled={runningScenario} onPress={() => updateScenarioDraft('oneTimeSavings', '250')} />
                 <ScenarioPreset label="$500 once" disabled={runningScenario} onPress={() => updateScenarioDraft('oneTimeSavings', '500')} />
+                <ScenarioPreset label="$1,000 once" disabled={runningScenario} onPress={() => updateScenarioDraft('oneTimeSavings', '1000')} />
               </View>
+              <Pressable
+                accessibilityLabel="Toggle optional cash-flow adjustments"
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showAdvancedScenario, disabled: runningScenario }}
+                disabled={runningScenario}
+                onPress={() => setShowAdvancedScenario((current) => !current)}
+                style={[styles.whatIfAdvancedToggle, { borderColor: theme.border, backgroundColor: theme.surface }]}
+              >
+                <View style={styles.flexShrink}>
+                  <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Cash-flow adjustments</Text>
+                  <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Optional spending or income changes</Text>
+                </View>
+                <ChevronRight color={theme.accent} size={17} style={{ transform: [{ rotate: showAdvancedScenario ? '90deg' : '0deg' }] }} />
+              </Pressable>
+              {showAdvancedScenario ? (
+                <View style={styles.whatIfAdvancedFields}>
+                  <View style={styles.whatIfField}>
+                    <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly spending reduction</Text>
+                    <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>What you could redirect each month</Text>
+                    <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                      <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                      <TextInput
+                        accessibilityLabel="Monthly spending reduction amount"
+                        editable={!runningScenario}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                        placeholderTextColor={theme.muted}
+                        value={scenarioDraft.monthlySpendReduction}
+                        onChangeText={(value) => updateScenarioDraft('monthlySpendReduction', value)}
+                        style={[styles.whatIfTextInput, { color: theme.ink }]}
+                      />
+                      <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
+                    </View>
+                  </View>
+                  <View style={styles.whatIfField}>
+                    <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly income change</Text>
+                    <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Use a minus sign if income may decrease</Text>
+                    <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                      <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                      <TextInput
+                        accessibilityLabel="Monthly income change amount"
+                        editable={!runningScenario}
+                        keyboardType="numbers-and-punctuation"
+                        placeholder="+500 or -200"
+                        placeholderTextColor={theme.muted}
+                        value={scenarioDraft.monthlyIncomeChange}
+                        onChangeText={(value) => updateScenarioDraft('monthlyIncomeChange', value)}
+                        style={[styles.whatIfTextInput, { color: theme.ink }]}
+                      />
+                      <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
+                    </View>
+                  </View>
+                </View>
+              ) : null}
               {scenarioError ? <Text style={styles.whatIfError}>{scenarioError}</Text> : null}
               <PrimaryButton
-                label={runningScenario ? 'Running forecast...' : 'Run my forecast'}
+                label={runningScenario ? 'Forecasting...' : 'Forecast my goal'}
                 icon={Sparkles}
                 disabled={runningScenario}
                 onPress={() => runScenario(goal.id)}
@@ -3367,39 +3425,60 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
                     <Text style={[styles.panelKicker, { color: theme.success }]}>Forecast result</Text>
                   </View>
                   <Text style={[styles.panelBody, { color: theme.muted }]}>{scenario.narration}</Text>
-                  <View style={[styles.whatIfWeeklyImpact, { backgroundColor: theme.accentSoft }]}>
-                    <Text style={[styles.whatIfWeeklyLabel, { color: theme.muted }]}>Weekly cash-flow change</Text>
-                    <Text style={[styles.whatIfWeeklyValue, { color: scenario.weeklyNetChangeCents >= 0 ? theme.success : theme.danger }]}>
-                      {scenario.weeklyNetChangeCents > 0 ? '+' : ''}{usd(scenario.weeklyNetChangeCents, true)}
-                    </Text>
-                  </View>
-                  <StatusRail>
-                    <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={PiggyBank} />
-                    <MoneyMetric label="Monthly cut" value={usd(scenario.monthlySpendReductionCents, true)} icon={CreditCard} />
-                    <MoneyMetric label="Income" value={usd(scenario.monthlyIncomeChangeCents, true)} icon={CircleDollarSign} />
-                  </StatusRail>
-                  {scenario.projections.map((projection) => (
-                    <View key={projection.goalId} style={[styles.scenarioRow, { borderColor: theme.border }]}>
-                      <View style={styles.flexShrink}>
-                        <Text style={[styles.rowTitle, { color: theme.ink }]}>{projection.name}</Text>
-                        <Text style={[styles.rowDetail, { color: theme.muted }]}>
-                          {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
-                        </Text>
-                      </View>
-                      <Text style={[
-                        styles.amount,
-                        {
-                          color: scenarioTimelineTone(projection) === 'danger'
-                            ? theme.danger
-                            : scenarioTimelineTone(projection) === 'muted'
-                              ? theme.muted
-                              : theme.success,
-                        },
-                      ]}>
-                        {scenarioTimelineLabel(projection)}
+                  {(scenario.monthlySavingsCents ?? 0) > 0 ? (
+                    <>
+                      {scenario.projections.map((projection) => (
+                        <MonthlySavingsForecast
+                          key={projection.goalId}
+                          forecastStartMonth={scenario.forecastStartMonth}
+                          projection={projection}
+                        />
+                      ))}
+                      <StatusRail>
+                        <MoneyMetric label="Monthly" value={`${usd(scenario.monthlySavingsCents, true)}/mo`} icon={PiggyBank} />
+                        <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={Plus} />
+                        <MoneyMetric label="To fund" value={usd(scenario.projections[0]?.remainingAmountCents, true)} icon={Target} />
+                      </StatusRail>
+                    </>
+                  ) : (
+                    <>
+                      <StatusRail>
+                        <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={PiggyBank} />
+                        <MoneyMetric label="Monthly cut" value={usd(scenario.monthlySpendReductionCents, true)} icon={CreditCard} />
+                        <MoneyMetric label="Income" value={usd(scenario.monthlyIncomeChangeCents, true)} icon={CircleDollarSign} />
+                      </StatusRail>
+                      {scenario.projections.map((projection) => (
+                        <View key={projection.goalId} style={[styles.scenarioRow, { borderColor: theme.border }]}>
+                          <View style={styles.flexShrink}>
+                            <Text style={[styles.rowTitle, { color: theme.ink }]}>{projection.name}</Text>
+                            <Text style={[styles.rowDetail, { color: theme.muted }]}>
+                              {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
+                            </Text>
+                          </View>
+                          <Text style={[
+                            styles.amount,
+                            {
+                              color: scenarioTimelineTone(projection) === 'danger'
+                                ? theme.danger
+                                : scenarioTimelineTone(projection) === 'muted'
+                                  ? theme.muted
+                                  : theme.success,
+                            },
+                          ]}>
+                            {scenarioTimelineLabel(projection)}
+                          </Text>
+                        </View>
+                      ))}
+                    </>
+                  )}
+                  {scenario.monthlySpendReductionCents > 0 || scenario.monthlyIncomeChangeCents !== 0 ? (
+                    <View style={[styles.whatIfWeeklyImpact, { backgroundColor: theme.accentSoft }]}>
+                      <Text style={[styles.whatIfWeeklyLabel, { color: theme.muted }]}>Weekly cash-flow change</Text>
+                      <Text style={[styles.whatIfWeeklyValue, { color: scenario.weeklyNetChangeCents >= 0 ? theme.success : theme.danger }]}>
+                        {scenario.weeklyNetChangeCents > 0 ? '+' : ''}{usd(scenario.weeklyNetChangeCents, true)}
                       </Text>
                     </View>
-                  ))}
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -3455,6 +3534,45 @@ function scenarioTimelineTone(projection: WhatIfResultView['projections'][number
   if (projection.timelineChangeWeeks === undefined) return projection.weeksFaster !== null && projection.weeksFaster > 0 ? 'success' : 'muted';
   if (projection.timelineChangeWeeks === null) return 'muted';
   return projection.timelineChangeWeeks < 0 ? 'danger' : 'success';
+}
+
+function forecastMonthLabel(value: string | null | undefined): string {
+  if (!value) return 'this month';
+  return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+function forecastDurationLabel(months: number | null | undefined): string {
+  if (months === null || months === undefined) return 'Not available';
+  if (months === 0) return 'This month';
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'}`;
+  const years = Math.floor(months / 12);
+  const remainder = months % 12;
+  return `${years} yr${years === 1 ? '' : 's'}${remainder ? ` ${remainder} mo` : ''}`;
+}
+
+function MonthlySavingsForecast({
+  forecastStartMonth,
+  projection,
+}: {
+  forecastStartMonth?: string;
+  projection: WhatIfResultView['projections'][number];
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.monthlyForecastCard, { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
+      <View style={styles.monthlyForecastTopRow}>
+        <View style={styles.flexShrink}>
+          <Text style={[styles.monthlyForecastKicker, { color: theme.accent }]}>Starting {forecastMonthLabel(forecastStartMonth)}</Text>
+          <Text style={[styles.monthlyForecastGoal, { color: theme.ink }]}>{projection.name}</Text>
+        </View>
+        <CalendarDays size={22} color={theme.accent} />
+      </View>
+      <Text style={[styles.monthlyForecastDuration, { color: theme.ink }]}>{forecastDurationLabel(projection.plannedMonthsToGoal)}</Text>
+      <Text style={[styles.monthlyForecastCompletion, { color: theme.muted }]}>
+        Estimated completion: {forecastMonthLabel(projection.plannedCompletionMonth)}
+      </Text>
+    </View>
+  );
 }
 
 function ScenarioPreset({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
@@ -5018,6 +5136,7 @@ const styles = StyleSheet.create({
   goalProgressFill: { height: '100%', borderRadius: 6, backgroundColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
   whatIfPlanner: { borderTopWidth: 1, paddingTop: 16, gap: 13 },
   whatIfPlannerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 23, marginTop: 2 },
+  whatIfCloseButton: { width: 36, height: 36, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   whatIfField: { gap: 4 },
   whatIfFieldLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
   whatIfFieldHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
@@ -5028,8 +5147,16 @@ const styles = StyleSheet.create({
   whatIfPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   whatIfPreset: { minHeight: 34, borderWidth: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11 },
   whatIfPresetText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  whatIfAdvancedToggle: { minHeight: 58, borderWidth: 1, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  whatIfAdvancedFields: { gap: 13 },
   whatIfError: { color: '#FF7A9A', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
   whatIfResult: { borderTopWidth: 1, marginTop: 4, paddingTop: 16, gap: 12 },
+  monthlyForecastCard: { borderWidth: 1, borderRadius: 20, padding: 15, gap: 7 },
+  monthlyForecastTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  monthlyForecastKicker: { fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 14, textTransform: 'uppercase', letterSpacing: 0.8 },
+  monthlyForecastGoal: { fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 2 },
+  monthlyForecastDuration: { fontFamily: 'Inter_700Bold', fontSize: 30, lineHeight: 36, fontVariant: ['tabular-nums'] },
+  monthlyForecastCompletion: { fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
   whatIfWeeklyImpact: { minHeight: 56, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   whatIfWeeklyLabel: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12 },
   whatIfWeeklyValue: { fontFamily: 'Inter_700Bold', fontSize: 19, fontVariant: ['tabular-nums'] },
