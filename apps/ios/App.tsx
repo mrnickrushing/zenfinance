@@ -1303,6 +1303,24 @@ function ProductShell() {
     }
   }, [setHome, setNotificationPrefs]);
 
+  // Pull-to-refresh on the home brief: force a fresh Coach's Insight instead
+  // of just re-reading whatever's cached (the brief otherwise only
+  // regenerates once ever for first-look, then weekly on a Monday cron — see
+  // /api/insights/refresh). Rate-limited server-side, so a 429 here just
+  // means the user already refreshed recently; fall through to a plain
+  // refresh so the pull still feels like it did something.
+  const refreshInsight = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await requestApi('/api/insights/refresh', { method: 'POST' });
+    } catch (err) {
+      if (!(err instanceof ApiRequestError && (err.status === 429 || err.status === 404))) {
+        Sentry.captureException(err);
+      }
+    }
+    await refresh();
+  }, [refresh]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -1337,7 +1355,7 @@ function ProductShell() {
     }
     const hasLinkedItems = home.items.length > 0;
     if (tab === 'brief') {
-      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refresh} refreshing={refreshing} onNavigate={setTab} /> : <LinkingScreen onLinked={refresh} onBudget={() => setTab('budget')} />;
+      return hasLinkedItems ? <BriefScreen home={home} onRefresh={refreshInsight} refreshing={refreshing} onNavigate={setTab} /> : <LinkingScreen onLinked={refresh} onBudget={() => setTab('budget')} />;
     }
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
@@ -1366,7 +1384,7 @@ function ProductShell() {
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
-  }, [coachInitialQuestion, home, loadError, refresh, refreshing, tab, theme.accent]);
+  }, [coachInitialQuestion, home, loadError, refresh, refreshInsight, refreshing, tab, theme.accent]);
 
   const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score']).has(tab);
 

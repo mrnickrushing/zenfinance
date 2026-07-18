@@ -156,7 +156,13 @@ export async function runFirstLookForUser(db: Db, provider: InsightProvider, use
  * record any estimated spend-reduction wins for the just-completed week, then
  * generate the weekly brief.
  */
-export async function runWeeklyBriefForUser(db: Db, provider: InsightProvider, userId: number): Promise<void> {
+export async function runWeeklyBriefForUser(
+  db: Db,
+  provider: InsightProvider,
+  userId: number,
+  options: { notify?: boolean } = {},
+): Promise<void> {
+  const notify = options.notify ?? true;
   await detectAnomalies(db, userId);
   await verifyMoneyWins(db, userId);
 
@@ -165,7 +171,7 @@ export async function runWeeklyBriefForUser(db: Db, provider: InsightProvider, u
     await recordSpendReductionWins(db, userId, context.weekStart);
   }
   const stored = await generateAndStoreBrief(db, provider, userId, 'weekly_brief');
-  if (stored) {
+  if (stored && notify) {
     await sendPushToUser(db, userId, {
       title: 'Your weekly money brief',
       body: 'A fresh read on your spending and one calm move for the week.',
