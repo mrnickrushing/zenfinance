@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildWhatIfRequest } from './whatIf.js';
+import { buildWhatIfRequest, hasAdvancedWhatIfAdjustments } from './whatIf.js';
 
 describe('custom savings what-if inputs', () => {
   it('accepts independent currency inputs and a negative income change', () => {
@@ -64,5 +64,14 @@ describe('custom savings what-if inputs', () => {
       ok: false,
       error: 'one-time savings must be $100,000 or less.',
     });
+  });
+
+  it('keeps retained advanced adjustments visible, including invalid drafts', () => {
+    const base = { monthlySavings: '200', oneTimeSavings: '', monthlySpendReduction: '', monthlyIncomeChange: '' };
+    expect(hasAdvancedWhatIfAdjustments(base)).toBe(false);
+    expect(hasAdvancedWhatIfAdjustments({ ...base, monthlySpendReduction: '0.00', monthlyIncomeChange: '$0' })).toBe(false);
+    expect(hasAdvancedWhatIfAdjustments({ ...base, monthlySpendReduction: '75' })).toBe(true);
+    expect(hasAdvancedWhatIfAdjustments({ ...base, monthlyIncomeChange: '-25' })).toBe(true);
+    expect(hasAdvancedWhatIfAdjustments({ ...base, monthlyIncomeChange: 'later' })).toBe(true);
   });
 });

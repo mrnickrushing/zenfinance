@@ -38,6 +38,13 @@ export function forecastStartMonth(now = new Date()): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 }
 
+export function hasAdvancedWhatIfAdjustments(draft: WhatIfDraft): boolean {
+  return [
+    parseDollarInput(draft.monthlySpendReduction, 'monthly spending reduction'),
+    parseDollarInput(draft.monthlyIncomeChange, 'monthly income change', true),
+  ].some((value) => typeof value === 'string' || value !== 0);
+}
+
 export function buildWhatIfRequest(goalId: number, draft: WhatIfDraft, now = new Date()): WhatIfRequestResult {
   const monthlySavingsCents = parseDollarInput(draft.monthlySavings, 'monthly savings');
   if (typeof monthlySavingsCents === 'string') return { ok: false, error: monthlySavingsCents };

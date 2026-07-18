@@ -9,7 +9,7 @@ import {
   type SettingsSection,
 } from './src/profileNavigation';
 import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './src/security';
-import { buildWhatIfRequest, type WhatIfDraft } from './src/whatIf';
+import { buildWhatIfRequest, hasAdvancedWhatIfAdjustments, type WhatIfDraft } from './src/whatIf';
 import { zenScoreCoachPrompt, zenScoreFocus, zenScoreGuidance, type ZenScoreDestination } from './src/zenScore';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
@@ -136,7 +136,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'Savings forecast duration · 2026-07-18.2';
+const OTA_DIAGNOSTIC_LABEL = 'Savings forecast duration · 2026-07-18.3';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -3202,7 +3202,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
     setScenarioGoalId(goalId);
     setScenario(null);
     setScenarioError(null);
-    setShowAdvancedScenario(false);
+    setShowAdvancedScenario(hasAdvancedWhatIfAdjustments(scenarioDraft));
   }
 
   function closeScenario() {
@@ -3568,9 +3568,11 @@ function MonthlySavingsForecast({
         <CalendarDays size={22} color={theme.accent} />
       </View>
       <Text style={[styles.monthlyForecastDuration, { color: theme.ink }]}>{forecastDurationLabel(projection.plannedMonthsToGoal)}</Text>
-      <Text style={[styles.monthlyForecastCompletion, { color: theme.muted }]}>
-        Estimated completion: {forecastMonthLabel(projection.plannedCompletionMonth)}
-      </Text>
+      {projection.plannedCompletionMonth ? (
+        <Text style={[styles.monthlyForecastCompletion, { color: theme.muted }]}>
+          Estimated completion: {forecastMonthLabel(projection.plannedCompletionMonth)}
+        </Text>
+      ) : null}
     </View>
   );
 }

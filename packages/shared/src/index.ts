@@ -904,6 +904,10 @@ export const whatIfSchema = z
   .refine(
     (v) => v.monthlySavingsCents > 0 || v.monthlySpendReductionCents > 0 || v.oneTimeSavingsCents > 0 || v.monthlyIncomeChangeCents !== 0,
     'At least one what-if input must be non-zero',
+  )
+  .refine(
+    (v) => v.monthlySavingsCents === 0 || v.goalId !== undefined,
+    { message: 'A savings goal is required for a monthly savings forecast', path: ['goalId'] },
   );
 export type WhatIfInput = z.infer<typeof whatIfSchema>;
 
