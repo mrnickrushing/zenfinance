@@ -161,6 +161,34 @@ describe('Phase 4 mobile product API', () => {
     expect(res.body.narration).toContain('each month starting');
     expect(res.body.narration).toContain('1 year');
 
+    const missingGoal = await request(app)
+      .post('/api/what-if')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ monthlySavingsCents: 20000 });
+    expect(missingGoal.status).toBe(400);
+
+    const fundedAtStart = await request(app)
+      .post('/api/what-if')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, forecastStartMonth: '2026-09-01', monthlySavingsCents: 20000, oneTimeSavingsCents: 250000 });
+    expect(fundedAtStart.status).toBe(200);
+    expect(fundedAtStart.body.projections[0].plannedMonthsToGoal).toBe(0);
+    expect(fundedAtStart.body.narration).toContain('fully funded in September 2026');
+
+    const distantGoal = await request(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ name: 'Distant goal', targetAmountCents: 100000000 });
+    expect(distantGoal.status).toBe(201);
+    const distantForecast = await request(app)
+      .post('/api/what-if')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: distantGoal.body.id, forecastStartMonth: '2026-07-01', monthlySavingsCents: 1 });
+    expect(distantForecast.status).toBe(200);
+    expect(distantForecast.body.projections[0].plannedMonthsToGoal).toBe(100000000);
+    expect(distantForecast.body.projections[0].plannedCompletionMonth).toBeNull();
+    expect(distantForecast.body.narration).toContain('outside the supported calendar range');
+
     const setback = await request(app)
       .post('/api/what-if')
       .set('Authorization', `Bearer ${access}`)

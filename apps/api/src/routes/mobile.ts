@@ -695,8 +695,12 @@ function currentMonthStart(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-function addCalendarMonths(date: Date, months: number): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+function addCalendarMonths(date: Date, months: number): Date | null {
+  if (!Number.isSafeInteger(months) || months < 0) return null;
+  const targetMonth = date.getUTCFullYear() * 12 + date.getUTCMonth() + months;
+  const targetYear = Math.floor(targetMonth / 12);
+  if (targetYear > 9999) return null;
+  return new Date(Date.UTC(targetYear, targetMonth % 12, 1));
 }
 
 function calendarMonthLabel(value: string): string {
@@ -731,9 +735,10 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
     const simulated = projectionDate(simulatedRemaining, simulatedWeeklyNet);
     const faster = weeksBetweenDates(current.projectedCompletionDate, simulated);
     const plannedMonthsToGoal = input.monthlySavingsCents > 0 ? Math.ceil(simulatedRemaining / input.monthlySavingsCents) : null;
-    const plannedCompletionMonth = plannedMonthsToGoal === null
+    const plannedCompletionDate = plannedMonthsToGoal === null
       ? null
-      : isoDate(addCalendarMonths(forecastStart, Math.max(0, plannedMonthsToGoal - 1)));
+      : addCalendarMonths(forecastStart, Math.max(0, plannedMonthsToGoal - 1));
+    const plannedCompletionMonth = plannedCompletionDate ? isoDate(plannedCompletionDate) : null;
     return {
       goalId: goal.id,
       name: goal.name,
@@ -749,7 +754,7 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
   const notable = projections.find((p) => p.timelineChangeWeeks !== null && p.timelineChangeWeeks !== 0);
   const completionAtRisk = projections.find((p) => p.currentProjectedCompletionDate && !p.simulatedProjectedCompletionDate);
   const completionNowAvailable = projections.find((p) => !p.currentProjectedCompletionDate && p.simulatedProjectedCompletionDate);
-  const planned = projections.find((p) => typeof p.plannedMonthsToGoal === 'number' && p.plannedCompletionMonth);
+  const planned = projections.find((p) => typeof p.plannedMonthsToGoal === 'number');
   const cashFlowSummary = weeklyNetChangeCents > 0
     ? `This scenario improves weekly cash flow by ${cents(weeklyNetChangeCents)}.`
     : weeklyNetChangeCents < 0
@@ -766,8 +771,10 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
         : 'Add or adjust a goal to see a timeline change.';
   const plannedSummary = planned && typeof planned.plannedMonthsToGoal === 'number' && input.monthlySavingsCents > 0
     ? planned.plannedMonthsToGoal === 0
-      ? `${planned.name} would be fully funded this month after the one-time savings in this scenario.`
-      : `${input.oneTimeSavingsCents > 0 ? `After adding ${cents(input.oneTimeSavingsCents)} up front, saving` : 'Saving'} ${cents(input.monthlySavingsCents)} each month starting ${calendarMonthLabel(forecastStartMonth)} could fund ${planned.name} in about ${monthDurationLabel(planned.plannedMonthsToGoal)}, around ${calendarMonthLabel(planned.plannedCompletionMonth!)}.`
+      ? `${planned.name} would be fully funded in ${calendarMonthLabel(forecastStartMonth)} after the one-time savings in this scenario.`
+      : planned.plannedCompletionMonth
+        ? `${input.oneTimeSavingsCents > 0 ? `After adding ${cents(input.oneTimeSavingsCents)} up front, saving` : 'Saving'} ${cents(input.monthlySavingsCents)} each month starting ${calendarMonthLabel(forecastStartMonth)} could fund ${planned.name} in about ${monthDurationLabel(planned.plannedMonthsToGoal)}, around ${calendarMonthLabel(planned.plannedCompletionMonth)}.`
+        : `${input.oneTimeSavingsCents > 0 ? `After adding ${cents(input.oneTimeSavingsCents)} up front, saving` : 'Saving'} ${cents(input.monthlySavingsCents)} each month would take about ${monthDurationLabel(planned.plannedMonthsToGoal)} to fund ${planned.name}; the completion month is outside the supported calendar range.`
     : null;
   const hasCashFlowAdjustments = input.monthlySpendReductionCents > 0 || input.monthlyIncomeChangeCents !== 0;
   return {
