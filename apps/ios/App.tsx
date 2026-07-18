@@ -2,6 +2,12 @@ import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
+import {
+  PROFILE_MENU_GROUPS,
+  SETTINGS_SECTION_COPY,
+  type ProfileDestination,
+  type SettingsSection,
+} from './src/profileNavigation';
 import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './src/security';
 import { zenScoreCoachPrompt, zenScoreFocus, zenScoreGuidance, type ZenScoreDestination } from './src/zenScore';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -97,6 +103,7 @@ import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 import { create as createStore } from 'zustand';
 import { MONEY_PHYSICAL_PRODUCT_ID } from '@zenfinance/shared';
 import type {
+  AccountProfileView,
   AnomalyView,
   AuthTokens,
   BillingStatusView,
@@ -161,8 +168,8 @@ Notifications.setNotificationHandler({
   }),
 });
 
-type TabKey = 'brief' | 'coach' | 'transactions' | 'profile' | 'goals' | 'subs' | 'wins' | 'settings' | 'budget' | 'score';
-const ALL_TABS = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'subs', 'wins', 'settings', 'budget', 'score']);
+type TabKey = 'brief' | 'coach' | 'transactions' | 'profile' | 'goals' | 'subs' | 'wins' | 'settings' | 'budget' | 'score' | 'link';
+const ALL_TABS = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'subs', 'wins', 'settings', 'budget', 'score', 'link']);
 const PREMIUM_TABS = new Set<TabKey>(['coach', 'subs', 'wins']);
 
 type RevenueCatCustomerInfo = Awaited<ReturnType<typeof Purchases.restorePurchases>>;
@@ -1275,6 +1282,8 @@ function ProductShell() {
   const setHome = useAppStore((s) => s.setHome);
   const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
   const [tab, setTab] = useState<TabKey>('brief');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('account');
+  const [accountProfile, setAccountProfile] = useState<AccountProfileView | null>(null);
   const [coachInitialQuestion, setCoachInitialQuestion] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -1285,6 +1294,9 @@ function ProductShell() {
       const nextHome = await requestApi<MobileHomeSummaryView>('/api/mobile/home');
       setHome(nextHome);
       setLoadError(null);
+      void requestApi<AccountProfileView>('/api/me')
+        .then(setAccountProfile)
+        .catch((err) => Sentry.captureException(err));
       void requestApi<NotificationPreferencesView>('/api/notifications/preferences')
         .then(setNotificationPrefs)
         .catch((err) => Sentry.captureException(err));
@@ -1320,6 +1332,19 @@ function ProductShell() {
     }
     await refresh();
   }, [refresh]);
+
+  const openSettings = useCallback((section: SettingsSection) => {
+    setSettingsSection(section);
+    setTab('settings');
+  }, []);
+
+  const navigateFromProfile = useCallback((destination: ProfileDestination) => {
+    if (destination.kind === 'settings') {
+      openSettings(destination.section);
+      return;
+    }
+    setTab(destination.tab);
+  }, [openSettings]);
 
   useEffect(() => {
     void refresh();
@@ -1361,8 +1386,9 @@ function ProductShell() {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
     if (tab === 'coach') return <CoachScreen initialQuestion={coachInitialQuestion} />;
-    if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
-    if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
+    if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('link')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
+    if (tab === 'link') return <LinkingScreen onLinked={() => { void refresh(); setTab('transactions'); }} onBack={() => openSettings('banks')} onBudget={() => setTab('budget')} />;
+    if (tab === 'profile') return <ZenProfileScreen accountProfile={accountProfile} billing={home.billing} score={home.zenScore.score} onNavigate={navigateFromProfile} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
     if (tab === 'score') {
       return (
@@ -1370,7 +1396,7 @@ function ProductShell() {
           home={home}
           refreshing={refreshing}
           onBack={() => setTab('profile')}
-          onSettings={() => setTab('settings')}
+          onSettings={() => openSettings('account')}
           onRefresh={refresh}
           onNavigate={(destination) => setTab(destination)}
           onAskCoach={(question) => {
@@ -1383,10 +1409,10 @@ function ProductShell() {
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
-    return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
-  }, [coachInitialQuestion, home, loadError, refresh, refreshInsight, refreshing, tab, theme.accent]);
+    return <SettingsScreen accountProfile={accountProfile} section={settingsSection} items={home.items} billing={home.billing} onBack={() => setTab('profile')} onChanged={refresh} onNavigate={setTab} />;
+  }, [accountProfile, coachInitialQuestion, home, loadError, navigateFromProfile, openSettings, refresh, refreshInsight, refreshing, settingsSection, tab, theme.accent]);
 
-  const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score']).has(tab);
+  const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score', 'settings', 'link']).has(tab);
 
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
@@ -1417,7 +1443,7 @@ function ProductShell() {
           </View>
         ) : null}
         <View style={styles.content}>{content}</View>
-        {home ? <TabBar active={tab} onChange={setTab} isPremium={home.billing.isPremium} /> : null}
+        {home ? <TabBar active={tab === 'settings' ? 'profile' : tab === 'link' ? 'transactions' : tab} onChange={setTab} isPremium={home.billing.isPremium} /> : null}
       </View>
     </SafeAreaView>
   );
@@ -1460,7 +1486,7 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
   );
 }
 
-function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget: () => void }) {
+function LinkingScreen({ onLinked, onBack, onBudget }: { onLinked: () => void; onBack?: () => void; onBudget: () => void }) {
   const theme = useTheme();
   const [busy, setBusy] = useState(false);
   const [bankQuery, setBankQuery] = useState('');
@@ -1519,7 +1545,17 @@ function LinkingScreen({ onLinked, onBudget }: { onLinked: () => void; onBudget:
 
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Connect Bank</Text><Text style={styles.zenPageSubtitle}>Link securely in three calm steps</Text></View></View>
+      <View style={styles.settingsDetailHeader}>
+        {onBack ? (
+          <Pressable style={styles.settingsBackButton} accessibilityLabel="Back to linked banks" onPress={onBack}>
+            <ChevronLeft color={theme.ink} size={22} />
+          </Pressable>
+        ) : null}
+        <View style={styles.flexShrink}>
+          <Text style={styles.zenPageTitle}>Connect Bank</Text>
+          <Text style={styles.zenPageSubtitle}>Link securely in three calm steps</Text>
+        </View>
+      </View>
       <View style={styles.connectSteps}>{['Select Bank', 'Verify', 'Sync'].map((step, index) => <View key={step} style={styles.connectStep}><View style={[styles.connectStepDot, index === 0 ? styles.connectStepActive : null]}><Text style={styles.connectStepNumber}>{index + 1}</Text></View><Text style={styles.connectStepText}>{step}</Text></View>)}</View>
       <SectionBand>
         <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
@@ -2105,36 +2141,76 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRe
   );
 }
 
-function ZenProfileScreen({ billing, score, onSettings, onScore, onBudget }: { billing: BillingStatusView; score: number | null; onSettings: () => void; onScore: () => void; onBudget: () => void }) {
+function ZenProfileScreen({
+  accountProfile,
+  billing,
+  score,
+  onNavigate,
+}: {
+  accountProfile: AccountProfileView | null;
+  billing: BillingStatusView;
+  score: number | null;
+  onNavigate: (destination: ProfileDestination) => void;
+}) {
   const theme = useTheme();
-  const rows: Array<{ label: string; icon: MaterialSymbolName; onPress: () => void }> = [
-    { label: 'Settings', icon: 'settings', onPress: onSettings },
-    { label: 'Security', icon: 'security', onPress: onSettings },
-    { label: 'Linked Banks', icon: 'link', onPress: onSettings },
-    { label: 'Notifications', icon: 'notifications', onPress: onSettings },
-    { label: 'Smart Budgeting', icon: 'account_balance_wallet', onPress: onBudget },
-  ];
   return (
     <ScrollView contentContainerStyle={styles.zenProfileScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.profileTopBack}><ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: '180deg' }] }} /><Text style={styles.zenPageSubtitle}>Profile</Text></View>
-      <View style={styles.profileAvatar}><ZenLotus size={64} /></View>
-      <Text style={styles.profileName}>Zen-Finance Member</Text>
-      <View style={styles.profileRoleRow}>
-        <ZenLotus size={13} />
-        <Text style={styles.profileRole}>{billing.isPremium ? 'Zen Master' : 'Finding your balance'}</Text>
+      <View style={styles.zenPageHeader}>
+        <View>
+          <Text style={styles.zenPageTitle}>Profile</Text>
+          <Text style={styles.zenPageSubtitle}>Your money space, preferences, and privacy</Text>
+        </View>
+        <View style={[styles.profilePlanBadge, { borderColor: billing.isPremium ? theme.gold : theme.border }]}>
+          <Crown color={billing.isPremium ? theme.gold : theme.muted} size={14} />
+          <Text style={[styles.profilePlanBadgeText, { color: billing.isPremium ? theme.gold : theme.muted }]}>
+            {billing.isPremium ? 'Coach' : 'Free'}
+          </Text>
+        </View>
       </View>
-      <Pressable style={styles.profileScore} onPress={onScore}><ZenLotus size={18} /><Text style={styles.profileScoreText}>Zen Score</Text><Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text><ChevronRight color={theme.muted} size={16} /></Pressable>
-      <ZenGlass style={styles.profileMenu}>
-        {rows.map((row, index) => (
-          <Pressable key={row.label} style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]} onPress={row.onPress}>
-            <MaterialSymbol name={row.icon} color={theme.muted} size={18} />
-            <Text style={styles.profileMenuText}>{row.label}</Text>
-            <ChevronRight color={theme.muted} size={17} />
-          </Pressable>
-        ))}
+      <ZenGlass style={styles.profileIdentityCard}>
+        <View style={styles.profileAvatar}><ZenLotus size={54} /></View>
+        <View style={styles.profileIdentityCopy}>
+          <Text style={styles.profileName} numberOfLines={1}>{accountProfile?.email ?? 'Your ZenFinance account'}</Text>
+          <View style={styles.profileRoleRow}>
+            <ZenLotus size={13} />
+            <Text style={styles.profileRole}>{billing.isPremium ? 'Coach membership active' : 'Finding your balance'}</Text>
+          </View>
+        </View>
       </ZenGlass>
+      <Pressable style={styles.profileScore} onPress={() => onNavigate({ kind: 'tab', tab: 'score' })}>
+        <View style={[styles.profileMenuIcon, { backgroundColor: theme.accentSoft }]}><ZenLotus size={20} /></View>
+        <View style={styles.profileMenuCopy}>
+          <Text style={styles.profileMenuText}>Zen Score</Text>
+          <Text style={styles.profileMenuDetail}>See what is shaping your financial balance</Text>
+        </View>
+        <Text style={styles.profileScoreValue}>{score === null ? '—' : `${score}/100`}</Text>
+        <ChevronRight color={theme.muted} size={17} />
+      </Pressable>
+      {PROFILE_MENU_GROUPS.map((group) => (
+        <View key={group.title} style={styles.profileMenuGroup}>
+          <Text style={styles.profileSectionLabel}>{group.title.toUpperCase()}</Text>
+          <ZenGlass style={styles.profileMenu}>
+            {group.items.map((row, index) => (
+              <Pressable
+                key={row.key}
+                accessibilityLabel={`${row.label}. ${row.detail}`}
+                style={[styles.profileMenuRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}
+                onPress={() => onNavigate(row.destination)}
+              >
+                <View style={[styles.profileMenuIcon, { backgroundColor: theme.surfaceAlt }]}>
+                  <MaterialSymbol name={row.icon as MaterialSymbolName} color={theme.accent} size={18} />
+                </View>
+                <View style={styles.profileMenuCopy}>
+                  <Text style={styles.profileMenuText}>{row.label}</Text>
+                  <Text style={styles.profileMenuDetail}>{row.detail}</Text>
+                </View>
+                <ChevronRight color={theme.muted} size={17} />
+              </Pressable>
+            ))}
+          </ZenGlass>
+        </View>
+      ))}
       <SecondaryButton label="Sign Out" icon={LogOut} onPress={signOutUser} />
-      <SecondaryButton label="Open full settings" icon={SlidersHorizontal} onPress={onSettings} />
     </ScrollView>
   );
 }
@@ -3464,7 +3540,23 @@ function WinsScreen({
   );
 }
 
-function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; billing: BillingStatusView; onChanged: () => void }) {
+function SettingsScreen({
+  accountProfile,
+  section,
+  items,
+  billing,
+  onBack,
+  onChanged,
+  onNavigate,
+}: {
+  accountProfile: AccountProfileView | null;
+  section: SettingsSection;
+  items: LinkedItem[];
+  billing: BillingStatusView;
+  onBack: () => void;
+  onChanged: () => void;
+  onNavigate: (tab: TabKey) => void;
+}) {
   const theme = useTheme();
   const prefs = useAppStore((s) => s.notificationPrefs);
   const setPrefs = useAppStore((s) => s.setNotificationPrefs);
@@ -3495,10 +3587,11 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   ].join('\n');
 
   useEffect(() => {
+    if (section !== 'referral') return;
     requestApi<ReferralStatusView>('/api/referrals/me')
       .then(setReferral)
       .catch(() => setReferral(null));
-  }, []);
+  }, [section]);
 
   const loadFreelancer = useCallback(async () => {
     if (!billing.isPremium) {
@@ -3517,8 +3610,8 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }, [billing.isPremium]);
 
   useEffect(() => {
-    void loadFreelancer();
-  }, [loadFreelancer]);
+    if (section === 'freelancer') void loadFreelancer();
+  }, [loadFreelancer, section]);
 
   const loadHousehold = useCallback(async () => {
     try {
@@ -3529,8 +3622,8 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
   }, []);
 
   useEffect(() => {
-    void loadHousehold();
-  }, [loadHousehold]);
+    if (section === 'household') void loadHousehold();
+  }, [loadHousehold, section]);
 
   async function registerPush() {
     try {
@@ -3833,9 +3926,43 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
     ]);
   }
 
+  function openExternal(url: string) {
+    void Linking.openURL(url).catch(() => {
+      Alert.alert('Could not open link', 'Please try again in a moment.');
+    });
+  }
+
+  const page = SETTINGS_SECTION_COPY[section];
+
   return (
     <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Settings</Text><Text style={styles.zenPageSubtitle}>Keep your Zen-Finance space in balance</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
+      <View style={styles.settingsDetailHeader}>
+        <Pressable style={styles.settingsBackButton} accessibilityLabel="Back to profile" onPress={onBack}>
+          <ChevronLeft color={theme.ink} size={22} />
+        </Pressable>
+        <View style={styles.flexShrink}>
+          <Text style={styles.zenPageTitle}>{page.title}</Text>
+          <Text style={styles.zenPageSubtitle}>{page.subtitle}</Text>
+        </View>
+      </View>
+      {section === 'account' ? (
+        <>
+      <SectionHeader title="Account" />
+      <ZenGlass style={styles.settingsPanel}>
+        <View style={styles.settingsIdentityRow}>
+          <View style={[styles.profileMenuIcon, { backgroundColor: theme.accentSoft }]}>
+            <MaterialSymbol name="account_circle" color={theme.accent} size={20} />
+          </View>
+          <View style={styles.flexShrink}>
+            <Text style={[styles.rowTitle, { color: theme.ink }]} numberOfLines={1}>{accountProfile?.email ?? 'ZenFinance member'}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>
+              {accountProfile
+                ? `${accountProfile.signInMethods.map((method) => method === 'apple' ? 'Apple' : 'Password').join(' + ')} sign-in · member since ${dateLabel(accountProfile.createdAt)}`
+                : 'Account details will appear when the service is available.'}
+            </Text>
+          </View>
+        </View>
+      </ZenGlass>
       <SectionHeader title="Billing" />
       <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
@@ -3852,6 +3979,10 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
         <SecondaryButton label={billingBusy ? 'Restoring...' : 'Restore purchases'} icon={RefreshCcw} disabled={billingBusy} onPress={restorePurchases} />
         {billing.isPremium ? <SecondaryButton label="Manage subscription" icon={CreditCard} onPress={manageSubscription} /> : null}
       </ZenGlass>
+        </>
+      ) : null}
+      {section === 'referral' ? (
+        <>
       <SectionHeader title="Invite Credit" />
       <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
@@ -3887,6 +4018,10 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           <Text style={[styles.rowDetail, { color: theme.muted }]}>Redeemed code {referral.redeemedCode}</Text>
         )}
       </ZenGlass>
+        </>
+      ) : null}
+      {section === 'freelancer' ? (
+        <>
       <SectionHeader title="Freelancer Mode" />
       <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
@@ -3959,6 +4094,10 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </Text>
         )}
       </ZenGlass>
+        </>
+      ) : null}
+      {section === 'household' ? (
+        <>
       <SectionHeader title="Household Sharing" />
       <ZenGlass style={styles.settingsPanel}>
         <View style={styles.panelHeader}>
@@ -4086,6 +4225,10 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </>
         )}
       </ZenGlass>
+        </>
+      ) : null}
+      {section === 'notifications' ? (
+        <>
       <SectionHeader title="Notifications" />
       <ZenGlass style={styles.settingsPanel}>
         <PrimaryButton label={prefs?.pushEnabled ? 'Push enabled' : 'Enable push notifications'} icon={Bell} onPress={registerPush} />
@@ -4098,10 +4241,27 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </>
         ) : null}
       </ZenGlass>
+        </>
+      ) : null}
+      {section === 'banks' ? (
+        <>
       <SectionHeader title="Linked Banks" />
+      <ZenGlass style={styles.settingsPanel}>
+        <View style={styles.panelHeader}>
+          <ShieldCheck color={theme.accent} size={20} />
+          <Text style={[styles.panelKicker, { color: theme.accent }]}>Read-only connections</Text>
+        </View>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>ZenFinance reads balances and transactions to build your brief. It cannot move money.</Text>
+      </ZenGlass>
+      {items.length === 0 ? (
+        <ZenGlass style={styles.settingsPanel}>
+          <Text style={[styles.panelTitle, { color: theme.ink }]}>No banks linked</Text>
+          <Text style={[styles.panelBody, { color: theme.muted }]}>Connect your first account to replace generic advice with a brief based on your real activity.</Text>
+        </ZenGlass>
+      ) : null}
       {items.map((item) => (
         <ZenGlass key={item.id} style={styles.settingsRowGlass}>
-          <View>
+          <View style={styles.flexShrink}>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{item.institutionName ?? 'Bank'}</Text>
             <Text style={[styles.rowDetail, { color: theme.muted }]}>
               {item.status.replace('_', ' ')} · {item.accounts.length} account(s) · synced {dateLabel(item.lastSyncedAt)}
@@ -4118,10 +4278,34 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           </Pressable>
         </ZenGlass>
       ))}
+      <PrimaryButton label={items.length > 0 ? 'Connect another bank' : 'Connect a bank'} icon={Landmark} onPress={() => onNavigate('link')} />
+        </>
+      ) : null}
+      {section === 'privacy' ? (
+        <>
+      <SectionHeader title="Security" />
+      <ZenGlass style={styles.settingsPanel}>
+        <View style={styles.panelHeader}>
+          <ShieldCheck color={theme.accent} size={20} />
+          <Text style={[styles.panelKicker, { color: theme.accent }]}>Private by default</Text>
+        </View>
+        <Text style={[styles.panelBody, { color: theme.muted }]}>Bank connections are read-only, credentials stay with Plaid, and sensitive screens are hidden when the app leaves the foreground.</Text>
+      </ZenGlass>
       <SectionHeader title="Data Rights" />
       <SecondaryButton label="Export my data" icon={ShieldCheck} onPress={exportData} />
+      <SecondaryButton label="Read privacy policy" icon={LockKeyhole} onPress={() => openExternal('https://zenfinance.rushingtechnologies.com/privacy')} />
+      <SectionHeader title="Danger Zone" />
+      <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
+        </>
+      ) : null}
+      {section === 'about' ? (
+        <>
+      <SectionHeader title="Help & Legal" />
+      <SecondaryButton label="Help & support" icon={MessageCircle} onPress={() => openExternal('https://zenfinance.rushingtechnologies.com/support')} />
+      <SecondaryButton label="Terms of service" icon={CreditCard} onPress={() => openExternal('https://zenfinance.rushingtechnologies.com/terms')} />
       <SectionHeader title="App Update" />
       <ZenGlass style={styles.settingsPanel}>
+        <Text style={[styles.panelTitle, { color: theme.ink }]}>ZenFinance {Constants.expoConfig?.version ?? '0.1.1'}</Text>
         <Text style={[styles.updateMeta, { color: theme.muted }]}>{updateMeta}</Text>
         <SecondaryButton
           label={updateBusy ? 'Checking...' : 'Check for update'}
@@ -4130,8 +4314,8 @@ function SettingsScreen({ items, billing, onChanged }: { items: LinkedItem[]; bi
           onPress={checkForUpdate}
         />
       </ZenGlass>
-      <SecondaryButton label="Sign out" icon={LogOut} onPress={signOutUser} />
-      <SecondaryButton label="Delete account" icon={Trash2} onPress={deleteAccount} danger />
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -4554,18 +4738,28 @@ const styles = StyleSheet.create({
   paywallHero: { gap: 12, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.32, shadowRadius: 28 },
   auditCard: { gap: 10 },
   zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
-  profileTopBack: { flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start' },
-  profileAvatar: { width: 94, height: 94, borderRadius: 47, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 2, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-  profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, textAlign: 'center', marginTop: 10 },
-  profileRoleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginTop: 3 },
+  profilePlanBadge: { minHeight: 30, paddingHorizontal: 10, borderRadius: 15, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFFFFF0D' },
+  profilePlanBadgeText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  profileIdentityCard: { minHeight: 102, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  profileIdentityCopy: { flex: 1, minWidth: 0 },
+  profileAvatar: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 1.5, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.42, shadowRadius: 20, shadowOffset: { width: 0, height: 0 } },
+  profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, lineHeight: 21 },
+  profileRoleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11 },
-  profileScore: { alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 36, paddingHorizontal: 12, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1A', marginTop: 12 },
-  profileScoreText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11 },
-  profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  profileMenu: { paddingVertical: 4, marginTop: 8 },
-  profileMenuRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4 },
-  profileMenuText: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 13 },
-  zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 10 },
+  profileScore: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#00D2D34D' },
+  profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18 },
+  profileMenuGroup: { gap: 7 },
+  profileSectionLabel: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.4, marginLeft: 4 },
+  profileMenu: { paddingVertical: 2 },
+  profileMenuRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
+  profileMenuIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  profileMenuCopy: { flex: 1, minWidth: 0 },
+  profileMenuText: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 13 },
+  profileMenuDetail: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 2 },
+  zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 14 },
+  settingsDetailHeader: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  settingsBackButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A' },
+  settingsIdentityRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12 },
   zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
   zenEditButton: { minHeight: 32, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
   budgetGraph: { position: 'relative' },
