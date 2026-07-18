@@ -1875,15 +1875,10 @@ function accountKindIcon(kind: string): MaterialSymbolName {
   }
 }
 
-function formatActivityCategory(txn: EnrichedTransactionView): string {
-  const text = `${txn.category ?? ''} ${txn.merchantClean ?? txn.merchantName ?? txn.name}`.toLowerCase();
-  if (text.includes('invest') || text.includes('vanguard') || text.includes('fidelity') || text.includes('robinhood')) return 'Growth/Investments';
-  if (text.includes('dining') || text.includes('coffee') || text.includes('starbucks') || text.includes('restaurant')) return 'Dining';
-  if (text.includes('shop') || text.includes('amazon') || text.includes('retail')) return 'Shopping';
-  if (text.includes('util') || text.includes('comcast') || text.includes('electric') || text.includes('water')) return 'Utilities';
-  // Fall back to the raw enrichment category, but title-case it so codes like
-  // "RIDESHARE_AND_TAXI" read as "Rideshare And Taxi" instead of shouting.
-  const raw = txn.category ?? 'General';
+// Title-cases a raw enum/category code so values like "RIDESHARE_AND_TAXI"
+// or "no_deadline" read as "Rideshare And Taxi" / "No Deadline" instead of
+// shouting or leaking snake_case into the UI.
+function titleCaseFromCode(raw: string): string {
   return raw
     .replace(/_+/g, ' ')
     .toLowerCase()
@@ -1891,6 +1886,15 @@ function formatActivityCategory(txn: EnrichedTransactionView): string {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+function formatActivityCategory(txn: EnrichedTransactionView): string {
+  const text = `${txn.category ?? ''} ${txn.merchantClean ?? txn.merchantName ?? txn.name}`.toLowerCase();
+  if (text.includes('invest') || text.includes('vanguard') || text.includes('fidelity') || text.includes('robinhood')) return 'Growth/Investments';
+  if (text.includes('dining') || text.includes('coffee') || text.includes('starbucks') || text.includes('restaurant')) return 'Dining';
+  if (text.includes('shop') || text.includes('amazon') || text.includes('retail')) return 'Shopping';
+  if (text.includes('util') || text.includes('comcast') || text.includes('electric') || text.includes('water')) return 'Utilities';
+  return titleCaseFromCode(txn.category ?? 'General');
 }
 
 function activityIconForCategory(category: string): { icon: MaterialSymbolName; color: string; backgroundColor: string } {
@@ -2265,7 +2269,7 @@ function BudgetNodeGraph({
             ]}
           >
             <MaterialSymbol name={budgetCategoryIcon(node.category)} size={18} color={color} />
-            <Text style={styles.budgetNodeName} numberOfLines={1}>{node.category}</Text>
+            <Text style={styles.budgetNodeName} numberOfLines={1}>{titleCaseFromCode(node.category)}</Text>
             <Text style={[styles.budgetNodeAmount, isWarning ? { color } : null]} numberOfLines={1}>{usd(node.amountCents, true)}</Text>
             {isWarning ? (
               <View style={[styles.budgetNodeTag, { backgroundColor: `${color}33`, borderColor: `${color}80` }]}>
@@ -2317,6 +2321,7 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   const [period, setPeriod] = useState<BudgetPeriod>('monthly');
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({});
+  const [capDraftText, setCapDraftText] = useState<Record<string, string>>({});
   const [transactions, setTransactions] = useState<EnrichedTransactionView[]>(home.recentTransactions);
 
   useEffect(() => {
@@ -2386,6 +2391,25 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
       persistBudget({ targets, period, alertsEnabled, categoryCaps: next });
       return next;
     });
+    setCapDraftText((current) => {
+      const { [category]: _dropped, ...rest } = current;
+      return rest;
+    });
+  }
+
+  function commitCategoryCapText(category: string, amountCents: number, text: string) {
+    const parsed = Math.round(Number(text.replace(/[^0-9]/g, '')));
+    const fallback = categoryCaps[category] ?? Math.max(50, Math.round(amountCents / 100));
+    const next = Number.isFinite(parsed) && parsed > 0 ? Math.max(25, parsed) : fallback;
+    setCategoryCaps((current) => {
+      const nextCaps = { ...current, [category]: next };
+      persistBudget({ targets, period, alertsEnabled, categoryCaps: nextCaps });
+      return nextCaps;
+    });
+    setCapDraftText((current) => {
+      const { [category]: _dropped, ...rest } = current;
+      return rest;
+    });
   }
 
   return (
@@ -2394,12 +2418,51 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
       {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>{period === 'monthly' ? 'Monthly' : 'Weekly'} budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending for this {period === 'monthly' ? 'month' : 'week'}.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder={period === 'monthly' ? '$3,000' : '$750'} placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} compact onPress={saveBudget} /></View></ZenGlass> : null}
       <BudgetNodeGraph availableCents={availableCents} categories={categories} caps={categoryCaps} />
       <ZenGlass style={styles.budgetControls}>
-        <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget rhythm</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
+        <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget Period</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
         <View style={styles.budgetSegmented}><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'monthly' }} style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'weekly' }} style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
         <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Remember whether budget nudges are enabled</Text></View><Switch value={alertsEnabled} onValueChange={(value) => { setAlertsEnabled(value); persistBudget({ targets, period, alertsEnabled: value, categoryCaps }); }} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
       </ZenGlass>
       <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
-      <ZenGlass style={styles.categoryCapsPanel}>{categories.map(([category, amount], index) => { const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100)); return <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}><View style={styles.flexShrink}><Text style={styles.categoryCapName}>{category}</Text><Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`Decrease ${category} cap`} style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, -50)}><Minus color={theme.muted} size={18} /></Pressable><Text style={styles.categoryCapValue}>${cap}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Increase ${category} cap`} style={styles.capButton} onPress={() => adjustCategoryCap(category, amount, 50)}><Plus color={theme.accent} size={18} /></Pressable></View>; })}</ZenGlass>
+      <ZenGlass style={styles.categoryCapsPanel}>
+        {categories.map(([category, amount], index) => {
+          const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100));
+          return (
+            <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
+              <View style={styles.flexShrink}>
+                <Text style={styles.categoryCapName}>{titleCaseFromCode(category)}</Text>
+                <Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Decrease ${titleCaseFromCode(category)} cap`}
+                style={styles.capButton}
+                onPress={() => adjustCategoryCap(category, amount, -50)}
+              >
+                <Minus color={theme.muted} size={18} />
+              </Pressable>
+              <View style={styles.categoryCapInputWrap}>
+                <Text style={styles.categoryCapDollarSign}>$</Text>
+                <TextInput
+                  value={capDraftText[category] ?? String(cap)}
+                  onChangeText={(text) => setCapDraftText((current) => ({ ...current, [category]: text.replace(/[^0-9]/g, '') }))}
+                  onEndEditing={() => commitCategoryCapText(category, amount, capDraftText[category] ?? String(cap))}
+                  keyboardType="number-pad"
+                  style={styles.categoryCapValue}
+                  accessibilityLabel={`${titleCaseFromCode(category)} cap amount`}
+                />
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Increase ${titleCaseFromCode(category)} cap`}
+                style={styles.capButton}
+                onPress={() => adjustCategoryCap(category, amount, 50)}
+              >
+                <Plus color={theme.accent} size={18} />
+              </Pressable>
+            </View>
+          );
+        })}
+      </ZenGlass>
       <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
     </ScrollView>
   );
@@ -3165,7 +3228,7 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
 }
 
 function pacingLabel(value: GoalView['pacing']['pacingStatus']): string {
-  return value.replace('_', ' ');
+  return titleCaseFromCode(value);
 }
 
 function goalCoachSentence(goal: GoalView): string {
@@ -3377,7 +3440,7 @@ function WinsScreen({
         <ZenGlass key={win.id} style={styles.glassRow}>
           <View style={styles.flexShrink}>
             <Text style={[styles.rowTitle, { color: theme.ink }]}>{win.description}</Text>
-            <Text style={[styles.rowDetail, { color: theme.muted }]}>{win.status} · {dateLabel(win.createdAt)}</Text>
+            <Text style={[styles.rowDetail, { color: theme.muted }]}>{titleCaseFromCode(win.status)} · {dateLabel(win.createdAt)}</Text>
           </View>
           <View style={styles.rightStack}>
             <Text style={[styles.amount, { color: win.status === 'verified' ? theme.success : theme.gold }]}>{usd(win.amountCents, true)}</Text>
@@ -4143,7 +4206,14 @@ function MoneyMetric({ label, value, icon: Icon }: { label: string; value: strin
   return (
     <View style={[styles.metric, { backgroundColor: theme.surface, borderColor: theme.border }]}>
       <Icon color={theme.accent} size={18} />
-      <Text style={[styles.metricValue, { color: theme.ink }]}>{value}</Text>
+      <Text
+        style={[styles.metricValue, { color: theme.ink }]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}
+      >
+        {value}
+      </Text>
       <Text style={[styles.metricLabel, { color: theme.muted }]}>{label}</Text>
     </View>
   );
@@ -4533,7 +4603,9 @@ const styles = StyleSheet.create({
   categoryCapName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   categoryCapMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
   capButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
-  categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
+  categoryCapInputWrap: { flexDirection: 'row', alignItems: 'center' },
+  categoryCapDollarSign: { color: '#FFFFFF80', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  categoryCapValue: { minWidth: 40, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center', padding: 0 },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
   scorePageHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scoreHeaderButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A' },
