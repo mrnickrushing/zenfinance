@@ -2232,7 +2232,7 @@ function SmartBudgetingScreen({ home }: { home: MobileHomeSummaryView }) {
   }, [period, transactions]);
   const categories = allCategories.slice(0, 5);
   const total = allCategories.reduce((sum, [, amount]) => sum + amount, 0);
-  const budgetTarget = targets[period];
+  const budgetTarget = editing ? draftBudgetTarget : targets[period];
   const targetCents = Math.max(0, Math.round(Number(budgetTarget.replace(/[$,\s]/g, '')) * 100) || 0);
   const availableCents = Math.max(0, targetCents - total);
 
