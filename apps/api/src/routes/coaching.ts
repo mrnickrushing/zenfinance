@@ -12,17 +12,20 @@ import {
 import type { InferSelectModel } from 'drizzle-orm';
 import { and, desc, eq } from 'drizzle-orm';
 import { Router } from 'express';
-import { auditSubscriptions } from '../coaching/subscriptions.js';
+import { getInsightProvider } from '../coaching/index.js';
 import {
   confirmMoneyWin,
   getMoneyWinsSummary,
   recordAnomalyRecovery,
   recordSubscriptionCancellation,
 } from '../coaching/moneyWins.js';
+import { getLatestInsight, runWeeklyBriefForUser } from '../coaching/pipeline.js';
+import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { db } from '../db/client.js';
 import { anomalies, insights } from '../db/schema.js';
 import { requirePremium } from '../middleware/billing.js';
 import { requireUser } from '../middleware/userAuth.js';
+import { userRateLimit } from '../middleware/userRateLimit.js';
 import { validateBody } from '../middleware/validate.js';
 
 type InsightRow = InferSelectModel<typeof insights>;
@@ -83,6 +86,31 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
     }
     res.json(insightToView(row));
   });
+
+  // Manual pull-to-refresh: force-regenerate the current weekly brief on
+  // demand instead of waiting for the Monday cron. Upserts onto the same
+  // week's row (see persistBrief), so repeated pulls within a week just
+  // update the existing insight rather than piling up duplicates. Rate
+  // limited since each pull is a real LLM call.
+  router.post(
+    '/api/insights/refresh',
+    requireUser,
+    userRateLimit('insight-refresh', {
+      windowMs: 5 * 60_000,
+      limit: 1,
+      message: "You're all caught up — check back in a few minutes for a fresh insight.",
+    }),
+    async (_req, res) => {
+      const userId = res.locals.userId as number;
+      await runWeeklyBriefForUser(db, getInsightProvider(), userId);
+      const row = await getLatestInsight(db, userId, 'weekly_brief');
+      if (!row) {
+        res.status(404).json({ error: { code: 'not_found', message: 'Nothing to refresh yet — sync some transactions first.' } });
+        return;
+      }
+      res.json(insightToView(row));
+    },
+  );
 
   // Feedback loop (§4 Stage 5): thumbs + next-week "did you do it?".
   router.post('/api/insights/:id/feedback', requireUser, validateBody(insightFeedbackSchema), async (req, res) => {
