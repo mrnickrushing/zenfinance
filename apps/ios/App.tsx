@@ -9,6 +9,7 @@ import {
   type SettingsSection,
 } from './src/profileNavigation';
 import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './src/security';
+import { buildWhatIfRequest, type WhatIfDraft } from './src/whatIf';
 import { zenScoreCoachPrompt, zenScoreFocus, zenScoreGuidance, type ZenScoreDestination } from './src/zenScore';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
@@ -133,7 +134,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'Finance shell UI cleanup · 2026-07-12.2';
+const OTA_DIAGNOSTIC_LABEL = 'Savings what-if custom inputs · 2026-07-18.1';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -3161,6 +3162,14 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
   const [target, setTarget] = useState('');
   const [saving, setSaving] = useState(false);
   const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
+  const [scenarioGoalId, setScenarioGoalId] = useState<number | null>(null);
+  const [scenarioDraft, setScenarioDraft] = useState<WhatIfDraft>({
+    oneTimeSavings: '',
+    monthlySpendReduction: '',
+    monthlyIncomeChange: '',
+  });
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [runningScenario, setRunningScenario] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
   const [dismissedMilestoneIds, setDismissedMilestoneIds] = useState<Set<number>>(new Set());
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
@@ -3185,17 +3194,45 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
     }
   }
 
-  async function runScenario(goalId?: number) {
+  function openScenario(goalId: number) {
+    setScenarioGoalId(goalId);
+    setScenario(null);
+    setScenarioError(null);
+  }
+
+  function closeScenario() {
+    setScenarioGoalId(null);
+    setScenario(null);
+    setScenarioError(null);
+  }
+
+  function updateScenarioDraft(field: keyof WhatIfDraft, value: string) {
+    setScenarioDraft((current) => ({ ...current, [field]: value }));
+    setScenario(null);
+    setScenarioError(null);
+  }
+
+  async function runScenario(goalId: number) {
     if (!billing.isPremium) return;
+    const request = buildWhatIfRequest(goalId, scenarioDraft);
+    if (!request.ok) {
+      setScenarioError(request.error);
+      return;
+    }
+    setRunningScenario(true);
+    setScenario(null);
+    setScenarioError(null);
     try {
       setScenario(
         await requestApi<WhatIfResultView>('/api/what-if', {
           method: 'POST',
-          body: JSON.stringify({ goalId, monthlySpendReductionCents: 15000, oneTimeSavingsCents: 2500 }),
+          body: JSON.stringify(request.value),
         }),
       );
     } catch (err) {
-      Alert.alert('Simulation failed', err instanceof Error ? err.message : 'Unknown error');
+      setScenarioError(err instanceof Error ? err.message : 'The forecast could not be completed.');
+    } finally {
+      setRunningScenario(false);
     }
   }
 
@@ -3243,39 +3280,123 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
             Projected completion: {dateLabel(goal.pacing.projectedCompletionDate)}
           </Text>
           <SecondaryButton
-            label={billing.isPremium ? 'Run $150/mo what-if' : 'Unlock what-if'}
+            label={billing.isPremium ? (scenarioGoalId === goal.id ? 'Close scenario planner' : 'Build a custom what-if') : 'Unlock what-if'}
             icon={SlidersHorizontal}
-            onPress={() => (billing.isPremium ? runScenario(goal.id) : setShowPaywall(true))}
+            disabled={runningScenario}
+            onPress={() => (billing.isPremium ? (scenarioGoalId === goal.id ? closeScenario() : openScenario(goal.id)) : setShowPaywall(true))}
           />
+          {scenarioGoalId === goal.id ? (
+            <View style={[styles.whatIfPlanner, { borderColor: theme.border }]}>
+              <View style={styles.panelHeader}>
+                <SlidersHorizontal color={theme.accent} size={19} />
+                <View style={styles.flexShrink}>
+                  <Text style={[styles.panelKicker, { color: theme.accent }]}>Custom scenario</Text>
+                  <Text style={[styles.whatIfPlannerTitle, { color: theme.ink }]}>What could move {goal.name}?</Text>
+                </View>
+              </View>
+              <Text style={[styles.rowDetail, { color: theme.muted }]}>Enter any combination. This forecast will not move money or change your goal.</Text>
+              <View style={styles.whatIfField}>
+                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>One-time savings</Text>
+                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Money you could add once</Text>
+                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                  <TextInput
+                    accessibilityLabel="One-time savings amount"
+                    editable={!runningScenario}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={theme.muted}
+                    value={scenarioDraft.oneTimeSavings}
+                    onChangeText={(value) => updateScenarioDraft('oneTimeSavings', value)}
+                    style={[styles.whatIfTextInput, { color: theme.ink }]}
+                  />
+                </View>
+              </View>
+              <View style={styles.whatIfField}>
+                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly spending reduction</Text>
+                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>What you could redirect each month</Text>
+                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                  <TextInput
+                    accessibilityLabel="Monthly spending reduction amount"
+                    editable={!runningScenario}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={theme.muted}
+                    value={scenarioDraft.monthlySpendReduction}
+                    onChangeText={(value) => updateScenarioDraft('monthlySpendReduction', value)}
+                    style={[styles.whatIfTextInput, { color: theme.ink }]}
+                  />
+                  <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
+                </View>
+              </View>
+              <View style={styles.whatIfField}>
+                <Text style={[styles.whatIfFieldLabel, { color: theme.ink }]}>Monthly income change</Text>
+                <Text style={[styles.whatIfFieldHint, { color: theme.muted }]}>Use a minus sign if income may decrease</Text>
+                <View style={[styles.whatIfMoneyInput, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+                  <Text style={[styles.whatIfCurrency, { color: theme.muted }]}>$</Text>
+                  <TextInput
+                    accessibilityLabel="Monthly income change amount"
+                    editable={!runningScenario}
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="+500 or -200"
+                    placeholderTextColor={theme.muted}
+                    value={scenarioDraft.monthlyIncomeChange}
+                    onChangeText={(value) => updateScenarioDraft('monthlyIncomeChange', value)}
+                    style={[styles.whatIfTextInput, { color: theme.ink }]}
+                  />
+                  <Text style={[styles.whatIfInputSuffix, { color: theme.muted }]}>/mo</Text>
+                </View>
+              </View>
+              <View style={styles.whatIfPresetRow}>
+                <ScenarioPreset label="$50/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySpendReduction', '50')} />
+                <ScenarioPreset label="$150/mo" disabled={runningScenario} onPress={() => updateScenarioDraft('monthlySpendReduction', '150')} />
+                <ScenarioPreset label="$500 once" disabled={runningScenario} onPress={() => updateScenarioDraft('oneTimeSavings', '500')} />
+              </View>
+              {scenarioError ? <Text style={styles.whatIfError}>{scenarioError}</Text> : null}
+              <PrimaryButton
+                label={runningScenario ? 'Running forecast...' : 'Run my forecast'}
+                icon={Sparkles}
+                disabled={runningScenario}
+                onPress={() => runScenario(goal.id)}
+              />
+              {scenario ? (
+                <View style={[styles.whatIfResult, { borderColor: theme.accent }]}>
+                  <View style={styles.panelHeader}>
+                    <CheckCircle2 color={theme.success} size={19} />
+                    <Text style={[styles.panelKicker, { color: theme.success }]}>Forecast result</Text>
+                  </View>
+                  <Text style={[styles.panelBody, { color: theme.muted }]}>{scenario.narration}</Text>
+                  <View style={[styles.whatIfWeeklyImpact, { backgroundColor: theme.accentSoft }]}>
+                    <Text style={[styles.whatIfWeeklyLabel, { color: theme.muted }]}>Weekly cash-flow change</Text>
+                    <Text style={[styles.whatIfWeeklyValue, { color: scenario.weeklyNetChangeCents >= 0 ? theme.success : theme.danger }]}>
+                      {scenario.weeklyNetChangeCents > 0 ? '+' : ''}{usd(scenario.weeklyNetChangeCents, true)}
+                    </Text>
+                  </View>
+                  <StatusRail>
+                    <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={PiggyBank} />
+                    <MoneyMetric label="Monthly cut" value={usd(scenario.monthlySpendReductionCents, true)} icon={CreditCard} />
+                    <MoneyMetric label="Income" value={usd(scenario.monthlyIncomeChangeCents, true)} icon={CircleDollarSign} />
+                  </StatusRail>
+                  {scenario.projections.map((projection) => (
+                    <View key={projection.goalId} style={[styles.scenarioRow, { borderColor: theme.border }]}>
+                      <View style={styles.flexShrink}>
+                        <Text style={[styles.rowTitle, { color: theme.ink }]}>{projection.name}</Text>
+                        <Text style={[styles.rowDetail, { color: theme.muted }]}>
+                          {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.amount, { color: projection.timelineChangeWeeks !== null && projection.timelineChangeWeeks < 0 ? theme.danger : theme.success }]}>
+                        {scenarioTimelineLabel(projection)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
         </ZenGlass>
       ))}
-      {scenario ? (
-        <SectionBand>
-          <View style={styles.panelHeader}>
-            <SlidersHorizontal color={theme.accent} size={20} />
-            <Text style={[styles.panelKicker, { color: theme.accent }]}>What-if scenario</Text>
-          </View>
-          <Text style={[styles.panelBody, { color: theme.muted }]}>{scenario.narration}</Text>
-          <StatusRail>
-            <MoneyMetric label="Weekly net" value={usd(scenario.weeklyNetChangeCents, true)} icon={CircleDollarSign} />
-            <MoneyMetric label="One-time" value={usd(scenario.oneTimeSavingsCents, true)} icon={PiggyBank} />
-            <MoneyMetric label="Monthly cut" value={usd(scenario.monthlySpendReductionCents, true)} icon={CreditCard} />
-          </StatusRail>
-          {scenario.projections.slice(0, 2).map((projection) => (
-            <View key={projection.goalId} style={[styles.scenarioRow, { borderColor: theme.border }]}>
-              <View style={styles.flexShrink}>
-                <Text style={[styles.rowTitle, { color: theme.ink }]}>{projection.name}</Text>
-                <Text style={[styles.rowDetail, { color: theme.muted }]}>
-                  {dateLabel(projection.currentProjectedCompletionDate)} → {dateLabel(projection.simulatedProjectedCompletionDate)}
-                </Text>
-              </View>
-              <Text style={[styles.amount, { color: theme.success }]}>
-                {projection.weeksFaster === null ? 'Updated' : `${projection.weeksFaster}w faster`}
-              </Text>
-            </View>
-          ))}
-        </SectionBand>
-      ) : null}
       <SectionHeader title="New Goal" />
       {atFreeGoalLimit || showPaywall ? (
         <PaywallScreen billing={billing} source="goals_limit" onChanged={onChanged} />
@@ -3305,6 +3426,31 @@ function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing
 
 function pacingLabel(value: GoalView['pacing']['pacingStatus']): string {
   return titleCaseFromCode(value);
+}
+
+function scenarioTimelineLabel(projection: WhatIfResultView['projections'][number]): string {
+  if (projection.currentProjectedCompletionDate && !projection.simulatedProjectedCompletionDate) return 'Completion at risk';
+  if (!projection.currentProjectedCompletionDate && projection.simulatedProjectedCompletionDate) return 'Date now available';
+  if (projection.timelineChangeWeeks === null) return 'Not enough data';
+  if (projection.timelineChangeWeeks > 0) return `${projection.timelineChangeWeeks}w sooner`;
+  if (projection.timelineChangeWeeks < 0) return `${Math.abs(projection.timelineChangeWeeks)}w later`;
+  return 'Same timeline';
+}
+
+function ScenarioPreset({ label, disabled, onPress }: { label: string; disabled?: boolean; onPress: () => void }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Use ${label} scenario`}
+      accessibilityState={{ disabled: Boolean(disabled) }}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.whatIfPreset, { borderColor: theme.border, backgroundColor: theme.surface, opacity: disabled ? 0.5 : 1 }]}
+    >
+      <Text style={[styles.whatIfPresetText, { color: theme.accent }]}>{label}</Text>
+    </Pressable>
+  );
 }
 
 function goalCoachSentence(goal: GoalView): string {
@@ -4850,6 +4996,23 @@ const styles = StyleSheet.create({
   goalCardPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   goalProgressTrack: { height: 12, borderRadius: 6, backgroundColor: '#FFFFFF14', overflow: 'visible' },
   goalProgressFill: { height: '100%', borderRadius: 6, backgroundColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
+  whatIfPlanner: { borderTopWidth: 1, paddingTop: 16, gap: 13 },
+  whatIfPlannerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 23, marginTop: 2 },
+  whatIfField: { gap: 4 },
+  whatIfFieldLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  whatIfFieldHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
+  whatIfMoneyInput: { minHeight: 48, borderWidth: 1, borderRadius: 16, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
+  whatIfCurrency: { fontFamily: 'Inter_600SemiBold', fontSize: 16 },
+  whatIfTextInput: { flex: 1, minHeight: 46, paddingHorizontal: 7, fontFamily: 'Inter_500Medium', fontSize: 16, fontVariant: ['tabular-nums'] },
+  whatIfInputSuffix: { fontFamily: 'Inter_500Medium', fontSize: 12 },
+  whatIfPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  whatIfPreset: { minHeight: 34, borderWidth: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11 },
+  whatIfPresetText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
+  whatIfError: { color: '#FF7A9A', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
+  whatIfResult: { borderTopWidth: 1, marginTop: 4, paddingTop: 16, gap: 12 },
+  whatIfWeeklyImpact: { minHeight: 56, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  whatIfWeeklyLabel: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12 },
+  whatIfWeeklyValue: { fontFamily: 'Inter_700Bold', fontSize: 19, fontVariant: ['tabular-nums'] },
   connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
   connectStep: { alignItems: 'center', gap: 5 },
   connectStepDot: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: '#FFFFFF40', alignItems: 'center', justifyContent: 'center' },

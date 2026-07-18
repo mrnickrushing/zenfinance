@@ -148,7 +148,17 @@ describe('Phase 4 mobile product API', () => {
     expect(res.status).toBe(200);
     expect(res.body.weeklyNetChangeCents).toBeGreaterThan(0);
     expect(res.body.projections[0].remainingAmountCents).toBe(225000);
+    expect(res.body.projections[0].timelineChangeWeeks).toBeGreaterThanOrEqual(0);
     expect(res.body.narration).toContain('$');
+
+    const setback = await request(app)
+      .post('/api/what-if')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlyIncomeChangeCents: -50000 });
+
+    expect(setback.status).toBe(200);
+    expect(setback.body.weeklyNetChangeCents).toBeLessThan(0);
+    expect(setback.body.narration).toContain('reduces weekly cash flow');
   });
 
   it('persists push token and per-type notification preferences', async () => {

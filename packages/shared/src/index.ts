@@ -910,6 +910,7 @@ export interface WhatIfGoalProjectionView {
   name: string;
   currentProjectedCompletionDate: string | null;
   simulatedProjectedCompletionDate: string | null;
+  timelineChangeWeeks: number | null;
   weeksFaster: number | null;
   remainingAmountCents: number;
 }
