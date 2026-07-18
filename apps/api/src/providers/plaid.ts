@@ -71,6 +71,7 @@ export class PlaidProvider implements TransactionProvider {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
+      webhook: env.PLAID_WEBHOOK_URL,
       transactions: { days_requested: 90 }, // first-look brief needs 90 days on day one
       // Required for OAuth institutions on iOS (virtually every major US
       // bank in production); must match a universal link allow-listed in

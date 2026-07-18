@@ -26,6 +26,8 @@ afterAll(async () => {
 
 interface EnrichedTxn {
   id: number;
+  amountCents: number;
+  postedDate: string;
   name: string;
   merchantName: string | null;
   pending: boolean;
@@ -134,7 +136,16 @@ describe('user-correction loop', () => {
     const { access } = await registerAndAuth('correct@example.com');
     await linkBank(access);
     const txns = await getTransactions(access);
-    const target = txns.find((t) => t.transferPairId === null)!;
+    const target = txns
+      .filter((t) => !t.pending && t.transferPairId === null && t.isDiscretionary)
+      .sort((a, b) => b.amountCents - a.amountCents)[0]!;
+    const beforeRollups = await request(app).get('/api/features/rollups?weeks=12').set('Authorization', `Bearer ${access}`);
+    const targetWeekStart = new Date(`${target.postedDate}T00:00:00Z`);
+    targetWeekStart.setUTCDate(targetWeekStart.getUTCDate() - ((targetWeekStart.getUTCDay() + 6) % 7));
+    const targetWeek = targetWeekStart.toISOString().slice(0, 10);
+    const beforeRatio = beforeRollups.body.items.find(
+      (row: { weekStart: string; metric: string }) => row.weekStart === targetWeek && row.metric === 'discretionary_ratio',
+    ).valueRatio as number;
 
     const badCategory = await request(app)
       .patch(`/api/transactions/${target.id}/category`)
@@ -153,6 +164,12 @@ describe('user-correction loop', () => {
     expect(corrected.category).toBe('BUSINESS_EXPENSE');
     expect(corrected.isDiscretionary).toBe(false);
     expect(corrected.enrichmentSource).toBe('user_correction');
+
+    const afterRollups = await request(app).get('/api/features/rollups?weeks=12').set('Authorization', `Bearer ${access}`);
+    const afterRatio = afterRollups.body.items.find(
+      (row: { weekStart: string; metric: string }) => row.weekStart === targetWeek && row.metric === 'discretionary_ratio',
+    ).valueRatio as number;
+    expect(afterRatio).toBeLessThan(beforeRatio);
   });
 
   it('cannot correct another user\'s transaction', async () => {

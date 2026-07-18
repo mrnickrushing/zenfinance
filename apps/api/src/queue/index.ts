@@ -14,6 +14,14 @@ export const FEATURE_QUEUE = 'feature-rollup-nightly';
 export const FIRST_LOOK_QUEUE = 'coaching-first-look';
 export const WEEKLY_BRIEF_QUEUE = 'weekly-brief';
 
+const INITIAL_SYNC_MAX_RETRIES = 5;
+const INITIAL_SYNC_RETRY_BASE_MS = 15_000;
+
+type ItemSyncJob = {
+  itemId: number;
+  retryCount?: number;
+};
+
 // Job-queue-first design: with REDIS_URL set, jobs run on BullMQ workers;
 // without it (local dev, tests), enqueue degrades to inline execution so the
 // flow stays fully functional and deterministic.
@@ -78,7 +86,7 @@ export async function enqueueItemSync(itemId: number): Promise<void> {
   if (env.REDIS_URL) {
     const queue = await getBullQueue();
     // Deduplicate bursts of webhooks for the same item.
-    await queue.add('sync', { itemId }, { jobId: `item-${itemId}-${Date.now() >> 13}` });
+    await queue.add('sync', { itemId, retryCount: 0 } satisfies ItemSyncJob, { jobId: `item-${itemId}-${Date.now() >> 13}` });
     return;
   }
   const result = await syncItem(db, getProvider(), itemId);
@@ -89,10 +97,26 @@ export async function enqueueItemSync(itemId: number): Promise<void> {
 export async function startSyncWorker(): Promise<void> {
   if (!env.REDIS_URL) return;
   const { Worker } = await import('bullmq');
-  new Worker<{ itemId: number }>(
+  new Worker<ItemSyncJob>(
     SYNC_QUEUE,
     async (job) => {
       const result = await syncItem(db, getProvider(), job.data.itemId);
+      const retryCount = job.data.retryCount ?? 0;
+      if (result?.initialDataPending && retryCount < INITIAL_SYNC_MAX_RETRIES) {
+        const nextRetry = retryCount + 1;
+        const queue = await getBullQueue();
+        await queue.add(
+          'sync',
+          { itemId: job.data.itemId, retryCount: nextRetry } satisfies ItemSyncJob,
+          {
+            jobId: `item-${job.data.itemId}-initial-retry-${nextRetry}`,
+            delay: INITIAL_SYNC_RETRY_BASE_MS * 2 ** retryCount,
+            removeOnComplete: true,
+            removeOnFail: 100,
+          },
+        );
+        return;
+      }
       if (result) await enqueueEnrichment(result.userId);
     },
     { connection: { url: env.REDIS_URL }, concurrency: 5 },
@@ -125,14 +149,14 @@ export async function startEnrichWorker(): Promise<void> {
 }
 
 /**
- * Queue (or run inline) the first-look brief. Idempotent — runFirstLookForUser
- * is a no-op once the user has a first-look, so chaining it after every
- * enrichment pass only ever fires it once (right after the initial backfill).
+ * Queue (or run inline) the first-look pipeline. The brief is idempotent, but
+ * each pass refreshes the rollups that power Zen Score after transaction
+ * enrichment, so completed jobs must not permanently reserve the user job id.
  */
 export async function enqueueFirstLook(userId: number): Promise<void> {
   if (env.REDIS_URL) {
     const queue = await getFirstLookQueue();
-    await queue.add('first-look', { userId }, { jobId: `first-look-${userId}` });
+    await queue.add('first-look', { userId }, { jobId: `first-look-${userId}`, removeOnComplete: true, removeOnFail: 100 });
     return;
   }
   await runFirstLookForUser(db, getInsightProvider(), userId);

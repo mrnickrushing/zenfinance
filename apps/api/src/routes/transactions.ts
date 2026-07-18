@@ -20,6 +20,7 @@ import {
 import { defaultDiscretionaryFor, isValidCategory } from '../enrichment/categories.js';
 import { applyEnrichment } from '../enrichment/pipeline.js';
 import { cleanMerchantName, merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
+import { computeRollupsForWeek, mondayOf } from '../features/rollup.js';
 import { requireUser } from '../middleware/userAuth.js';
 import { userRateLimit } from '../middleware/userRateLimit.js';
 import { validateBody } from '../middleware/validate.js';
@@ -145,6 +146,7 @@ export function createTransactionsRouter(): ReturnType<typeof Router> {
           id: transactions.id,
           name: transactions.name,
           merchantName: transactions.merchantName,
+          postedDate: transactions.postedDate,
           currentCategory: transactionEnrichments.category,
           currentIsRecurring: transactionEnrichments.isRecurring,
         })
@@ -185,6 +187,11 @@ export function createTransactionsRouter(): ReturnType<typeof Router> {
         source: 'user_correction',
         model: null,
       });
+
+      // Category and discretionary corrections directly affect Zen Score.
+      // Refresh the changed week before responding so the score and feature
+      // API never remain stale until the nightly job.
+      await computeRollupsForWeek(db, userId, mondayOf(new Date(`${row.postedDate}T00:00:00Z`)));
 
       res.json({ ok: true });
     },

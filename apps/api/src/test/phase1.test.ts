@@ -1,11 +1,13 @@
 import type { Express } from 'express';
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { db } from '../db/client.js';
-import { transactions } from '../db/schema.js';
+import { items, transactions } from '../db/schema.js';
 import { decryptField, decryptToken, encryptField, encryptToken } from '../lib/crypto.js';
+import type { TransactionProvider } from '../providers/types.js';
+import { syncItem } from '../sync/engine.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
 
 let app: Express;
@@ -142,6 +144,31 @@ describe('user auth', () => {
 });
 
 describe('linking + backfill (mock provider, inline queue)', () => {
+  it('flags an empty initial Plaid cursor so the queue can retry the backfill', async () => {
+    const { access } = await registerAndAuth();
+    const { itemId } = await linkBank(access);
+    const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
+    await db.delete(transactions);
+    await db.update(items).set({ syncCursor: null, lastSyncedAt: null }).where(eq(items.id, itemId));
+
+    const pendingProvider = {
+      name: 'pending-test',
+      fetchAccounts: async () => [],
+      syncTransactions: async () => ({
+        added: [],
+        modified: [],
+        removedProviderTxnIds: [],
+        nextCursor: '',
+        hasMore: false,
+      }),
+    } as unknown as TransactionProvider;
+
+    await expect(syncItem(db, pendingProvider, itemId)).resolves.toEqual({
+      userId: item!.userId,
+      initialDataPending: true,
+    });
+  });
+
   it('exchanges a public token, stores accounts, and backfills 90 days', async () => {
     const { access } = await registerAndAuth();
     await linkBank(access);

@@ -69,7 +69,7 @@ export async function syncItem(
   db: Db,
   provider: TransactionProvider,
   itemId: number,
-): Promise<{ userId: number } | null> {
+): Promise<{ userId: number; initialDataPending: boolean } | null> {
   const [item] = await db.select().from(items).where(eq(items.id, itemId)).limit(1);
   if (!item || item.status === 'disconnected') return null;
 
@@ -85,8 +85,10 @@ export async function syncItem(
 
   let cursor = item.syncCursor;
   let hasMore = true;
+  let receivedTransactionCount = 0;
   while (hasMore) {
     const page = await provider.syncTransactions(accessToken, cursor);
+    receivedTransactionCount += page.added.length + page.modified.length;
 
     for (const txn of [...page.added, ...page.modified]) {
       const accountId = accountIdByProvider.get(txn.providerAccountId);
@@ -135,7 +137,14 @@ export async function syncItem(
     .where(eq(items.id, item.id));
 
   await detectTransferPairs(db, item.userId);
-  return { userId: item.userId };
+  return {
+    userId: item.userId,
+    // Plaid may return an empty cursor while a newly linked institution is
+    // still preparing its initial history. Without a webhook (or if delivery
+    // is delayed), treating that response as final leaves the Item stuck at
+    // zero transactions forever. The queue schedules bounded retries below.
+    initialDataPending: !cursor && receivedTransactionCount === 0,
+  };
 }
 
 async function upsertTransaction(db: Db, accountId: number, txn: ProviderTransaction): Promise<void> {
