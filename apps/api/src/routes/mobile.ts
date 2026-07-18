@@ -711,22 +711,35 @@ async function runWhatIf(userId: number, input: WhatIfInput): Promise<WhatIfResu
       name: goal.name,
       currentProjectedCompletionDate: current.projectedCompletionDate,
       simulatedProjectedCompletionDate: simulated,
+      timelineChangeWeeks: faster,
       weeksFaster: faster === null ? null : Math.max(0, faster),
       remainingAmountCents: simulatedRemaining,
     };
   });
-  const best = projections.find((p) => p.weeksFaster !== null && p.weeksFaster > 0);
+  const notable = projections.find((p) => p.timelineChangeWeeks !== null && p.timelineChangeWeeks !== 0);
+  const completionAtRisk = projections.find((p) => p.currentProjectedCompletionDate && !p.simulatedProjectedCompletionDate);
+  const completionNowAvailable = projections.find((p) => !p.currentProjectedCompletionDate && p.simulatedProjectedCompletionDate);
+  const cashFlowSummary = weeklyNetChangeCents > 0
+    ? `This scenario improves weekly cash flow by ${cents(weeklyNetChangeCents)}.`
+    : weeklyNetChangeCents < 0
+      ? `This scenario reduces weekly cash flow by ${cents(Math.abs(weeklyNetChangeCents))}.`
+      : 'This scenario leaves weekly cash flow unchanged.';
+  const timelineSummary = completionAtRisk
+    ? `At this level, ${completionAtRisk.name} no longer has a projected completion date.`
+    : completionNowAvailable
+      ? `${completionNowAvailable.name} now has a projected completion date.`
+      : notable
+        ? `It could move ${notable.name} ${notable.timelineChangeWeeks! > 0 ? 'up' : 'back'} by about ${Math.abs(notable.timelineChangeWeeks!)} week${
+            Math.abs(notable.timelineChangeWeeks!) === 1 ? '' : 's'
+          }.`
+        : 'Add or adjust a goal to see a timeline change.';
   return {
     weeklyNetChangeCents,
     oneTimeSavingsCents: input.oneTimeSavingsCents,
     monthlySpendReductionCents: input.monthlySpendReductionCents,
     monthlyIncomeChangeCents: input.monthlyIncomeChangeCents,
     projections,
-    narration: best
-      ? `This scenario improves weekly cash flow by ${cents(weeklyNetChangeCents)} and could move ${best.name} up by about ${best.weeksFaster} week${
-          best.weeksFaster === 1 ? '' : 's'
-        }.`
-      : `This scenario changes weekly cash flow by ${cents(weeklyNetChangeCents)}. Add or adjust a goal to see a timeline change.`,
+    narration: `${cashFlowSummary} ${timelineSummary}`,
   };
 }
 
