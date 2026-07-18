@@ -91,7 +91,8 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
   // demand instead of waiting for the Monday cron. Upserts onto the same
   // week's row (see persistBrief), so repeated pulls within a week just
   // update the existing insight rather than piling up duplicates. Rate
-  // limited since each pull is a real LLM call.
+  // limited since each pull is a real LLM call. Suppresses the scheduled
+  // job's "weekly brief" push — the user is already looking at the app.
   router.post(
     '/api/insights/refresh',
     requireUser,
@@ -102,7 +103,7 @@ export function createCoachingRouter(): ReturnType<typeof Router> {
     }),
     async (_req, res) => {
       const userId = res.locals.userId as number;
-      await runWeeklyBriefForUser(db, getInsightProvider(), userId);
+      await runWeeklyBriefForUser(db, getInsightProvider(), userId, { notify: false });
       const row = await getLatestInsight(db, userId, 'weekly_brief');
       if (!row) {
         res.status(404).json({ error: { code: 'not_found', message: 'Nothing to refresh yet — sync some transactions first.' } });

@@ -1314,7 +1314,7 @@ function ProductShell() {
     try {
       await requestApi('/api/insights/refresh', { method: 'POST' });
     } catch (err) {
-      if (!(err instanceof ApiRequestError && err.status === 429)) {
+      if (!(err instanceof ApiRequestError && (err.status === 429 || err.status === 404))) {
         Sentry.captureException(err);
       }
     }
