@@ -4112,7 +4112,12 @@ function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (ta
                 <View style={[styles.tabIconHalo, { backgroundColor: `${theme.accentBright}33`, shadowColor: theme.accentBright }]} />
               ) : null}
               <Icon color={selected ? theme.accentBright : theme.muted} size={selected ? 22 : 20} />
-              {selected ? <View style={[styles.tabActiveBar, { backgroundColor: theme.accentBright, shadowColor: theme.accentBright }]} /> : null}
+              <View
+                style={[
+                  styles.tabActiveBar,
+                  { backgroundColor: selected ? theme.accentBright : 'transparent', shadowColor: theme.accentBright, shadowOpacity: selected ? 0.8 : 0 },
+                ]}
+              />
               {locked ? (
                 <View style={[styles.tabLockBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
                   <LockKeyhole color={theme.gold} size={9} strokeWidth={2.5} />
@@ -4703,7 +4708,7 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 11, fontWeight: '800' },
   tabIconWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
   tabIconHalo: { position: 'absolute', width: 38, height: 38, borderRadius: 19, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
-  tabActiveBar: { position: 'absolute', bottom: -10, width: 22, height: 3, borderRadius: 2, shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
+  tabActiveBar: { marginTop: 4, width: 22, height: 3, borderRadius: 2, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
   tabLockBadge: { position: 'absolute', top: -6, right: -10, width: 15, height: 15, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   loadErrorTitle: { textAlign: 'center', marginTop: 16 },
   loadErrorBody: { textAlign: 'center', marginTop: 8, marginBottom: 20, paddingHorizontal: 24 },
