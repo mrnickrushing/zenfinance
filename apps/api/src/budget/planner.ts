@@ -10,14 +10,14 @@ import { generateGroundedChatAnswer } from '../chat/anthropic.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
 import type { Db } from '../db/client.js';
 import { featureRollups, goals } from '../db/schema.js';
-import { defaultDiscretionaryFor, labelFor } from '../enrichment/categories.js';
+import { defaultDiscretionaryFor, labelFor, NON_SPEND_CATEGORIES } from '../enrichment/categories.js';
 import { env } from '../env.js';
 import { safeErrorSummary } from '../lib/safeError.js';
 
 const MONTHS_PER_WEEK = 52 / 12;
 const MAX_WEEKS = 8;
 
-type AllocationInput = { category: string; baselineCents: number };
+export type AllocationInput = { category: string; baselineCents: number };
 
 function cents(amount: number): string {
   return `$${(Math.abs(amount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -28,21 +28,28 @@ function currentMonthStart(): string {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
-function allocateProportionally(entries: AllocationInput[], capacityCents: number): Map<string, number> {
+export function allocateProportionally(entries: AllocationInput[], capacityCents: number): Map<string, number> {
   const result = new Map(entries.map((entry) => [entry.category, 0]));
   const total = entries.reduce((sum, entry) => sum + entry.baselineCents, 0);
   const target = Math.min(Math.max(0, capacityCents), total);
   if (target === 0 || total === 0) return result;
 
-  let remaining = target;
-  entries.forEach((entry, index) => {
-    const allocation = index === entries.length - 1
-      ? remaining
-      : Math.min(remaining, Math.floor((entry.baselineCents / total) * target));
-    result.set(entry.category, allocation);
-    remaining -= allocation;
-  });
+  for (const entry of entries) {
+    result.set(entry.category, Math.floor((entry.baselineCents / total) * target));
+  }
+  let remaining = target - [...result.values()].reduce((sum, amount) => sum + amount, 0);
+  for (let index = entries.length - 1; index >= 0 && remaining > 0; index--) {
+    const entry = entries[index]!;
+    const allocation = result.get(entry.category) ?? 0;
+    const roundedRemainder = Math.min(remaining, entry.baselineCents - allocation);
+    result.set(entry.category, allocation + roundedRemainder);
+    remaining -= roundedRemainder;
+  }
   return result;
+}
+
+export function isBudgetBillCategory(category: string | null): boolean {
+  return category === null || !NON_SPEND_CATEGORIES.has(category);
 }
 
 function deterministicExplanation(
@@ -64,8 +71,8 @@ function deterministicExplanation(
   }
   if (status === 'shortfall') {
     return {
-      answer: `Saving ${cents(savingsCents)} toward ${goalName} while covering all ${billCount} detected bills (${cents(billsCents)}) is ${cents(shortfallCents)} above modeled monthly income of ${cents(incomeCents)}.`,
-      actions: [`Lower this month's savings by at least ${cents(shortfallCents)} or review recurring bills.`, 'Do not apply a plan until the shortfall is resolved.'],
+      answer: `Saving ${cents(savingsCents)} toward ${goalName} while covering all ${billCount} detected bills (${cents(billsCents)}) and historical essential spending requires ${cents(shortfallCents)} more than modeled monthly income of ${cents(incomeCents)}.`,
+      actions: ['Lower this month\'s savings, reduce essential costs, or review recurring bills.', 'Do not apply a plan until the shortfall is resolved.'],
     };
   }
   return {
@@ -103,8 +110,8 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   const selectedWeekSet = new Set(weeks);
   const selectedRollups = rollups.filter((row) => selectedWeekSet.has(row.weekStart));
   const weekCount = weeks.length;
-  const incomeTotal = selectedRollups
-    .filter((row) => row.metric === 'income_total')
+  const incomeRows = selectedRollups.filter((row) => row.metric === 'income_total');
+  const incomeTotal = incomeRows
     .reduce((sum, row) => sum + Math.max(0, row.valueCents ?? 0), 0);
   const monthlyIncomeCents = weekCount > 0 ? Math.round((incomeTotal / weekCount) * MONTHS_PER_WEEK) : 0;
 
@@ -119,8 +126,9 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     }
   }
 
+  const spendBills = subscriptionAudit.items.filter((bill) => isBudgetBillCategory(bill.category));
   const billsByCategory = new Map<string, number>();
-  for (const bill of subscriptionAudit.items) {
+  for (const bill of spendBills) {
     if (!bill.category) continue;
     billsByCategory.set(bill.category, (billsByCategory.get(bill.category) ?? 0) + bill.monthlyEquivalentCents);
   }
@@ -139,10 +147,9 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
 
   const remainingAmountCents = Math.max(0, goal.targetAmountCents - goal.currentAmountCents);
   const plannedSavingsCents = Math.min(input.monthlySavingsCents, remainingAmountCents);
-  const billsTotalCents = subscriptionAudit.totalMonthlyCents;
+  const billsTotalCents = spendBills.reduce((sum, bill) => sum + bill.monthlyEquivalentCents, 0);
   const rawAvailableCents = monthlyIncomeCents - plannedSavingsCents - billsTotalCents;
-  const hasIncomeData = monthlyIncomeCents > 0;
-  const shortfallCents = hasIncomeData ? Math.max(0, -rawAvailableCents) : 0;
+  const hasIncomeData = incomeRows.length > 0;
 
   const essentialInputs = baselines
     .filter((entry) => !entry.isDiscretionary && entry.flexibleBaselineCents > 0)
@@ -150,6 +157,10 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   const discretionaryInputs = baselines
     .filter((entry) => entry.isDiscretionary && entry.flexibleBaselineCents > 0)
     .map((entry) => ({ category: entry.category, baselineCents: entry.flexibleBaselineCents }));
+  const essentialBaselineTotalCents = essentialInputs.reduce((sum, entry) => sum + entry.baselineCents, 0);
+  const shortfallCents = hasIncomeData
+    ? Math.max(0, plannedSavingsCents + billsTotalCents + essentialBaselineTotalCents - monthlyIncomeCents)
+    : 0;
   const availableForFlexibleCents = hasIncomeData ? Math.max(0, rawAvailableCents) : 0;
   const essentialAllocation = allocateProportionally(essentialInputs, availableForFlexibleCents);
   const essentialAllocatedCents = [...essentialAllocation.values()].reduce((sum, amount) => sum + amount, 0);
@@ -192,7 +203,7 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     plannedSavingsCents,
     monthlyIncomeCents,
     billsTotalCents,
-    subscriptionAudit.items.length,
+    spendBills.length,
     recommendedSpendingCents,
     bufferCents,
     shortfallCents,
@@ -211,14 +222,14 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   let explanationSource: BudgetPlanView['explanationSource'] = 'deterministic';
   try {
     const generated = await generateGroundedChatAnswer(
-      'Explain this monthly budget plan. Confirm that every detected recurring bill was included, explain the savings-goal tradeoff, and do not change any server-computed numbers.',
+      'Explain this monthly budget plan. Confirm that every detected recurring bill was included while account movements were excluded, explain the savings-goal tradeoff, and do not change any server-computed numbers.',
       { answer: deterministic.answer, facts, actions: deterministic.actions },
       facts,
       {
         status,
         planMonth: input.planMonth ?? currentMonthStart(),
-        billCount: subscriptionAudit.items.length,
-        bills: subscriptionAudit.items.map((bill) => ({ merchant: bill.merchantClean, monthlyEquivalentCents: bill.monthlyEquivalentCents })),
+        billCount: spendBills.length,
+        bills: spendBills.map((bill) => ({ merchant: bill.merchantClean, monthlyEquivalentCents: bill.monthlyEquivalentCents })),
         categories: categories.map((category) => ({ category: category.category, recommendedCents: category.recommendedCents })),
       },
     );
@@ -246,7 +257,7 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     flexibleSpendingCents,
     bufferCents,
     shortfallCents,
-    bills: subscriptionAudit.items.map((bill) => ({
+    bills: spendBills.map((bill) => ({
       recurringStreamId: bill.recurringStreamId,
       merchantClean: bill.merchantClean,
       cadence: bill.cadence,
@@ -258,9 +269,9 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     categories,
     dataCoverage: {
       weeksAnalyzed: weekCount,
-      detectedBillCount: subscriptionAudit.items.length,
+      detectedBillCount: spendBills.length,
       allDetectedBillsIncluded: true,
-      uncategorizedBillCount: subscriptionAudit.items.filter((bill) => !bill.category).length,
+      uncategorizedBillCount: spendBills.filter((bill) => !bill.category).length,
       hasIncomeData,
     },
     explanation,

@@ -52,6 +52,6 @@ describe('AI monthly budget plan', () => {
     expect(canApplyBudgetPlan(plan('shortfall'))).toBe(false);
     expect(canApplyBudgetPlan(plan('needs_income'))).toBe(false);
     expect(appliedBudgetTarget(plan('ready'))).toBe('3301');
-    expect(appliedCategoryCaps(plan('ready'))).toEqual({ GROCERIES: 502 });
+    expect(appliedCategoryCaps(plan('ready'))).toEqual({ GROCERIES: 502, COFFEE_SHOPS: 0 });
   });
 });

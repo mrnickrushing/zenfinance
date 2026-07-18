@@ -262,9 +262,19 @@ describe('Phase 4 mobile product API', () => {
       .send({ goalId: stretchGoal.body.id, monthlySavingsCents: 500000, planMonth: '2026-07-01' });
     expect(shortfall.status).toBe(200);
     expect(shortfall.body.status).toBe('shortfall');
-    expect(shortfall.body.shortfallCents).toBe(
-      shortfall.body.goal.plannedSavingsCents + shortfall.body.recurringBillsTotalCents - shortfall.body.monthlyIncomeCents,
+    expect(shortfall.body.shortfallCents).toBeGreaterThan(
+      Math.max(0, shortfall.body.goal.plannedSavingsCents + shortfall.body.recurringBillsTotalCents - shortfall.body.monthlyIncomeCents),
     );
+
+    const savingsLeavingOneDollar = plan.body.monthlyIncomeCents - plan.body.recurringBillsTotalCents - 100;
+    const essentialShortfall = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: savingsLeavingOneDollar, planMonth: '2026-07-01' });
+    expect(essentialShortfall.status).toBe(200);
+    expect(essentialShortfall.body.availableAfterGoalAndBillsCents).toBe(100);
+    expect(essentialShortfall.body.status).toBe('shortfall');
+    expect(essentialShortfall.body.shortfallCents).toBeGreaterThan(0);
 
     const missingGoal = await request(app)
       .post('/api/budget/plan')
@@ -280,6 +290,22 @@ describe('Phase 4 mobile product API', () => {
     expect(withoutIncome.status).toBe(200);
     expect(withoutIncome.body.status).toBe('needs_income');
     expect(withoutIncome.body.dataCoverage.hasIncomeData).toBe(false);
+
+    await db.insert(featureRollups).values({
+      aggregateId: 'budget:income:zero',
+      userId: budgetUser!.id,
+      weekStart: '2026-07-13',
+      metric: 'income_total',
+      valueCents: 0,
+    });
+    const zeroIncome = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 50000, planMonth: '2026-07-01' });
+    expect(zeroIncome.status).toBe(200);
+    expect(zeroIncome.body.monthlyIncomeCents).toBe(0);
+    expect(zeroIncome.body.dataCoverage.hasIncomeData).toBe(true);
+    expect(zeroIncome.body.status).toBe('shortfall');
   });
 
   it('persists push token and per-type notification preferences', async () => {

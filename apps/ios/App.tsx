@@ -2422,6 +2422,7 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
   const [budgetPlanError, setBudgetPlanError] = useState<string | null>(null);
   const [buildingBudgetPlan, setBuildingBudgetPlan] = useState(false);
   const [showAllBills, setShowAllBills] = useState(false);
+  const budgetPlanRequestId = useRef(0);
   const activeGoals = useMemo(() => home.goals.filter((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0), [home.goals]);
 
   useEffect(() => {
@@ -2515,9 +2516,11 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
   async function buildAiBudgetPlan() {
     const request = buildBudgetPlanRequest(selectedGoalId, monthlySavings);
     if (!request.ok) {
+      budgetPlanRequestId.current += 1;
       setBudgetPlanError(request.error);
       return;
     }
+    const requestId = ++budgetPlanRequestId.current;
     setBuildingBudgetPlan(true);
     setBudgetPlan(null);
     setBudgetPlanError(null);
@@ -2527,11 +2530,13 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
         method: 'POST',
         body: JSON.stringify(request.value),
       });
-      setBudgetPlan(plan);
+      if (requestId === budgetPlanRequestId.current) setBudgetPlan(plan);
     } catch (error) {
-      setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
+      if (requestId === budgetPlanRequestId.current) {
+        setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
+      }
     } finally {
-      setBuildingBudgetPlan(false);
+      if (requestId === budgetPlanRequestId.current) setBuildingBudgetPlan(false);
     }
   }
 
@@ -2599,6 +2604,8 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
                         accessibilityState={{ selected }}
                         style={[styles.aiBudgetGoalChip, selected ? { borderColor: theme.accent, backgroundColor: theme.accentSoft } : { borderColor: theme.border }]}
                         onPress={() => {
+                          budgetPlanRequestId.current += 1;
+                          setBuildingBudgetPlan(false);
                           setSelectedGoalId(goal.id);
                           setBudgetPlan(null);
                           setBudgetPlanError(null);
@@ -2617,6 +2624,8 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
                 <TextInput
                   value={monthlySavings}
                   onChangeText={(value) => {
+                    budgetPlanRequestId.current += 1;
+                    setBuildingBudgetPlan(false);
                     setMonthlySavings(value);
                     setBudgetPlan(null);
                     setBudgetPlanError(null);
@@ -2629,7 +2638,7 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
                 />
                 <View style={styles.aiBudgetPresets}>
                   {['100', '300', '500'].map((amount) => (
-                    <Pressable key={amount} style={[styles.aiBudgetPreset, { borderColor: theme.border }]} onPress={() => { setMonthlySavings(amount); setBudgetPlan(null); setBudgetPlanError(null); }}>
+                    <Pressable key={amount} style={[styles.aiBudgetPreset, { borderColor: theme.border }]} onPress={() => { budgetPlanRequestId.current += 1; setBuildingBudgetPlan(false); setMonthlySavings(amount); setBudgetPlan(null); setBudgetPlanError(null); }}>
                       <Text style={[styles.aiBudgetPresetText, { color: theme.accent }]}>${amount}</Text>
                     </Pressable>
                   ))}

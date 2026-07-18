@@ -38,8 +38,9 @@ export function appliedBudgetTarget(plan: BudgetPlanView): string {
 
 export function appliedCategoryCaps(plan: BudgetPlanView): Record<string, number> {
   return Object.fromEntries(
-    plan.categories
-      .filter((category) => category.recommendedCents > 0)
-      .map((category) => [category.category, Math.max(1, Math.ceil(category.recommendedCents / 100))]),
+    plan.categories.map((category) => [
+      category.category,
+      category.recommendedCents === 0 ? 0 : Math.max(1, Math.ceil(category.recommendedCents / 100)),
+    ]),
   );
 }
