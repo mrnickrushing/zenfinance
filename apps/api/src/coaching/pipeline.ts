@@ -123,11 +123,16 @@ export async function generateAndStoreBrief(
 
 /**
  * The first-look brief (PLAN §3: "deliver value in week 1 of any user's
- * life"). Runs once, right after the 90-day backfill enriches: computes the
- * backfill's rollups, detects anomalies, then generates the brief. A no-op if
- * the user already has a first-look.
+ * life"). Every enrichment pass refreshes the rollups that power Zen Score;
+ * the brief itself is generated only once after the initial backfill.
  */
 export async function runFirstLookForUser(db: Db, provider: InsightProvider, userId: number): Promise<void> {
+  // Keep derived score inputs current after every sync. This must happen
+  // before the existing-brief guard: users with a first-look still receive
+  // later transaction updates, and their Zen Score should not wait for the
+  // nightly rollup job to reflect them.
+  await computeRecentRollups(db, userId, 12);
+
   const [existing] = await db
     .select({ id: insights.id })
     .from(insights)
@@ -135,7 +140,6 @@ export async function runFirstLookForUser(db: Db, provider: InsightProvider, use
     .limit(1);
   if (existing) return;
 
-  await computeRecentRollups(db, userId, 12);
   await detectAnomalies(db, userId);
   const stored = await generateAndStoreBrief(db, provider, userId, 'first_look');
   if (stored) {

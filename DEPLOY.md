@@ -40,6 +40,7 @@ DNS for `rushingtechnologies.com` is managed in Cloudflare (not GoDaddy).
 | `PLAID_CLIENT_ID` / `PLAID_SECRET` | from the Plaid dashboard (sandbox keys until production access is approved) |
 | `PLAID_ENV` | `sandbox` → `production` after Plaid approves the app |
 | `PLAID_REDIRECT_URI` | needed for OAuth banks in production — see "Plaid OAuth redirect" below |
+| `PLAID_WEBHOOK_URL` | `https://api.zenfinance.rushingtechnologies.com/api/webhooks/plaid` — registered directly on each new Item |
 | `APPLE_BUNDLE_ID` | `com.rushingtechnologies.zenfinance` (Apple Sign-In verification) |
 | `REDIS_URL` | injected automatically from the Redis service reference; sync/enrichment/rollup jobs run on BullMQ |
 | `ENRICHMENT_PROVIDER` | `anthropic` |

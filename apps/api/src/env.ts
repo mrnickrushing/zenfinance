@@ -40,6 +40,7 @@ const envSchema = z.object({
   // Required for OAuth institutions — i.e. effectively all major US banks —
   // to work in production; must also be allow-listed in the Plaid Dashboard.
   PLAID_REDIRECT_URI: z.string().url().optional(),
+  PLAID_WEBHOOK_URL: z.string().url().optional(),
   APPLE_BUNDLE_ID: z.string().optional(),
   REDIS_URL: z.string().optional(),
   ENRICHMENT_PROVIDER: z.enum(['anthropic', 'mock']).default('anthropic'),
@@ -97,6 +98,9 @@ const envSchema = z.object({
     // setup (see DEPLOY.md) before it does anything, so requiring it at boot
     // would crash-loop the whole API over a Plaid Link-only gap. Its absence
     // is logged instead — see PlaidProvider.createLinkToken.
+    if (!value.PLAID_WEBHOOK_URL) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['PLAID_WEBHOOK_URL'], message: 'PLAID_WEBHOOK_URL is required when TRANSACTION_PROVIDER=plaid' });
+    }
   }
 
   if (

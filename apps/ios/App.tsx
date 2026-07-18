@@ -3,6 +3,7 @@ import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, I
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
 import { resolveApiUrl, resolveSentryDsn, safeAppStoreSubscriptionUrl } from './src/security';
+import { zenScoreCoachPrompt, zenScoreFocus, zenScoreGuidance, type ZenScoreDestination } from './src/zenScore';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import Constants from 'expo-constants';
 import { BlurView } from 'expo-blur';
@@ -119,6 +120,7 @@ import type {
   UserDataExportView,
   VoiceBriefView,
   WhatIfResultView,
+  ZenScoreComponent,
 } from '@zenfinance/shared';
 
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
@@ -1273,6 +1275,7 @@ function ProductShell() {
   const setHome = useAppStore((s) => s.setHome);
   const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
   const [tab, setTab] = useState<TabKey>('brief');
+  const [coachInitialQuestion, setCoachInitialQuestion] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -1339,16 +1342,31 @@ function ProductShell() {
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
-    if (tab === 'coach') return <CoachScreen />;
+    if (tab === 'coach') return <CoachScreen initialQuestion={coachInitialQuestion} />;
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('brief')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
     if (tab === 'profile') return <ZenProfileScreen billing={home.billing} score={home.zenScore.score} onSettings={() => setTab('settings')} onScore={() => setTab('score')} onBudget={() => setTab('budget')} />;
     if (tab === 'budget') return <SmartBudgetingScreen home={home} />;
-    if (tab === 'score') return <ZenScoreDetailsScreen home={home} onImprove={() => setTab('coach')} />;
+    if (tab === 'score') {
+      return (
+        <ZenScoreDetailsScreen
+          home={home}
+          refreshing={refreshing}
+          onBack={() => setTab('profile')}
+          onSettings={() => setTab('settings')}
+          onRefresh={refresh}
+          onNavigate={(destination) => setTab(destination)}
+          onAskCoach={(question) => {
+            setCoachInitialQuestion(question);
+            setTab('coach');
+          }}
+        />
+      );
+    }
     if (tab === 'goals') return <GoalsScreen goals={home.goals} billing={home.billing} onChanged={refresh} />;
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen items={home.items} billing={home.billing} onChanged={refresh} />;
-  }, [home, loadError, refresh, refreshing, tab, theme.accent]);
+  }, [coachInitialQuestion, home, loadError, refresh, refreshing, tab, theme.accent]);
 
   const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score']).has(tab);
 
@@ -1781,20 +1799,34 @@ function MoneyBriefHero({
   onViewSwap: () => void;
 }) {
   const theme = useTheme();
+  const impact = brief.action.estimatedImpactCents ? usd(brief.action.estimatedImpactCents, true) : '1 move';
+
+  async function feedback(rating: 'up' | 'down') {
+    await requestApi(`/api/insights/${brief.id}/feedback`, {
+      method: 'POST',
+      body: JSON.stringify({ rating }),
+    }).catch((err) => Alert.alert('Feedback failed', err instanceof Error ? err.message : 'Unknown error'));
+  }
 
   return (
     <ZenGlass style={styles.zenInsightCard}>
+      <View style={styles.zenInsightHeader}>
+        <View style={styles.zenInsightIcon}>
+          <Sparkles color={theme.accent} size={18} />
+        </View>
+        <Text style={styles.zenInsightKicker}>AI COACH</Text>
+        <View style={styles.flexShrink} />
+        <Text style={styles.zenImpact}>{impact}</Text>
+      </View>
       <Text style={styles.zenInsightTitle}>Your Coach's Insight</Text>
       <Text style={styles.zenInsightBody}>{brief.body}</Text>
       <SecondaryButton label="View Swap" accent onPress={onViewSwap} />
-      {home.billing.isPremium && voiceBrief ? (
-        <View style={styles.zenInsightFooter}>
-          <View style={styles.flexShrink} />
-          <Pressable accessibilityRole="button" accessibilityLabel="Play voice brief" hitSlop={12} onPress={onPlayVoice}>
-            <Volume2 color={theme.accent} size={17} />
-          </Pressable>
-        </View>
-      ) : null}
+      <View style={styles.zenInsightFooter}>
+        <Text style={styles.zenEvidence}>{home.transactionCount} transactions · {brief.headline}</Text>
+        <Pressable accessibilityRole="button" accessibilityLabel={home.billing.isPremium && voiceBrief ? 'Play voice brief' : 'Mark insight helpful'} hitSlop={12} onPress={home.billing.isPremium && voiceBrief ? onPlayVoice : () => feedback('up')}>
+          <Volume2 color={home.billing.isPremium ? theme.accent : theme.muted} size={17} />
+        </Pressable>
+      </View>
       {home.billing.isPremium && voiceBrief ? (
         <View style={styles.zenVoiceRow}>
           <Text style={styles.zenDailyMeta}>{speaking ? 'Playing voice brief' : voiceBusy ? 'Preparing audio summary...' : `${Math.round(voiceBrief.durationSeconds / 6) / 10} min audio summary`}</Text>
@@ -1858,23 +1890,25 @@ function activityIconForCategory(category: string): { icon: MaterialSymbolName; 
   }
 }
 
+type TransactionsPageResponse = {
+  items: EnrichedTransactionView[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+const TRANSACTIONS_PAGE_SIZE = 50;
+
 function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRefresh }: { home: MobileHomeSummaryView; onBack: () => void; onProfile: () => void; onConnect: () => void; onBudget: () => void; onRefresh: () => Promise<void> }) {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
   const [refreshingBalances, setRefreshingBalances] = useState(false);
-
-  async function handleRefresh() {
-    setRefreshingBalances(true);
-    try {
-      await requestApi('/api/accounts/refresh-balances', { method: 'POST' });
-    } catch {
-      // Live balance check failed (e.g. rate-limited, provider hiccup) —
-      // fall through to reload whatever's already in the database instead
-      // of leaving the pull-to-refresh spinner stuck.
-    }
-    await onRefresh();
-    setRefreshingBalances(false);
-  }
+  const activityRequestId = useRef(0);
+  const [activityRows, setActivityRows] = useState<EnrichedTransactionView[]>(home.recentTransactions);
+  const [activityTotal, setActivityTotal] = useState(home.transactionCount);
+  const [activityPage, setActivityPage] = useState(0);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
   const accountCards = home.items.flatMap((item) =>
     item.accounts.map((account, accountIndex) => ({
       item,
@@ -1887,7 +1921,59 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRe
     account: { id: 0, name: 'Connect a bank', type: 'depository', subtype: null, mask: null, currentBalanceCents: 0, isoCurrency: 'USD' } as LinkedAccount,
     key: 'placeholder',
   }];
-  const activityRows = home.recentTransactions.slice(0, 4);
+
+  const loadActivityPage = useCallback(async (nextPage: number, append: boolean) => {
+    const requestId = ++activityRequestId.current;
+    setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const response = await requestApi<TransactionsPageResponse>(
+        `/api/transactions?page=${nextPage}&pageSize=${TRANSACTIONS_PAGE_SIZE}`,
+      );
+      if (requestId !== activityRequestId.current) return;
+      setActivityRows((current) => {
+        if (!append) return response.items;
+        const merged = new Map(current.map((transaction) => [transaction.id, transaction]));
+        for (const transaction of response.items) merged.set(transaction.id, transaction);
+        return [...merged.values()];
+      });
+      setActivityTotal(response.total);
+      setActivityPage(response.page);
+    } catch (err) {
+      if (requestId !== activityRequestId.current) return;
+      Sentry.captureException(err);
+      setActivityError(err instanceof Error ? err.message : 'Unable to load transactions.');
+    } finally {
+      if (requestId === activityRequestId.current) setActivityLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadActivityPage(1, false);
+    return () => {
+      activityRequestId.current += 1;
+    };
+  }, [home.transactionCount, loadActivityPage]);
+
+  const hasMoreActivity = activityRows.length < activityTotal;
+  const loadMoreActivity = () => {
+    if (!activityLoading && hasMoreActivity) void loadActivityPage(Math.max(1, activityPage + 1), true);
+  };
+
+  async function handleRefresh() {
+    setRefreshingBalances(true);
+    try {
+      await requestApi('/api/accounts/refresh-balances', { method: 'POST' });
+    } catch (err) {
+      Sentry.captureException(err);
+      // Reload stored data even when the live provider balance check fails.
+    }
+    try {
+      await Promise.all([onRefresh(), loadActivityPage(1, false)]);
+    } finally {
+      setRefreshingBalances(false);
+    }
+  }
 
   return (
     <ScrollView
@@ -1895,7 +1981,12 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRe
       contentContainerStyle={styles.transactionsScreenScroll}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={refreshingBalances} onRefresh={handleRefresh} tintColor={theme.accent} colors={[theme.accent]} />
+        <RefreshControl
+          refreshing={refreshingBalances || (activityLoading && activityPage <= 1)}
+          onRefresh={() => void handleRefresh()}
+          tintColor={theme.accent}
+          colors={[theme.accent]}
+        />
       }
     >
       <View style={styles.transactionsHeader}>
@@ -1942,10 +2033,18 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRe
       </ScrollView>
       <View style={styles.activityHeaderRow}>
         <Text style={styles.transactionsSectionTitle}>Recent Activity</Text>
-        <Pressable onPress={() => scrollRef.current?.scrollToEnd({ animated: true })} accessibilityLabel="See all activity">
-          <Text style={styles.activitySeeAll}>See all</Text>
-        </Pressable>
+        {hasMoreActivity ? (
+          <Pressable disabled={activityLoading} onPress={loadMoreActivity} accessibilityLabel="Load more activity">
+            <Text style={styles.activitySeeAll}>{activityLoading ? 'Loading…' : `Load more · ${activityRows.length}/${activityTotal}`}</Text>
+          </Pressable>
+        ) : <Text style={styles.activitySeeAll}>{activityTotal} total</Text>}
       </View>
+      {activityError ? (
+        <Pressable style={styles.transactionsError} onPress={() => void loadActivityPage(1, false)} accessibilityLabel="Retry loading transactions">
+          <Text style={styles.transactionsErrorText}>{activityError} Tap to retry.</Text>
+        </Pressable>
+      ) : null}
+      {activityLoading && activityRows.length === 0 ? <ActivityIndicator color={theme.accent} /> : null}
       <View style={styles.transactionList}>
         {activityRows.map((txn) => {
           const category = formatActivityCategory(txn);
@@ -1968,7 +2067,12 @@ function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRe
           );
         })}
       </View>
-      {home.recentTransactions.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
+      {!activityLoading && activityRows.length === 0 ? <Text style={styles.zenEmptyText}>No recent transactions yet.</Text> : null}
+      {hasMoreActivity ? (
+        <Pressable style={styles.transactionsLoadMore} disabled={activityLoading} onPress={loadMoreActivity} accessibilityLabel="Load more transactions">
+          {activityLoading ? <ActivityIndicator color={theme.accent} size="small" /> : <Text style={styles.transactionsLoadMoreText}>Load more transactions</Text>}
+        </Pressable>
+      ) : null}
       <Pressable style={styles.transactionsBudgetLink} onPress={onBudget}>
         <CircleDollarSign color={theme.violet} size={17} />
         <Text style={styles.transactionsBudgetText}>Open Smart Budgeting</Text>
@@ -2295,54 +2399,163 @@ const SCORE_COMPONENT_TINT: Record<string, keyof typeof midnightZen> = {
   consistency: 'accent',
 };
 
-function ScoreRowCard({ icon: Icon, tint, label, detail, value }: { icon: IconComponent; tint: string; label: string; detail: string; value: number | null }) {
+function ScoreRowCard({
+  component,
+  icon: Icon,
+  tint,
+  expanded,
+  onToggle,
+  onAction,
+}: {
+  component: ZenScoreComponent;
+  icon: IconComponent;
+  tint: string;
+  expanded: boolean;
+  onToggle: () => void;
+  onAction: () => void;
+}) {
+  const { label, detail, value } = component;
   const pct = Math.max(0, Math.min(100, value ?? 0));
+  const guidance = zenScoreGuidance(component);
   return (
     <ZenGlass style={styles.scoreRowCard}>
-      <View style={styles.scoreRowTop}>
+      <Pressable
+        style={styles.scoreRowTop}
+        onPress={onToggle}
+        accessibilityLabel={`${label}, ${value === null ? 'not enough data' : `${value} out of 100`}`}
+        accessibilityHint={expanded ? 'Collapses the next-step guidance' : 'Expands the next-step guidance'}
+        accessibilityState={{ expanded }}
+      >
         <View style={styles.scoreMetricIcon}><Icon color={tint} size={20} /></View>
         <View style={styles.flexShrink}>
           <Text style={styles.scoreRowName}>{label}</Text>
           <Text style={styles.scoreRowDetail} numberOfLines={2}>{detail}</Text>
         </View>
-      </View>
-      <View style={styles.scoreRowBarRow}>
+        <ChevronRight color={tint} size={18} style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }} />
+      </Pressable>
+      <View
+        style={styles.scoreRowBarRow}
+        accessible
+        accessibilityRole="progressbar"
+        accessibilityLabel={`${label} progress`}
+        accessibilityValue={value === null ? { text: 'Not enough data yet' } : { min: 0, max: 100, now: value }}
+      >
         <View style={styles.scoreRowTrack}>
           <View style={[styles.scoreRowFill, { width: `${pct}%`, backgroundColor: tint }]} />
         </View>
         <Text style={styles.scoreRowPct}>{value === null ? '—' : `${value}%`}</Text>
       </View>
+      {expanded ? (
+        <View style={styles.scoreGuidancePanel}>
+          <Text style={[styles.scoreGuidanceKicker, { color: tint }]}>NEXT STEP</Text>
+          <Text style={styles.scoreGuidanceTitle}>{guidance.title}</Text>
+          <Text style={styles.scoreGuidanceBody}>{guidance.body}</Text>
+          <SecondaryButton compact label={guidance.actionLabel} icon={ChevronRight} onPress={onAction} />
+        </View>
+      ) : null}
     </ZenGlass>
   );
 }
 
-function ZenScoreDetailsScreen({ home, onImprove }: { home: MobileHomeSummaryView; onImprove: () => void }) {
+function ZenScoreDetailsScreen({
+  home,
+  refreshing,
+  onBack,
+  onSettings,
+  onRefresh,
+  onNavigate,
+  onAskCoach,
+}: {
+  home: MobileHomeSummaryView;
+  refreshing: boolean;
+  onBack: () => void;
+  onSettings: () => void;
+  onRefresh: () => Promise<void>;
+  onNavigate: (destination: ZenScoreDestination) => void;
+  onAskCoach: (question: string) => void;
+}) {
   const theme = useTheme();
   const { score, caption, components } = home.zenScore;
+  const focus = zenScoreFocus(components);
+  const [expandedKey, setExpandedKey] = useState<ZenScoreComponent['key'] | null>(focus?.key ?? null);
+  const focusGuidance = focus ? zenScoreGuidance(focus) : null;
+
   return (
-    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen Score Details</Text><Text style={styles.zenPageSubtitle}>Your progress, reflected</Text></View><SlidersHorizontal color={theme.muted} size={18} /></View>
+    <ScrollView
+      contentContainerStyle={styles.zenScreenScroll}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => void onRefresh()}
+          tintColor={theme.accent}
+          colors={[theme.accent]}
+        />
+      }
+    >
+      <View style={styles.scorePageHeader}>
+        <Pressable style={styles.scoreHeaderButton} onPress={onBack} accessibilityLabel="Back to profile">
+          <ChevronLeft color={theme.ink} size={22} />
+        </Pressable>
+        <View style={styles.flexShrink}>
+          <Text style={styles.zenPageTitle}>Zen Score Details</Text>
+          <Text style={styles.zenPageSubtitle}>Your progress, reflected</Text>
+        </View>
+        <Pressable style={styles.scoreHeaderButton} onPress={onSettings} accessibilityLabel="Open settings">
+          <SlidersHorizontal color={theme.muted} size={20} />
+        </Pressable>
+      </View>
       <View style={styles.scoreHeroV2}>
         <Text style={styles.scoreHeroLabel}>Zen Score</Text>
         <Text style={styles.scoreHeroNumber}>{score ?? '—'}</Text>
         <ZenLotusPhoto variant="score" width={260} />
         <Text style={styles.scoreHeroMeta}>{caption}</Text>
+        <Text style={styles.scoreHeroUpdated}>{latestSyncLabel(home.items)}</Text>
+      </View>
+      {score === null ? (
+        <ZenGlass style={styles.scoreBuildingCard}>
+          <Text style={styles.scoreGuidanceKicker}>SCORE BUILDING</Text>
+          <Text style={styles.scoreGuidanceTitle}>Your score needs real activity</Text>
+          <Text style={styles.scoreGuidanceBody}>Connected, categorized transactions unlock Mindful Spending first. Savings activity, goals, and multiple active weeks complete the rest.</Text>
+          <PrimaryButton label="Review connected accounts" icon={WalletCards} onPress={() => onNavigate('transactions')} />
+        </ZenGlass>
+      ) : null}
+      <View style={styles.scoreMethodRow}>
+        <Text style={styles.zenSectionLabel}>WHAT SHAPES YOUR SCORE</Text>
+        <Text style={styles.scoreMethodMeta}>Tap each signal</Text>
       </View>
       <View style={styles.scoreRowStack}>
         {components.map((c) => (
           <ScoreRowCard
             key={c.key}
+            component={c}
             icon={SCORE_COMPONENT_ICON[c.key] ?? CircleDollarSign}
             tint={theme[SCORE_COMPONENT_TINT[c.key] ?? 'accent']}
-            label={c.label}
-            detail={c.detail}
-            value={c.value}
+            expanded={expandedKey === c.key}
+            onToggle={() => setExpandedKey((current) => current === c.key ? null : c.key)}
+            onAction={() => onNavigate(zenScoreGuidance(c).destination)}
           />
         ))}
       </View>
-      <View style={styles.scoreImproveWrap}>
-        <PrimaryButton label="How to improve" icon={Sparkles} onPress={onImprove} />
-      </View>
+      {focus && focusGuidance ? (
+        <ZenGlass style={styles.scoreNextBestCard}>
+          <View style={styles.scoreNextBestHeader}>
+            <View style={styles.zenInsightIcon}><Target color={theme.accent} size={17} /></View>
+            <View style={styles.flexShrink}>
+              <Text style={styles.scoreGuidanceKicker}>BEST NEXT FOCUS</Text>
+              <Text style={styles.scoreNextBestLabel}>{focus.label}</Text>
+            </View>
+          </View>
+          <Text style={styles.scoreGuidanceTitle}>{focusGuidance.title}</Text>
+          <Text style={styles.scoreGuidanceBody}>{focusGuidance.body}</Text>
+          <PrimaryButton label={focusGuidance.actionLabel} icon={ChevronRight} onPress={() => onNavigate(focusGuidance.destination)} />
+          {home.billing.isPremium ? (
+            <SecondaryButton label="Ask Coach about this score" icon={MessageCircle} onPress={() => onAskCoach(zenScoreCoachPrompt(score, focus))} />
+          ) : (
+            <Text style={styles.scoreCoachNote}>Your next step above is available free. Personalized AI follow-up is included with ZenFinance Coach.</Text>
+          )}
+        </ZenGlass>
+      ) : null}
     </ScrollView>
   );
 }
@@ -2399,9 +2612,9 @@ function InsightPanel({ insight }: { insight: InsightView }) {
 
 type CoachTurn = { id: string; question: string; answer: ChatAnswerView };
 
-function CoachScreen() {
+function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   const theme = useTheme();
-  const [question, setQuestion] = useState('');
+  const [question, setQuestion] = useState(initialQuestion);
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<CoachTurn[]>([]);
   const listRef = useRef<FlatList>(null);
@@ -3857,8 +4070,8 @@ function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (ta
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
     { key: 'brief', icon: Home, label: 'Home' },
     { key: 'transactions', icon: Wallet, label: 'Transactions' },
+    { key: 'score', icon: Sparkles, label: 'Zen Score' },
     { key: 'coach', icon: Brain, label: 'Coach' },
-    { key: 'budget', icon: CircleDollarSign, label: 'Budget' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
   return (
@@ -4165,8 +4378,25 @@ const styles = StyleSheet.create({
   primaryButtonPulse: { width: '100%' },
   primaryButtonPulseCompact: { width: undefined, flex: 1 },
   zenInsightCard: { gap: 12, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 20 },
+  zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
   zenInsightTitle: { color: '#FFFFFF', fontSize: 32, lineHeight: 38, fontFamily: 'Inter_700Bold' },
   zenInsightBody: { color: '#E0E0E0', fontSize: 16, lineHeight: 22 },
+  zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
+  zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
+  zenDailyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  zenDailyIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  zenDailyCardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
+  zenDailyCardBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
+  dailyWidget: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#00D2D34D', backgroundColor: '#00D2D314' },
+  dailyWidgetIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
+  dailyWidgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
+  dailyWidgetBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 2 },
+  dailyWidgetBrand: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3 },
+  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
+  zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
   zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
   zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
@@ -4216,6 +4446,10 @@ const styles = StyleSheet.create({
   transactionName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
   transactionMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
   transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
+  transactionsError: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#FF6B9966', backgroundColor: '#FF6B9914' },
+  transactionsErrorText: { color: '#FFB0C9', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
+  transactionsLoadMore: { minHeight: 44, borderRadius: 16, borderWidth: 1, borderColor: '#00D2D34D', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D314' },
+  transactionsLoadMoreText: { color: '#48EFEF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
   transactionsBudgetLink: { minHeight: 48, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#8E44AD14', borderWidth: 1, borderColor: '#8E44AD4D', flexDirection: 'row', alignItems: 'center', gap: 8 },
   transactionsBudgetText: { flex: 1, color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12 },
   insightPanel: { gap: 12 },
@@ -4278,20 +4512,34 @@ const styles = StyleSheet.create({
   capButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
   categoryCapValue: { width: 48, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center' },
   scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
+  scorePageHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  scoreHeaderButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A' },
   scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 14, gap: 0 },
   scoreHeroLabel: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 22, letterSpacing: 0.3 },
   scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 60, lineHeight: 64, marginTop: -2, marginBottom: -6 },
-  scoreHeroMeta: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 13, marginTop: 6 },
+  scoreHeroMeta: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, marginTop: 6, textAlign: 'center' },
+  scoreHeroUpdated: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 6 },
+  scoreBuildingCard: { gap: 10, borderColor: '#00D2D34D' },
+  scoreMethodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 2 },
+  scoreMethodMeta: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 10 },
   scoreMetricStack: { gap: 10 },
   scoreRowStack: { gap: 12 },
   scoreRowCard: { padding: 14, gap: 12 },
-  scoreRowTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  scoreRowTop: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 },
   scoreRowName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 21 },
   scoreRowDetail: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 17, marginTop: 2 },
   scoreRowBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scoreRowTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#FFFFFF1A', overflow: 'hidden' },
   scoreRowFill: { height: 7, borderRadius: 4 },
   scoreRowPct: { width: 40, textAlign: 'right', color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
+  scoreGuidancePanel: { gap: 7, borderTopWidth: 1, borderTopColor: '#FFFFFF1A', paddingTop: 12 },
+  scoreGuidanceKicker: { color: '#00D2D3', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.4 },
+  scoreGuidanceTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, lineHeight: 20 },
+  scoreGuidanceBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
+  scoreNextBestCard: { gap: 11, marginTop: 6, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
+  scoreNextBestHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  scoreNextBestLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 2 },
+  scoreCoachNote: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, textAlign: 'center' },
   scoreImproveWrap: { marginTop: 18 },
   scoreMetric: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 18 },
   scoreMetricIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
