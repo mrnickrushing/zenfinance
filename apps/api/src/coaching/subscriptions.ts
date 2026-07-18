@@ -111,6 +111,7 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
       occurrences: s.occurrences,
       firstSeenDate: s.firstSeenDate,
       lastSeenDate: s.lastSeenDate,
+      nextExpectedDate: s.nextExpectedDate,
       isCancelCandidate,
       priceCreep,
       priceCreepCents: priceCreep ? s.lastAmountCents - s.avgAmountCents : null,
