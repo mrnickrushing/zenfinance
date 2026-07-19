@@ -40,6 +40,19 @@ export function knownSubscriptionMerchant(
   return null;
 }
 
+/**
+ * True only when the descriptor names the consumer subscription product.
+ * Generic OPENAI and ANTHROPIC descriptors are also used for variable API
+ * usage, so company identity alone is not enough to recategorize a charge.
+ */
+export function isKnownSubscriptionProduct(rawName: string, merchantName: string | null): boolean {
+  const text = `${rawName} ${merchantName ?? ''}`;
+  return (
+    /(^|[^a-z0-9])chatgpt(?=$|[^a-z0-9])/i.test(text) ||
+    /(^|[^a-z0-9])claude(?:\.ai|[\s_-]+(?:ai|pro|max))(?=$|[^a-z0-9])/i.test(text)
+  );
+}
+
 function titleCase(s: string): string {
   return s
     .toLowerCase()

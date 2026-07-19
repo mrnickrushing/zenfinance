@@ -8,6 +8,7 @@ import { isValidCategory } from './categories.js';
 import { recordAiUsage } from './cost.js';
 import {
   cleanMerchantName,
+  isKnownSubscriptionProduct,
   knownSubscriptionMerchant,
   merchantKey as computeMerchantKey,
 } from './textNormalize.js';
@@ -211,6 +212,7 @@ async function repairMisclassifiedSubscriptions(
 
   const repairedWeeks = new Set<string>();
   for (const row of rows) {
+    if (!isKnownSubscriptionProduct(row.name, row.merchantName)) continue;
     const knownSubscription = knownSubscriptionMerchant(row.name, row.merchantName);
     if (!knownSubscription) continue;
     if (correctedMerchantKeys.has(computeMerchantKey(row.name, row.merchantName))) continue;
@@ -314,7 +316,7 @@ export async function enrichUserTransactions(
     for (const input of inputs) {
       const result = byId.get(input.transactionId);
       const learnedCorrection = fewShotByMerchantKey.get(computeMerchantKey(input.name, input.merchantName));
-      const knownSubscription = input.amountCents > 0
+      const knownSubscription = input.amountCents > 0 && isKnownSubscriptionProduct(input.name, input.merchantName)
         ? knownSubscriptionMerchant(input.name, input.merchantName)
         : null;
       const forceIncome = !learnedCorrection && isIncomeTransaction(input) && result?.category !== 'INCOME';

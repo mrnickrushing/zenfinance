@@ -415,7 +415,7 @@ describe('recurring-stream detection', () => {
     expect(netflix.occurrences).toBeGreaterThanOrEqual(2);
   });
 
-  it('repairs and consolidates OpenAI and Anthropic subscription descriptors', async () => {
+  it('separates AI subscriptions from API usage and accepts a first $20 plan charge', async () => {
     await registerAndAuth('ai-subscriptions@example.com');
     const userId = await userIdByEmail('ai-subscriptions@example.com');
     const accountId = await createSavingsAccount(userId, 'ai-subscriptions');
@@ -423,53 +423,62 @@ describe('recurring-stream detection', () => {
       .insert(transactions)
       .values([
         {
-          accountId,
-          providerTxnId: 'openai-jan',
-          amountCents: 2000,
-          postedDate: '2026-01-15',
-          name: 'OPENAI *CHATGPT SUBSCR',
-          merchantName: 'OpenAI',
-          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
-          pending: false,
+          accountId, providerTxnId: 'openai-may', amountCents: 2000, postedDate: '2026-05-30',
+          name: 'OPENAI', merchantName: 'OpenAI', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
-          accountId,
-          providerTxnId: 'openai-feb',
-          amountCents: 2000,
-          postedDate: '2026-02-14',
-          name: 'CHATGPT PLUS',
-          merchantName: 'ChatGPT',
-          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
-          pending: false,
+          accountId, providerTxnId: 'anthropic-usage-45', amountCents: 4500, postedDate: '2026-05-02',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
-          accountId,
-          providerTxnId: 'anthropic-jan',
-          amountCents: 2000,
-          postedDate: '2026-01-20',
-          name: 'ANTHROPIC CLAUDE PRO',
-          merchantName: 'Anthropic',
-          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
-          pending: false,
+          accountId, providerTxnId: 'anthropic-plan-may', amountCents: 2000, postedDate: '2026-05-12',
+          name: 'CLAUDE.AI', merchantName: 'Claude AI', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
-          accountId,
-          providerTxnId: 'anthropic-feb',
-          amountCents: 2000,
-          postedDate: '2026-02-19',
-          name: 'CLAUDE.AI',
-          merchantName: 'Claude.ai',
-          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
-          pending: false,
+          accountId, providerTxnId: 'anthropic-usage-10-may', amountCents: 1000, postedDate: '2026-05-28',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-usage-5', amountCents: 500, postedDate: '2026-05-30',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-plan-june-a', amountCents: 2000, postedDate: '2026-06-13',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-plan-june-b', amountCents: 2000, postedDate: '2026-06-14',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-usage-10-july', amountCents: 1000, postedDate: '2026-07-06',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-plan-july-early', amountCents: 2000, postedDate: '2026-07-11',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-plan-july-mid', amountCents: 2000, postedDate: '2026-07-12',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-plan-july-latest', amountCents: 2000, postedDate: '2026-07-14',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-usage-10-latest', amountCents: 1000, postedDate: '2026-07-16',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
       ])
       .returning({ id: transactions.id });
 
-    // Simulate history that was already enriched incorrectly before this fix.
-    await db.insert(transactionEnrichments).values(inserted.map((transaction, index) => ({
+    // Simulate existing history where AI API usage was correctly treated as a
+    // business expense but no recurring subscription stream was discovered.
+    await db.insert(transactionEnrichments).values(inserted.map((transaction) => ({
       transactionId: transaction.id,
-      category: 'OTHER',
-      merchantClean: index < 2 ? (index === 0 ? 'OpenAI' : 'ChatGPT') : (index === 2 ? 'Anthropic' : 'Claude Ai'),
+      category: 'BUSINESS_EXPENSE',
+      merchantClean: 'AI Provider',
       isRecurring: false,
       isDiscretionary: false,
       confidence: 0.8,
@@ -481,27 +490,38 @@ describe('recurring-stream detection', () => {
 
     const currentEnrichments = await db
       .select({
+        name: transactions.name,
         category: transactionEnrichments.category,
         merchantClean: transactionEnrichments.merchantClean,
         isRecurring: transactionEnrichments.isRecurring,
       })
       .from(transactionEnrichments)
+      .innerJoin(transactions, eq(transactionEnrichments.transactionId, transactions.id))
       .where(isNull(transactionEnrichments.supersededAt));
-    expect(currentEnrichments).toHaveLength(4);
-    expect(currentEnrichments.every((row) => row.category === 'SUBSCRIPTIONS_AND_STREAMING')).toBe(true);
-    expect(currentEnrichments.every((row) => row.isRecurring)).toBe(true);
-    expect(new Set(currentEnrichments.map((row) => row.merchantClean))).toEqual(new Set(['OpenAI', 'Anthropic']));
+    expect(currentEnrichments).toHaveLength(inserted.length);
+    const explicitClaude = currentEnrichments.find((row) => row.name === 'CLAUDE.AI');
+    expect(explicitClaude).toMatchObject({
+      category: 'SUBSCRIPTIONS_AND_STREAMING',
+      merchantClean: 'Anthropic',
+      isRecurring: true,
+    });
+    const genericAiCharges = currentEnrichments.filter((row) => row.name !== 'CLAUDE.AI');
+    expect(genericAiCharges.every((row) => row.category === 'BUSINESS_EXPENSE')).toBe(true);
+    expect(genericAiCharges.every((row) => row.isRecurring === false)).toBe(true);
 
     const audit = await auditSubscriptions(db, userId);
     expect(audit.items).toHaveLength(2);
-    for (const merchant of ['OpenAI', 'Anthropic']) {
-      const subscription = audit.items.find((item) => item.merchantClean === merchant);
-      expect(subscription).toBeTruthy();
-      expect(subscription!.cadence).toBe('monthly');
-      expect(subscription!.occurrences).toBe(2);
-      expect(subscription!.category).toBe('SUBSCRIPTIONS_AND_STREAMING');
-      expect(subscription!.isCancelCandidate).toBe(true);
-    }
+    const openAi = audit.items.find((item) => item.merchantClean === 'OpenAI');
+    expect(openAi).toMatchObject({
+      cadence: 'monthly', occurrences: 1, avgAmountCents: 2000,
+      category: 'SUBSCRIPTIONS_AND_STREAMING', isCancelCandidate: true,
+    });
+    const anthropic = audit.items.find((item) => item.merchantClean === 'Anthropic');
+    expect(anthropic).toMatchObject({
+      cadence: 'monthly', occurrences: 3, avgAmountCents: 2000,
+      firstSeenDate: '2026-05-12', lastSeenDate: '2026-07-14',
+      category: 'SUBSCRIPTIONS_AND_STREAMING', isCancelCandidate: true,
+    });
   });
 });
 

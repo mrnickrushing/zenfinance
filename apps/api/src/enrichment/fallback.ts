@@ -1,5 +1,9 @@
 import { defaultDiscretionaryFor, isValidCategory } from './categories.js';
-import { cleanMerchantName, knownSubscriptionMerchant } from './textNormalize.js';
+import {
+  cleanMerchantName,
+  isKnownSubscriptionProduct,
+  knownSubscriptionMerchant,
+} from './textNormalize.js';
 import type { EnrichmentInput, EnrichmentResult } from './types.js';
 
 // Plaid's own personal-finance-category primary values, mapped onto our
@@ -28,7 +32,7 @@ const PLAID_PRIMARY_MAP: Record<string, string> = {
 
 /** Deterministic fallback categorization from the provider's own category string. */
 export function mapProviderCategoryToTaxonomy(input: EnrichmentInput): EnrichmentResult {
-  const knownSubscription = input.amountCents > 0
+  const knownSubscription = input.amountCents > 0 && isKnownSubscriptionProduct(input.name, input.merchantName)
     ? knownSubscriptionMerchant(input.name, input.merchantName)
     : null;
   if (knownSubscription) {

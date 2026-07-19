@@ -1,6 +1,10 @@
 import { defaultDiscretionaryFor } from './categories.js';
 import { mapProviderCategoryToTaxonomy } from './fallback.js';
-import { cleanMerchantName, knownSubscriptionMerchant } from './textNormalize.js';
+import {
+  cleanMerchantName,
+  isKnownSubscriptionProduct,
+  knownSubscriptionMerchant,
+} from './textNormalize.js';
 import type {
   EnrichmentBatchResult,
   EnrichmentInput,
@@ -124,7 +128,7 @@ const RULES: Rule[] = [
 ];
 
 function classify(input: EnrichmentInput): EnrichmentResult {
-  const knownSubscription = input.amountCents > 0
+  const knownSubscription = input.amountCents > 0 && isKnownSubscriptionProduct(input.name, input.merchantName)
     ? knownSubscriptionMerchant(input.name, input.merchantName)
     : null;
   if (knownSubscription) {
