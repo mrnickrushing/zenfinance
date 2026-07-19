@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, notInArray } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, featureRollups, items, transactionEnrichments, transactions, users } from '../db/schema.js';
 import { NON_SPEND_CATEGORIES } from '../enrichment/categories.js';
@@ -136,24 +136,40 @@ export async function computeRollupsForWeek(db: Db, userId: number, weekStart: D
     { metric: 'volatility', category: TOTAL_CATEGORY, valueCents: Math.round(volatility), valueRatio: null },
   ];
 
-  for (const r of results) {
-    await db
-      .insert(featureRollups)
-      .values({
-        aggregateId: aggregateId(userId, weekStartStr, r.metric, r.category),
-        userId,
-        weekStart: weekStartStr,
-        metric: r.metric,
-        category: r.category,
-        valueCents: r.valueCents,
-        valueRatio: r.valueRatio,
-        computedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: [featureRollups.userId, featureRollups.weekStart, featureRollups.metric, featureRollups.category],
-        set: { valueCents: r.valueCents, valueRatio: r.valueRatio, computedAt: new Date() },
-      });
-  }
+  const currentSpendCategories = [...spendByCategory.keys()];
+  await db.transaction(async (tx) => {
+    const categoryWeek = and(
+      eq(featureRollups.userId, userId),
+      eq(featureRollups.weekStart, weekStartStr),
+      eq(featureRollups.metric, 'category_spend'),
+    );
+    await tx
+      .delete(featureRollups)
+      .where(
+        currentSpendCategories.length > 0
+          ? and(categoryWeek, notInArray(featureRollups.category, currentSpendCategories))
+          : categoryWeek,
+      );
+
+    for (const r of results) {
+      await tx
+        .insert(featureRollups)
+        .values({
+          aggregateId: aggregateId(userId, weekStartStr, r.metric, r.category),
+          userId,
+          weekStart: weekStartStr,
+          metric: r.metric,
+          category: r.category,
+          valueCents: r.valueCents,
+          valueRatio: r.valueRatio,
+          computedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [featureRollups.userId, featureRollups.weekStart, featureRollups.metric, featureRollups.category],
+          set: { valueCents: r.valueCents, valueRatio: r.valueRatio, computedAt: new Date() },
+        });
+    }
+  });
 }
 
 /**

@@ -6,7 +6,7 @@ import { isIncomeTransaction } from '../finance/classify.js';
 import { detectRecurringStreams } from '../recurring/detect.js';
 import { isValidCategory } from './categories.js';
 import { recordAiUsage } from './cost.js';
-import { cleanMerchantName } from './textNormalize.js';
+import { cleanMerchantName, merchantKey as computeMerchantKey } from './textNormalize.js';
 import type { EnrichmentInput, EnrichmentProvider, FewShotExample } from './types.js';
 
 const BATCH_SIZE = 75;
@@ -22,18 +22,48 @@ interface EnrichmentWrite {
   model: string | null;
 }
 
+interface ExpectedCurrentEnrichment {
+  id: number | null;
+  source: EnrichmentWrite['source'] | null;
+}
+
 /**
  * Supersede-then-insert, mirroring the pending→posted append-friendly
  * pattern already used on `transactions`: re-categorizing never destroys
  * history, it just marks the prior enrichment row superseded.
  */
-export async function applyEnrichment(db: Db, transactionId: number, write: EnrichmentWrite): Promise<void> {
+export async function applyEnrichment(
+  db: Db,
+  transactionId: number,
+  write: EnrichmentWrite,
+  expectedCurrent?: ExpectedCurrentEnrichment,
+): Promise<boolean> {
   const category = isValidCategory(write.category) ? write.category : 'OTHER';
+  let applied = false;
   await db.transaction(async (tx) => {
     // Serialize writers for this transaction. The partial unique index is the
     // final invariant; this lock prevents two workers from both superseding
     // and then racing to insert the next current row.
     await tx.execute(sql`select id from ${transactions} where id = ${transactionId} for update`);
+    if (expectedCurrent) {
+      const [current] = await tx
+        .select({ id: transactionEnrichments.id, source: transactionEnrichments.source })
+        .from(transactionEnrichments)
+        .where(
+          and(
+            eq(transactionEnrichments.transactionId, transactionId),
+            isNull(transactionEnrichments.supersededAt),
+          ),
+        )
+        .limit(1);
+      if (
+        (current?.id ?? null) !== expectedCurrent.id ||
+        (current?.source ?? null) !== expectedCurrent.source ||
+        current?.source === 'user_correction'
+      ) {
+        return;
+      }
+    }
     await tx
       .update(transactionEnrichments)
       .set({ supersededAt: new Date() })
@@ -48,7 +78,9 @@ export async function applyEnrichment(db: Db, transactionId: number, write: Enri
       source: write.source,
       model: write.model,
     });
+    applied = true;
   });
+  return applied;
 }
 
 async function getFewShotExamples(db: Db, userId: number): Promise<FewShotExample[]> {
@@ -74,7 +106,11 @@ async function getFewShotExamples(db: Db, userId: number): Promise<FewShotExampl
   return examples;
 }
 
-async function repairMisclassifiedIncome(db: Db, userId: number): Promise<Set<string>> {
+async function repairMisclassifiedIncome(
+  db: Db,
+  userId: number,
+  correctedMerchantKeys: ReadonlySet<string>,
+): Promise<Set<string>> {
   const rows = await db
     .select({
       id: transactions.id,
@@ -86,6 +122,8 @@ async function repairMisclassifiedIncome(db: Db, userId: number): Promise<Set<st
       transferPairId: transactions.transferPairId,
       accountType: accounts.type,
       accountSubtype: accounts.subtype,
+      enrichmentId: transactionEnrichments.id,
+      enrichmentSource: transactionEnrichments.source,
       isRecurring: transactionEnrichments.isRecurring,
     })
     .from(transactions)
@@ -109,8 +147,9 @@ async function repairMisclassifiedIncome(db: Db, userId: number): Promise<Set<st
 
   const repairedWeeks = new Set<string>();
   for (const row of rows) {
+    if (correctedMerchantKeys.has(computeMerchantKey(row.name, row.merchantName))) continue;
     if (!isIncomeTransaction(row)) continue;
-    await applyEnrichment(db, row.id, {
+    const applied = await applyEnrichment(db, row.id, {
       category: 'INCOME',
       merchantClean: cleanMerchantName(row.name, row.merchantName),
       isRecurring: row.isRecurring,
@@ -118,8 +157,11 @@ async function repairMisclassifiedIncome(db: Db, userId: number): Promise<Set<st
       confidence: 0.99,
       source: 'fallback',
       model: null,
+    }, {
+      id: row.enrichmentId,
+      source: row.enrichmentSource,
     });
-    repairedWeeks.add(row.postedDate);
+    if (applied) repairedWeeks.add(row.postedDate);
   }
   return repairedWeeks;
 }
@@ -135,7 +177,9 @@ export async function enrichUserTransactions(
   provider: EnrichmentProvider,
   userId: number,
 ): Promise<void> {
-  const repairedIncomeDates = await repairMisclassifiedIncome(db, userId);
+  const fewShot = await getFewShotExamples(db, userId);
+  const fewShotByMerchantKey = new Map(fewShot.map((example) => [example.merchantKey, example]));
+  const repairedIncomeDates = await repairMisclassifiedIncome(db, userId, new Set(fewShotByMerchantKey.keys()));
   const rows = await db
     .select({
       id: transactions.id,
@@ -173,8 +217,6 @@ export async function enrichUserTransactions(
     return;
   }
 
-  const fewShot = await getFewShotExamples(db, userId);
-
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
     const inputs: EnrichmentInput[] = batch.map((t) => ({
@@ -194,9 +236,20 @@ export async function enrichUserTransactions(
 
     for (const input of inputs) {
       const result = byId.get(input.transactionId);
-      const forceIncome = isIncomeTransaction(input) && result?.category !== 'INCOME';
-      if (!result && !forceIncome) continue;
-      const normalized = forceIncome
+      const learnedCorrection = fewShotByMerchantKey.get(computeMerchantKey(input.name, input.merchantName));
+      const forceIncome = !learnedCorrection && isIncomeTransaction(input) && result?.category !== 'INCOME';
+      if (!result && !forceIncome && !learnedCorrection) continue;
+      const normalized = learnedCorrection
+        ? {
+            transactionId: input.transactionId,
+            category: learnedCorrection.category,
+            merchantClean: cleanMerchantName(input.name, input.merchantName),
+            isRecurring: result?.isRecurring ?? false,
+            isDiscretionary: learnedCorrection.isDiscretionary,
+            confidence: 0.99,
+            source: 'llm' as const,
+          }
+        : forceIncome
         ? {
             transactionId: input.transactionId,
             category: 'INCOME',
@@ -207,7 +260,12 @@ export async function enrichUserTransactions(
             source: 'fallback' as const,
           }
         : result!;
-      await applyEnrichment(db, input.transactionId, { ...normalized, model: forceIncome ? null : provider.model });
+      await applyEnrichment(
+        db,
+        input.transactionId,
+        { ...normalized, model: forceIncome ? null : provider.model },
+        { id: null, source: null },
+      );
     }
 
     if (usage) {
