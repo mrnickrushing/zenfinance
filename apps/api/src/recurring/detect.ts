@@ -3,6 +3,8 @@ import type { Db } from '../db/client.js';
 import { accounts, items, recurringStreams, transactionEnrichments, transactions } from '../db/schema.js';
 import {
   cleanMerchantName,
+  isKnownSubscriptionProduct,
+  type KnownSubscriptionMerchant,
   knownSubscriptionMerchant,
   recurringMerchantKey,
 } from '../enrichment/textNormalize.js';
@@ -40,6 +42,93 @@ function nextExpectedDate(lastSeen: string, cadence: CadenceRule['cadence']): st
 interface Occurrence {
   postedDate: string;
   amountCents: number;
+  isExplicitProduct: boolean;
+}
+
+interface KnownMonthlyCandidate {
+  occurrences: Occurrence[];
+  explicitProductCount: number;
+  gapDeviation: number;
+}
+
+const MONTHLY_RULE = CADENCE_RULES.find((rule) => rule.cadence === 'monthly')!;
+
+function isBetterKnownMonthlyCandidate(
+  candidate: KnownMonthlyCandidate,
+  current: KnownMonthlyCandidate | null,
+): boolean {
+  if (!current) return true;
+  if (candidate.occurrences.length !== current.occurrences.length) {
+    return candidate.occurrences.length > current.occurrences.length;
+  }
+  if (candidate.explicitProductCount !== current.explicitProductCount) {
+    return candidate.explicitProductCount > current.explicitProductCount;
+  }
+  const candidateLast = candidate.occurrences[candidate.occurrences.length - 1]!.postedDate;
+  const currentLast = current.occurrences[current.occurrences.length - 1]!.postedDate;
+  if (candidateLast !== currentLast) return candidateLast > currentLast;
+  return candidate.gapDeviation < current.gapDeviation;
+}
+
+/**
+ * AI vendors use the same descriptor for fixed consumer plans and variable
+ * API usage. Find the strongest monthly, price-consistent subsequence instead
+ * of letting the unrelated usage charges destroy the merchant's cadence.
+ */
+function bestKnownMonthlySequence(occurrences: Occurrence[]): Occurrence[] | null {
+  let best: KnownMonthlyCandidate | null = null;
+
+  for (const seed of occurrences) {
+    const amountTolerance = Math.max(300, seed.amountCents * 0.15);
+    const eligible = occurrences.filter(
+      (occurrence) => Math.abs(occurrence.amountCents - seed.amountCents) <= amountTolerance,
+    );
+    const byDate = new Map<string, Occurrence>();
+    for (const occurrence of eligible) {
+      const current = byDate.get(occurrence.postedDate);
+      if (!current || (!current.isExplicitProduct && occurrence.isExplicitProduct)) {
+        byDate.set(occurrence.postedDate, occurrence);
+      }
+    }
+    const sorted = [...byDate.values()].sort(
+      (a, b) => Date.parse(a.postedDate) - Date.parse(b.postedDate),
+    );
+    const candidates: KnownMonthlyCandidate[] = sorted.map((occurrence) => ({
+      occurrences: [occurrence],
+      explicitProductCount: occurrence.isExplicitProduct ? 1 : 0,
+      gapDeviation: 0,
+    }));
+
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = 0; j < i; j++) {
+        const gapDays = (Date.parse(sorted[i]!.postedDate) - Date.parse(sorted[j]!.postedDate)) / DAY_MS;
+        if (Math.abs(gapDays - MONTHLY_RULE.targetDays) > MONTHLY_RULE.toleranceDays) continue;
+        const prior = candidates[j]!;
+        const candidate: KnownMonthlyCandidate = {
+          occurrences: [...prior.occurrences, sorted[i]!],
+          explicitProductCount: prior.explicitProductCount + (sorted[i]!.isExplicitProduct ? 1 : 0),
+          gapDeviation: prior.gapDeviation + Math.abs(gapDays - MONTHLY_RULE.targetDays),
+        };
+        if (isBetterKnownMonthlyCandidate(candidate, candidates[i]!)) candidates[i] = candidate;
+      }
+      if (candidates[i]!.occurrences.length >= 2 && isBetterKnownMonthlyCandidate(candidates[i]!, best)) {
+        best = candidates[i]!;
+      }
+    }
+  }
+
+  if (best) return best.occurrences;
+
+  const explicitProduct = [...occurrences]
+    .filter((occurrence) => occurrence.isExplicitProduct)
+    .sort((a, b) => Date.parse(b.postedDate) - Date.parse(a.postedDate))[0];
+  if (explicitProduct) return [explicitProduct];
+
+  // A first $20 OpenAI/Anthropic charge is useful immediately; subsequent
+  // syncs will either confirm its monthly cadence or replace this provisional
+  // stream with the observed sequence.
+  if (occurrences.length === 1 && occurrences[0]!.amountCents === 2000) return occurrences;
+  return null;
 }
 
 /**
@@ -76,7 +165,12 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
     )
     .orderBy(desc(transactions.postedDate));
 
-  const groups = new Map<string, { accountId: number; merchantClean: string; occurrences: Occurrence[] }>();
+  const groups = new Map<string, {
+    accountId: number;
+    merchantClean: string;
+    knownSubscription: KnownSubscriptionMerchant | null;
+    occurrences: Occurrence[];
+  }>();
   for (const row of rows) {
     const knownSubscription = row.amountCents > 0
       ? knownSubscriptionMerchant(row.name, row.merchantName)
@@ -85,23 +179,38 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
     const key = recurringMerchantKey(row.name, row.merchantName, row.amountCents);
     const groupKey = `${row.accountId}:${key}`;
     if (!groups.has(groupKey)) {
-      groups.set(groupKey, { accountId: row.accountId, merchantClean, occurrences: [] });
+      groups.set(groupKey, { accountId: row.accountId, merchantClean, knownSubscription, occurrences: [] });
     }
-    groups.get(groupKey)!.occurrences.push({ postedDate: row.postedDate, amountCents: row.amountCents });
+    groups.get(groupKey)!.occurrences.push({
+      postedDate: row.postedDate,
+      amountCents: row.amountCents,
+      isExplicitProduct: isKnownSubscriptionProduct(row.name, row.merchantName),
+    });
   }
 
   const detectedKnownSubscriptions = new Set<string>();
   for (const [groupKey, group] of groups) {
-    if (group.occurrences.length < 2) continue;
     const merchantKeyPart = groupKey.split(':').slice(1).join(':');
-    const sorted = [...group.occurrences].sort((a, b) => Date.parse(a.postedDate) - Date.parse(b.postedDate));
-
-    const gaps: number[] = [];
-    for (let i = 1; i < sorted.length; i++) {
-      gaps.push((Date.parse(sorted[i]!.postedDate) - Date.parse(sorted[i - 1]!.postedDate)) / DAY_MS);
+    let sorted: Occurrence[];
+    let cadenceRule: CadenceRule;
+    if (group.knownSubscription) {
+      const knownMonthly = bestKnownMonthlySequence(group.occurrences);
+      if (!knownMonthly) continue;
+      sorted = knownMonthly;
+      cadenceRule = MONTHLY_RULE;
+    } else {
+      if (group.occurrences.length < 2) continue;
+      sorted = [...group.occurrences].sort(
+        (a, b) => Date.parse(a.postedDate) - Date.parse(b.postedDate),
+      );
+      const gaps: number[] = [];
+      for (let i = 1; i < sorted.length; i++) {
+        gaps.push((Date.parse(sorted[i]!.postedDate) - Date.parse(sorted[i - 1]!.postedDate)) / DAY_MS);
+      }
+      const detectedCadence = classifyCadence(median(gaps));
+      if (!detectedCadence) continue;
+      cadenceRule = detectedCadence;
     }
-    const cadenceRule = classifyCadence(median(gaps));
-    if (!cadenceRule) continue;
 
     const amounts = sorted.map((o) => o.amountCents);
     const avgAmount = amounts.reduce((a, b) => a + b, 0) / amounts.length;
@@ -112,7 +221,7 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
 
     const firstSeenDate = sorted[0]!.postedDate;
     const lastSeenDate = sorted[sorted.length - 1]!.postedDate;
-    if (knownSubscriptionMerchant(group.merchantClean, null)) {
+    if (group.knownSubscription) {
       detectedKnownSubscriptions.add(`${group.accountId}:${merchantKeyPart}`);
     }
 
