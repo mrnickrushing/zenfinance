@@ -301,10 +301,13 @@ async function persistTokens(tokens: AuthTokens | null): Promise<void> {
 
 let refreshPromise: Promise<AuthTokens | null> | null = null;
 const API_TIMEOUT_MS = 20_000;
+// The coach's LLM-refined answer can legitimately take longer than a normal
+// CRUD request, especially for plan-style, multi-action answers.
+const CHAT_API_TIMEOUT_MS = 45_000;
 
-async function fetchWithTimeout(url: string, init: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const externalSignal = init.signal;
   const abortFromExternal = () => controller.abort();
   externalSignal?.addEventListener('abort', abortFromExternal, { once: true });
@@ -338,7 +341,7 @@ async function refreshAuthTokens(): Promise<AuthTokens | null> {
   return refreshPromise;
 }
 
-async function requestApi<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
+async function requestApi<T>(path: string, init: RequestInit = {}, retry = true, timeoutMs?: number): Promise<T> {
   const token = useAppStore.getState().accessToken ?? (await SecureStore.getItemAsync('accessToken'));
   const res = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
@@ -347,14 +350,14 @@ async function requestApi<T>(path: string, init: RequestInit = {}, retry = true)
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init.headers ?? {}),
     },
-  });
+  }, timeoutMs);
 
   if (res.status === 401 && retry) {
     const tokens = await refreshAuthTokens();
     if (tokens) {
       await persistTokens(tokens);
       useAppStore.getState().setTokens(tokens);
-      return requestApi<T>(path, init, false);
+      return requestApi<T>(path, init, false, timeoutMs);
     }
     await persistTokens(null);
     useAppStore.getState().setTokens(null);
@@ -3043,7 +3046,7 @@ function CoachScreen({ home, initialQuestion = '' }: { home: MobileHomeSummaryVi
       const answer = await requestApi<ChatAnswerView>('/api/chat', {
         method: 'POST',
         body: JSON.stringify({ question: trimmed }),
-      });
+      }, true, CHAT_API_TIMEOUT_MS);
       setTurns((items) => [...items, { id: answer.id, question: trimmed, answer }]);
       await requestApi('/api/app-events', {
         method: 'POST',
