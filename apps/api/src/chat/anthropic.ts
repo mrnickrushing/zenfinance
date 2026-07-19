@@ -9,6 +9,12 @@ export interface GroundedChatDraft {
   actions: string[];
 }
 
+export interface GroundedChatOptions {
+  timeoutMs?: number;
+  maxRetries?: number;
+  maxTokens?: number;
+}
+
 const responseSchema = z.object({
   answer: z.string().min(1).max(3000),
   fact_indexes: z.array(z.number().int().nonnegative()).max(12),
@@ -84,16 +90,21 @@ export async function generateGroundedChatAnswer(
   draft: GroundedChatDraft,
   availableFacts: ChatFactView[],
   contextSummary: object,
+  options: GroundedChatOptions = {},
 ): Promise<GroundedChatDraft> {
   if (env.CHAT_PROVIDER === 'mock') return draft;
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured for CHAT_PROVIDER=anthropic');
 
   // Bound worst-case latency: the SDK's default of 2 retries could otherwise stack
   // up to 3 full attempts behind the mobile client's request timeout.
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 15_000, maxRetries: 1 });
+  const client = new Anthropic({
+    apiKey: env.ANTHROPIC_API_KEY,
+    timeout: options.timeoutMs ?? 15_000,
+    maxRetries: options.maxRetries ?? 1,
+  });
   const response = await client.messages.create({
     model: env.CHAT_MODEL,
-    max_tokens: 2400,
+    max_tokens: options.maxTokens ?? 2400,
     system: CHAT_SYSTEM_PROMPT,
     output_config: { format: { type: 'json_schema', schema: CHAT_JSON_SCHEMA } },
     messages: [

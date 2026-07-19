@@ -19,8 +19,21 @@ const MONTHS_PER_WEEK = 52 / 12;
 // Match the 90-day Plaid history closely enough to capture monthly and
 // irregular pay cycles without letting old income dominate the plan.
 const MAX_WEEKS = 12;
+export const BUDGET_NARRATION_DEADLINE_MS = 6_500;
 
 export type AllocationInput = { category: string; baselineCents: number };
+
+export async function withBudgetNarrationDeadline<T>(task: Promise<T>, timeoutMs = BUDGET_NARRATION_DEADLINE_MS): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<never>((_resolve, reject) => {
+    timeout = setTimeout(() => reject(new Error('budget narration deadline exceeded')), timeoutMs);
+  });
+  try {
+    return await Promise.race([task, deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 function cents(amount: number): string {
   return `$${(Math.abs(amount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -304,7 +317,7 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   let actions = deterministic.actions;
   let explanationSource: BudgetPlanView['explanationSource'] = 'deterministic';
   try {
-    const generated = await generateGroundedChatAnswer(
+    const generated = await withBudgetNarrationDeadline(generateGroundedChatAnswer(
       'Explain this monthly budget plan. Accurately state whether every detected recurring bill is included or whether the user excluded one, identify user-entered assumptions, explain the savings-goal tradeoff, and do not change any server-computed numbers.',
       { answer: deterministic.answer, facts, actions: deterministic.actions },
       facts,
@@ -318,7 +331,8 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
         categories: categories.map((category) => ({ category: category.category, recommendedCents: category.recommendedCents })),
         adjustments: { incomeSource, targetBufferCents, billOverrideCount, customBillCount: customBills.length, categoryOverrideCount },
       },
-    );
+      { timeoutMs: 5_000, maxRetries: 0, maxTokens: 800 },
+    ));
     explanation = generated.answer;
     actions = generated.actions;
     if (env.CHAT_PROVIDER === 'anthropic') explanationSource = 'anthropic';
