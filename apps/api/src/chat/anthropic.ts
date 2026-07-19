@@ -88,7 +88,9 @@ export async function generateGroundedChatAnswer(
   if (env.CHAT_PROVIDER === 'mock') return draft;
   if (!env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured for CHAT_PROVIDER=anthropic');
 
-  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 15_000 });
+  // Bound worst-case latency: the SDK's default of 2 retries could otherwise stack
+  // up to 3 full attempts behind the mobile client's request timeout.
+  const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, timeout: 15_000, maxRetries: 1 });
   const response = await client.messages.create({
     model: env.CHAT_MODEL,
     max_tokens: 2400,
