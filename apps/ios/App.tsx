@@ -73,7 +73,7 @@ import {
   AppState as NativeAppState,
   FlatList,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Linking,
   Modal,
   Platform,
@@ -3005,6 +3005,7 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   const [question, setQuestion] = useReducerState(initialQuestion);
   const [busy, setBusy] = useReducerState(false);
   const [turns, setTurns] = useReducerState<CoachTurn[]>([]);
+  const [keyboardOffset, setKeyboardOffset] = useReducerState(0);
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -3012,6 +3013,22 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     }
   }, [turns.length]);
+
+  // KeyboardAvoidingView's automatic self-measurement doesn't reliably pick
+  // up this screen's position — it sits below a bottom tab bar inside a
+  // custom rounded shell, not flush with the window edge it assumes — so the
+  // composer was getting hidden entirely behind the keyboard. Track the
+  // keyboard height directly instead and push the composer above it.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, (e) => setKeyboardOffset(e.endCoordinates.height));
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardOffset(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, [setKeyboardOffset]);
 
   async function ask() {
     const trimmed = question.trim();
@@ -3037,7 +3054,7 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+    <View style={[styles.flex, { paddingBottom: keyboardOffset }]}>
       <View style={styles.coachScreenHeader}>
         <Text style={styles.coachHeaderTitle}>Coach</Text>
         <Text style={styles.coachHeaderSubtitle}>MINDFUL PRESENCE</Text>
@@ -3083,7 +3100,7 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
           <Text style={styles.askZenText}>Ask Zen</Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
