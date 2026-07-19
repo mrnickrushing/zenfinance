@@ -4994,9 +4994,9 @@ function InsightLedger({ facts }: { facts: ChatAnswerView['facts'] }) {
   if (facts.length === 0) return null;
   return (
     <View style={styles.coachEvidenceWrap}>
-      {facts.map((fact) => (
+      {facts.map((fact, index) => (
         <View
-          key={`${fact.label}-${fact.source}`}
+          key={`${fact.label}-${fact.source}-${index}`}
           style={[styles.coachEvidencePill, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
         >
           <View style={[styles.coachEvidenceDot, { backgroundColor: theme.accentBright }]} />
