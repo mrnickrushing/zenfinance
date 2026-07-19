@@ -2,7 +2,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const packagePath = require.resolve('xcode/package.json');
+let packagePath;
+try {
+  packagePath = require.resolve('xcode/package.json');
+} catch (error) {
+  if (error && typeof error === 'object' && 'code' in error && error.code === 'MODULE_NOT_FOUND') {
+    process.exit(0);
+  }
+  throw error;
+}
 const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
 const installedRange = packageJson.dependencies?.uuid;
 

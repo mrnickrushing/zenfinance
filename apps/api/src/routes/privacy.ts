@@ -1,4 +1,4 @@
-import { Router, type Response } from 'express';
+import { Router, type NextFunction, type Response } from 'express';
 import { db } from '../db/client.js';
 import { userRateLimit } from '../middleware/userRateLimit.js';
 import { requireUser } from '../middleware/userAuth.js';
@@ -42,16 +42,26 @@ export function createPrivacyRouter(): ReturnType<typeof Router> {
       limit: 2,
       message: 'Data exports are limited to two per hour. Try again later.',
     }),
-    async (_req, res) => {
+    async (_req, res, next: NextFunction) => {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="zenfinance-data-export.json"');
-      const found = await streamUserDataExport(db, res.locals.userId as number, (chunk) => writeChunk(res, chunk));
-      if (!found) {
-        res.removeHeader('Content-Disposition');
-        res.status(404).json({ error: { code: 'not_found', message: 'User not found' } });
-        return;
+      try {
+        const found = await streamUserDataExport(db, res.locals.userId as number, (chunk) => writeChunk(res, chunk));
+        if (!found) {
+          res.removeHeader('Content-Disposition');
+          res.status(404).json({ error: { code: 'not_found', message: 'User not found' } });
+          return;
+        }
+        res.end();
+      } catch (error) {
+        if (res.destroyed || res.writableEnded) return;
+        if (!res.headersSent) {
+          res.removeHeader('Content-Disposition');
+          next(error);
+          return;
+        }
+        res.destroy(error instanceof Error ? error : new Error('Privacy export failed'));
       }
-      res.end();
     },
   );
 

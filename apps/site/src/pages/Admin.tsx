@@ -95,7 +95,7 @@ function Dashboard() {
   const [error, setError] = useState('');
 
   const load = useCallback((signal?: AbortSignal) => {
-    adminFetch<AdminMetrics>('/api/admin/metrics')
+    adminFetch<AdminMetrics>('/api/admin/metrics', { signal })
       .then((next) => {
         if (!signal?.aborted) setMetrics(next);
       })
@@ -420,7 +420,7 @@ function SupportSection({ onChanged }: { onChanged: () => void }) {
   const [data, setData] = useState<Paginated<SupportTicket> | null>(null);
 
   const load = useCallback((signal?: AbortSignal) => {
-    adminFetch<Paginated<SupportTicket>>('/api/admin/support?page=1&pageSize=50')
+    adminFetch<Paginated<SupportTicket>>('/api/admin/support?page=1&pageSize=50', { signal })
       .then((next) => {
         if (!signal?.aborted) setData(next);
       })
