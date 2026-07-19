@@ -142,7 +142,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'AI Smart Budget tab · 2026-07-19.1';
+const OTA_DIAGNOSTIC_LABEL = 'AI Smart Budget timeout fix · 2026-07-19.2';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -304,6 +304,10 @@ const API_TIMEOUT_MS = 20_000;
 // The coach's LLM-refined answer can legitimately take longer than a normal
 // CRUD request, especially for plan-style, multi-action answers.
 const CHAT_API_TIMEOUT_MS = 45_000;
+// Budget math is deterministic, but its optional grounded narration can add a
+// short model round trip. Keep enough room for a cold API request while the
+// server enforces its own much shorter narration fallback deadline.
+const BUDGET_API_TIMEOUT_MS = 30_000;
 
 async function fetchWithTimeout(url: string, init: RequestInit = {}, timeoutMs: number = API_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -2553,7 +2557,12 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
     setBuildingBudgetPlan(true);
     setBudgetPlanError(null);
     try {
-      const plan = await requestApi<BudgetPlanView>('/api/budget/plan', { method: 'POST', body: JSON.stringify(request.value) });
+      const plan = await requestApi<BudgetPlanView>(
+        '/api/budget/plan',
+        { method: 'POST', body: JSON.stringify(request.value) },
+        true,
+        BUDGET_API_TIMEOUT_MS,
+      );
       if (requestId === budgetPlanRequestId.current) adoptBudgetPlan(plan, signature);
     } catch (error) {
       if (requestId === budgetPlanRequestId.current) setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
