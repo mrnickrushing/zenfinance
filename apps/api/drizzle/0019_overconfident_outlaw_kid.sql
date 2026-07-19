@@ -1,0 +1,2 @@
+CREATE INDEX "admin_refresh_replaced_by_idx" ON "admin_refresh_tokens" USING btree ("replaced_by_id");--> statement-breakpoint
+CREATE INDEX "user_refresh_replaced_by_idx" ON "user_refresh_tokens" USING btree ("replaced_by_id");

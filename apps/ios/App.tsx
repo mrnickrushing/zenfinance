@@ -3,6 +3,10 @@ import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, I
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
 import { appliedBudgetTarget, appliedCategoryCaps, buildBudgetPlanRequest, canApplyBudgetPlan } from './src/budgetPlan';
+import { useAuthScreenState } from './src/hooks/useAuthScreenState';
+import { useReducerState } from './src/hooks/useReducerState';
+import { useSettingsScreenState } from './src/hooks/useSettingsScreenState';
+import { styles } from './src/styles';
 import {
   PROFILE_MENU_GROUPS,
   SETTINGS_SECTION_COPY,
@@ -60,7 +64,7 @@ import {
   WalletCards,
   X,
 } from 'lucide-react-native';
-import { Component, useCallback, useEffect, useMemo, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useCallback, useEffect, useMemo, useRef, type ErrorInfo, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   AccessibilityInfo,
@@ -481,7 +485,7 @@ function useTheme() {
 }
 
 function useReduceMotion(): boolean {
-  const [reduceMotion, setReduceMotion] = useState(false);
+  const [reduceMotion, setReduceMotion] = useReducerState(false);
   useEffect(() => {
     void AccessibilityInfo.isReduceMotionEnabled().then(setReduceMotion);
     const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
@@ -819,7 +823,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 export default function App() {
   const { accessToken, loading, setTokens, setLoading } = useAppStore();
   const theme = useTheme();
-  const [privacyShielded, setPrivacyShielded] = useState(NativeAppState.currentState !== 'active');
+  const [privacyShielded, setPrivacyShielded] = useReducerState(NativeAppState.currentState !== 'active');
   const [fontsLoaded, fontError] = useFonts({
     Inter_300Light,
     Inter_400Regular,
@@ -895,20 +899,11 @@ function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
 function AuthScreen() {
   const theme = useTheme();
   const setTokens = useAppStore((s) => s.setTokens);
-  const [transaction, setTransaction] = useState('"I spent $186 dining out this week"');
-  const [brief, setBrief] = useState({
-    action: 'Cap dining out at $100 to stay on track for your Japan trip goal.',
-    impact: 'Potential impact: Save $45',
-  });
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [showLogin, setShowLogin] = useState(false);
-  const [mode, setMode] = useState<'register' | 'login'>('register');
-  const [touched, setTouched] = useState(false);
-  const [appleAvailable, setAppleAvailable] = useState(false);
-  const [reset, setReset] = useState<'off' | 'request' | 'confirm'>('off');
-  const [resetCode, setResetCode] = useState('');
+  const {
+    transaction, setTransaction, brief, setBrief, email, setEmail, password, setPassword,
+    busy, setBusy, showLogin, setShowLogin, mode, setMode, touched, setTouched,
+    appleAvailable, setAppleAvailable, reset, setReset, resetCode, setResetCode,
+  } = useAuthScreenState();
 
   useEffect(() => {
     void AppleAuthentication.isAvailableAsync()
@@ -1286,12 +1281,12 @@ function ProductShell() {
   const home = useAppStore((s) => s.home);
   const setHome = useAppStore((s) => s.setHome);
   const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
-  const [tab, setTab] = useState<TabKey>('brief');
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('account');
-  const [accountProfile, setAccountProfile] = useState<AccountProfileView | null>(null);
-  const [coachInitialQuestion, setCoachInitialQuestion] = useState('');
-  const [refreshing, setRefreshing] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tab, setTab] = useReducerState<TabKey>('brief');
+  const [settingsSection, setSettingsSection] = useReducerState<SettingsSection>('account');
+  const [accountProfile, setAccountProfile] = useReducerState<AccountProfileView | null>(null);
+  const [coachInitialQuestion, setCoachInitialQuestion] = useReducerState('');
+  const [refreshing, setRefreshing] = useReducerState(false);
+  const [loadError, setLoadError] = useReducerState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -1493,8 +1488,8 @@ function ShellCoachConsole({ home, onAsk }: { home: MobileHomeSummaryView; onAsk
 
 function LinkingScreen({ onLinked, onBack, onBudget }: { onLinked: () => void; onBack?: () => void; onBudget: () => void }) {
   const theme = useTheme();
-  const [busy, setBusy] = useState(false);
-  const [bankQuery, setBankQuery] = useState('');
+  const [busy, setBusy] = useReducerState(false);
+  const [bankQuery, setBankQuery] = useReducerState('');
   const bankNames = ['Chase', 'Wells Fargo', 'Bank of America', 'Citibank', 'Capital One', 'US Bank'];
   const filteredBanks = bankQuery.trim()
     ? bankNames.filter((name) => name.toLowerCase().includes(bankQuery.trim().toLowerCase()))
@@ -1620,9 +1615,9 @@ function BriefScreen({
 }) {
   const theme = useTheme();
   const brief = home.weeklyBrief ?? home.firstLook;
-  const [voiceBrief, setVoiceBrief] = useState<VoiceBriefView | null>(null);
-  const [voiceBusy, setVoiceBusy] = useState(false);
-  const [speaking, setSpeaking] = useState(false);
+  const [voiceBrief, setVoiceBrief] = useReducerState<VoiceBriefView | null>(null);
+  const [voiceBusy, setVoiceBusy] = useReducerState(false);
+  const [speaking, setSpeaking] = useReducerState(false);
 
   const loadVoiceBrief = useCallback(async () => {
     if (!brief || !home.billing.isPremium) {
@@ -1675,7 +1670,7 @@ function BriefScreen({
     setSpeaking(false);
   }
 
-  const [moveReviewed, setMoveReviewed] = useState(false);
+  const [moveReviewed, setMoveReviewed] = useReducerState(false);
   async function reviewMove() {
     if (!brief) return;
     setMoveReviewed(true);
@@ -1965,13 +1960,13 @@ const TRANSACTIONS_PAGE_SIZE = 50;
 function TransactionsScreen({ home, onBack, onProfile, onConnect, onBudget, onRefresh }: { home: MobileHomeSummaryView; onBack: () => void; onProfile: () => void; onConnect: () => void; onBudget: () => void; onRefresh: () => Promise<void> }) {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const [refreshingBalances, setRefreshingBalances] = useState(false);
+  const [refreshingBalances, setRefreshingBalances] = useReducerState(false);
   const activityRequestId = useRef(0);
-  const [activityRows, setActivityRows] = useState<EnrichedTransactionView[]>(home.recentTransactions);
-  const [activityTotal, setActivityTotal] = useState(home.transactionCount);
-  const [activityPage, setActivityPage] = useState(0);
-  const [activityLoading, setActivityLoading] = useState(false);
-  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityRows, setActivityRows] = useReducerState<EnrichedTransactionView[]>(home.recentTransactions);
+  const [activityTotal, setActivityTotal] = useReducerState(home.transactionCount);
+  const [activityPage, setActivityPage] = useReducerState(0);
+  const [activityLoading, setActivityLoading] = useReducerState(false);
+  const [activityError, setActivityError] = useReducerState<string | null>(null);
   const accountCards = home.items.flatMap((item) =>
     item.accounts.map((account, accountIndex) => ({
       item,
@@ -2407,21 +2402,21 @@ function budgetPlanMonthLabel(value: string): string {
 
 function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; onGoals: () => void }) {
   const theme = useTheme();
-  const [editing, setEditing] = useState(false);
-  const [targets, setTargets] = useState<Record<BudgetPeriod, string>>({ monthly: '', weekly: '' });
-  const [draftBudgetTarget, setDraftBudgetTarget] = useState('');
-  const [period, setPeriod] = useState<BudgetPeriod>('monthly');
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const [categoryCaps, setCategoryCaps] = useState<Record<string, number>>({});
-  const [capDraftText, setCapDraftText] = useState<Record<string, string>>({});
-  const [transactions, setTransactions] = useState<EnrichedTransactionView[]>(home.recentTransactions);
-  const [showAiPlanner, setShowAiPlanner] = useState(false);
-  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(() => home.goals.find((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0)?.id ?? null);
-  const [monthlySavings, setMonthlySavings] = useState('');
-  const [budgetPlan, setBudgetPlan] = useState<BudgetPlanView | null>(null);
-  const [budgetPlanError, setBudgetPlanError] = useState<string | null>(null);
-  const [buildingBudgetPlan, setBuildingBudgetPlan] = useState(false);
-  const [showAllBills, setShowAllBills] = useState(false);
+  const [editing, setEditing] = useReducerState(false);
+  const [targets, setTargets] = useReducerState<Record<BudgetPeriod, string>>({ monthly: '', weekly: '' });
+  const [draftBudgetTarget, setDraftBudgetTarget] = useReducerState('');
+  const [period, setPeriod] = useReducerState<BudgetPeriod>('monthly');
+  const [alertsEnabled, setAlertsEnabled] = useReducerState(true);
+  const [categoryCaps, setCategoryCaps] = useReducerState<Record<string, number>>({});
+  const [capDraftText, setCapDraftText] = useReducerState<Record<string, string>>({});
+  const [transactions, setTransactions] = useReducerState<EnrichedTransactionView[]>(home.recentTransactions);
+  const [showAiPlanner, setShowAiPlanner] = useReducerState(false);
+  const [selectedGoalId, setSelectedGoalId] = useReducerState<number | null>(() => home.goals.find((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0)?.id ?? null);
+  const [monthlySavings, setMonthlySavings] = useReducerState('');
+  const [budgetPlan, setBudgetPlan] = useReducerState<BudgetPlanView | null>(null);
+  const [budgetPlanError, setBudgetPlanError] = useReducerState<string | null>(null);
+  const [buildingBudgetPlan, setBuildingBudgetPlan] = useReducerState(false);
+  const [showAllBills, setShowAllBills] = useReducerState(false);
   const budgetPlanRequestId = useRef(0);
   const activeGoals = useMemo(() => home.goals.filter((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0), [home.goals]);
 
@@ -2870,7 +2865,7 @@ function ZenScoreDetailsScreen({
   const theme = useTheme();
   const { score, caption, components } = home.zenScore;
   const focus = zenScoreFocus(components);
-  const [expandedKey, setExpandedKey] = useState<ZenScoreComponent['key'] | null>(focus?.key ?? null);
+  const [expandedKey, setExpandedKey] = useReducerState<ZenScoreComponent['key'] | null>(focus?.key ?? null);
   const focusGuidance = focus ? zenScoreGuidance(focus) : null;
 
   return (
@@ -3007,9 +3002,9 @@ type CoachTurn = { id: string; question: string; answer: ChatAnswerView };
 
 function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   const theme = useTheme();
-  const [question, setQuestion] = useState(initialQuestion);
-  const [busy, setBusy] = useState(false);
-  const [turns, setTurns] = useState<CoachTurn[]>([]);
+  const [question, setQuestion] = useReducerState(initialQuestion);
+  const [busy, setBusy] = useReducerState(false);
+  const [turns, setTurns] = useReducerState<CoachTurn[]>([]);
   const listRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -3234,10 +3229,10 @@ function PaywallScreen({
   onChanged: () => void;
 }) {
   const theme = useTheme();
-  const [storePackages, setStorePackages] = useState<RevenueCatPackage[]>([]);
-  const [selectedProductId, setSelectedProductId] = useState(billing.packages[1]?.productId ?? billing.packages[0]?.productId);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [storeMessage, setStoreMessage] = useState<string | null>(null);
+  const [storePackages, setStorePackages] = useReducerState<RevenueCatPackage[]>([]);
+  const [selectedProductId, setSelectedProductId] = useReducerState(billing.packages[1]?.productId ?? billing.packages[0]?.productId);
+  const [busy, setBusy] = useReducerState<string | null>(null);
+  const [storeMessage, setStoreMessage] = useReducerState<string | null>(null);
 
   useEffect(() => {
     void trackBillingEvent('paywall_viewed', { source, variant: billing.pricingExperiment.variant });
@@ -3393,22 +3388,22 @@ function goalIcon(name: string): MaterialSymbolName {
 
 function GoalsScreen({ goals, billing, onChanged }: { goals: GoalView[]; billing: BillingStatusView; onChanged: () => void }) {
   const theme = useTheme();
-  const [name, setName] = useState('');
-  const [target, setTarget] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [scenario, setScenario] = useState<WhatIfResultView | null>(null);
-  const [scenarioGoalId, setScenarioGoalId] = useState<number | null>(null);
-  const [scenarioDraft, setScenarioDraft] = useState<WhatIfDraft>({
+  const [name, setName] = useReducerState('');
+  const [target, setTarget] = useReducerState('');
+  const [saving, setSaving] = useReducerState(false);
+  const [scenario, setScenario] = useReducerState<WhatIfResultView | null>(null);
+  const [scenarioGoalId, setScenarioGoalId] = useReducerState<number | null>(null);
+  const [scenarioDraft, setScenarioDraft] = useReducerState<WhatIfDraft>({
     monthlySavings: '',
     oneTimeSavings: '',
     monthlySpendReduction: '',
     monthlyIncomeChange: '',
   });
-  const [scenarioError, setScenarioError] = useState<string | null>(null);
-  const [runningScenario, setRunningScenario] = useState(false);
-  const [showAdvancedScenario, setShowAdvancedScenario] = useState(false);
-  const [showPaywall, setShowPaywall] = useState(false);
-  const [dismissedMilestoneIds, setDismissedMilestoneIds] = useState<Set<number>>(new Set());
+  const [scenarioError, setScenarioError] = useReducerState<string | null>(null);
+  const [runningScenario, setRunningScenario] = useReducerState(false);
+  const [showAdvancedScenario, setShowAdvancedScenario] = useReducerState(false);
+  const [showPaywall, setShowPaywall] = useReducerState(false);
+  const [dismissedMilestoneIds, setDismissedMilestoneIds] = useReducerState<Set<number>>(new Set());
   const atFreeGoalLimit = !billing.isPremium && goals.filter((goal) => goal.status === 'active').length >= (billing.limits.maxActiveGoals ?? Number.POSITIVE_INFINITY);
   const milestoneGoal = goals.find((goal) => goal.pacing.progressRatio >= 0.5 && !dismissedMilestoneIds.has(goal.id));
 
@@ -3896,9 +3891,9 @@ function WinsScreen({
   onChanged: () => void;
 }) {
   const theme = useTheme();
-  const [physicalBusy, setPhysicalBusy] = useState<string | null>(null);
-  const [physicalProduct, setPhysicalProduct] = useState<RevenueCatStoreProduct | null>(null);
-  const [physicalMessage, setPhysicalMessage] = useState<string | null>(null);
+  const [physicalBusy, setPhysicalBusy] = useReducerState<string | null>(null);
+  const [physicalProduct, setPhysicalProduct] = useReducerState<RevenueCatStoreProduct | null>(null);
+  const [physicalMessage, setPhysicalMessage] = useReducerState<string | null>(null);
 
   useEffect(() => {
     if (moneyPhysical.purchased) return;
@@ -4080,23 +4075,15 @@ function SettingsScreen({
   const prefs = useAppStore((s) => s.notificationPrefs);
   const setPrefs = useAppStore((s) => s.setNotificationPrefs);
   const setTokens = useAppStore((s) => s.setTokens);
-  const [billingBusy, setBillingBusy] = useState(false);
-  const [referral, setReferral] = useState<ReferralStatusView | null>(null);
-  const [redeemCode, setRedeemCode] = useState('');
-  const [referralBusy, setReferralBusy] = useState(false);
-  const [freelancer, setFreelancer] = useState<FreelancerSummaryView | null>(null);
-  const [freelancerBusy, setFreelancerBusy] = useState(false);
-  const [targetIncome, setTargetIncome] = useState('');
-  const [taxSetAside, setTaxSetAside] = useState('25');
-  const [runwayTarget, setRunwayTarget] = useState('3');
-  const [household, setHousehold] = useState<HouseholdStatusView | null>(null);
-  const [householdBusy, setHouseholdBusy] = useState(false);
-  const [householdInviteEmail, setHouseholdInviteEmail] = useState('');
-  const [householdInviteCode, setHouseholdInviteCode] = useState('');
-  const [sharedGoalName, setSharedGoalName] = useState('');
-  const [sharedGoalTarget, setSharedGoalTarget] = useState('');
-  const [householdContribution, setHouseholdContribution] = useState<Record<number, string>>({});
-  const [updateBusy, setUpdateBusy] = useState(false);
+  const {
+    billingBusy, setBillingBusy, referral, setReferral, redeemCode, setRedeemCode,
+    referralBusy, setReferralBusy, freelancer, setFreelancer, freelancerBusy, setFreelancerBusy,
+    targetIncome, setTargetIncome, taxSetAside, setTaxSetAside, runwayTarget, setRunwayTarget,
+    household, setHousehold, householdBusy, setHouseholdBusy, householdInviteEmail, setHouseholdInviteEmail,
+    householdInviteCode, setHouseholdInviteCode, sharedGoalName, setSharedGoalName,
+    sharedGoalTarget, setSharedGoalTarget, householdContribution, setHouseholdContribution,
+    updateBusy, setUpdateBusy,
+  } = useSettingsScreenState();
 
   const updateMeta = [
     `Build marker: ${OTA_DIAGNOSTIC_LABEL}`,
@@ -5126,516 +5113,3 @@ function SecondaryButton({
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  privacyShield: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 10000, elevation: 10000, backgroundColor: '#0B0E14' },
-  globalText: { fontFamily: 'Inter_400Regular', letterSpacing: 0 },
-  flex: { flex: 1 },
-  flexShrink: { flex: 1, minWidth: 0 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  centerGrow: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  authScreen: { flex: 1 },
-  onboardingScreen: { flex: 1, paddingHorizontal: 22, paddingTop: 16, paddingBottom: 24, justifyContent: 'space-between', backgroundColor: '#0B0E14' },
-  onboardingSkip: { alignSelf: 'flex-end', padding: 8 },
-  onboardingSkipText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12 },
-  onboardingHero: { alignItems: 'center', gap: 18 },
-  onboardingLotus: { width: 150, height: 150, borderRadius: 75, alignItems: 'center', justifyContent: 'center', backgroundColor: '#8E44AD26', shadowColor: '#00D2D3', shadowOpacity: 0.5, shadowRadius: 34, shadowOffset: { width: 0, height: 0 } },
-  onboardingTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 31, lineHeight: 36, textAlign: 'center', letterSpacing: 0.5 },
-  onboardingBody: { maxWidth: 290, color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  authContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
-  authContentV2: { flexGrow: 1, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 28, gap: 14 },
-  authBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  authLogo: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A', backgroundColor: '#FFFFFF0D' },
-  authBrandText: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  appScreen: { flex: 1 },
-  content: { flex: 1 },
-  zenBackdrop: StyleSheet.absoluteFill,
-  meshTeal: { position: 'absolute', width: 340, height: 300, left: -100, top: 60, borderRadius: 180, backgroundColor: '#00D2D340' },
-  meshViolet: { position: 'absolute', width: 380, height: 320, right: -120, top: 0, borderRadius: 200, backgroundColor: '#8E44AD40' },
-  zenFrame: { flex: 1, marginHorizontal: 12, marginTop: 8, marginBottom: 8, borderRadius: 28, borderWidth: 1, borderColor: '#FFFFFF26', overflow: 'hidden' },
-  zenHomeScroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 24, gap: 16 },
-  zenHomeHeader: { flexDirection: 'row', alignItems: 'center', minHeight: 32 },
-  zenLotusMark: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center' },
-  zenBrand: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
-  zenHeaderAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  zenScorePill: { alignSelf: 'center', minHeight: 44, paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  zenScoreCard: { alignItems: 'center', paddingVertical: 18, gap: 3, borderColor: '#FFFFFF38' },
-  zenScoreAura: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D31A', shadowColor: '#00D2D3', shadowOpacity: 0.55, shadowRadius: 24, shadowOffset: { width: 0, height: 0 } },
-  zenScoreEyebrow: { color: '#FFFFFF99', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 2, marginTop: 5 },
-  zenScoreNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 34, letterSpacing: 1 },
-  zenScoreDenom: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 15, letterSpacing: 0 },
-  zenScoreCaption: { color: '#79E6B0', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  zenScoreIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#DCEBF2', alignItems: 'center', justifyContent: 'center' },
-  zenScoreText: { color: '#FFFFFF', fontSize: 14, fontWeight: '800' },
-  zenScoreDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: '#79E6B0' },
-  zenGlass: { backgroundColor: '#FFFFFF0D', borderWidth: 1, borderRadius: 24, padding: 16, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  zenGlassBlur: StyleSheet.absoluteFill,
-  zenGlassTint: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, backgroundColor: '#FFFFFF0D', borderRadius: 24 },
-  primaryButtonPulse: { width: '100%' },
-  primaryButtonPulseCompact: { width: undefined, flex: 1 },
-  zenInsightCard: { gap: 12, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 20 },
-  zenInsightHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  zenInsightIcon: { width: 28, height: 28, borderRadius: 9, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  zenInsightKicker: { color: '#00D2D3', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  zenImpact: { color: '#FFFFFFB3', fontSize: 11, fontWeight: '800' },
-  zenInsightTitle: { color: '#FFFFFF', fontSize: 32, lineHeight: 38, fontFamily: 'Inter_700Bold' },
-  zenInsightBody: { color: '#E0E0E0', fontSize: 16, lineHeight: 22 },
-  zenDailyFocus: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 12, borderRadius: 16, backgroundColor: '#00D2D314', borderWidth: 1, borderColor: '#00D2D34D' },
-  zenDailyCard: { gap: 12, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
-  zenDailyCardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  zenDailyIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  zenDailyCardTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
-  zenDailyCardBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
-  dailyWidget: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#00D2D34D', backgroundColor: '#00D2D314' },
-  dailyWidgetIcon: { width: 30, height: 30, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  dailyWidgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  dailyWidgetBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 2 },
-  dailyWidgetBrand: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 9, marginTop: 3 },
-  zenDailyKicker: { color: '#00D2D3', fontSize: 9, fontFamily: 'Inter_700Bold', letterSpacing: 1 },
-  zenDailyText: { color: '#FFFFFF', fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4 },
-  zenDailyMeta: { color: '#FFFFFF99', fontSize: 11, lineHeight: 16, marginTop: 4 },
-  zenInsightFooter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  zenEvidence: { flex: 1, color: '#FFFFFF80', fontSize: 10 },
-  zenVoiceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  zenStatCard: { flex: 1, minHeight: 82, padding: 12, borderRadius: 16, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26', gap: 4 },
-  zenStatCardLabel: { color: '#FFFFFF', fontSize: 13, fontFamily: 'Inter_700Bold' },
-  zenStatCardBody: { color: '#FFFFFFB3', fontSize: 12, lineHeight: 16 },
-  zenLinkGrid: { flexDirection: 'row', gap: 10 },
-  zenLinkCard: { flex: 1, minHeight: 88, padding: 12, borderRadius: 18, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A', gap: 4 },
-  zenLinkTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  zenLinkMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
-  zenScreenScroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28, gap: 14 },
-  zenPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  zenPageTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 21, letterSpacing: 0.4 },
-  zenPageSubtitle: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, marginTop: 3 },
-  zenHeaderAvatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
-  zenSectionLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
-  transactionsScreenScroll: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 28, gap: 14 },
-  transactionsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingBottom: 4 },
-  transactionsHeaderIconButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  transactionsHeaderTitle: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 25, textAlign: 'center' },
-  transactionsHeaderAvatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#00D2D34D', backgroundColor: '#00D2D320', shadowColor: '#00D2D3', shadowOpacity: 0.25, shadowRadius: 16, shadowOffset: { width: 0, height: 0 } },
-  transactionsSectionTitle: { color: '#7CD0D3', fontFamily: 'Inter_600SemiBold', fontSize: 24, marginTop: 8, marginBottom: 2 },
-  activityHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
-  activitySeeAll: { color: '#8FA1B5', fontFamily: 'Inter_500Medium', fontSize: 16 },
-  accountRail: { gap: 14, paddingRight: 16, paddingTop: 8 },
-  accountCard: { width: 157, minHeight: 194, padding: 16, gap: 4, borderRadius: 22 },
-  accountCardFeatured: { borderColor: '#8FD8DA66', shadowColor: '#8FD8DA', shadowOpacity: 0.38, shadowRadius: 24, shadowOffset: { width: 0, height: 8 } },
-  accountCardEyebrow: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 13, marginBottom: 4 },
-  accountCardIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
-  accountCardIconFeatured: { backgroundColor: '#8FD8DA26', borderWidth: 1, borderColor: '#8FD8DA66' },
-  accountCardName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, lineHeight: 20 },
-  accountCardSubtitle: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 18 },
-  accountCardEnding: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 16 },
-  accountCardAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 22, marginTop: 'auto' },
-  transactionList: { gap: 10, marginTop: 2 },
-  activityTile: { minHeight: 102, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 24, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  activityIcon: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
-  activityCopy: { flex: 1, minWidth: 0 },
-  activityTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, lineHeight: 21 },
-  activityMerchant: { color: '#9DA8BA', fontFamily: 'Inter_500Medium', fontSize: 14, lineHeight: 18, marginTop: 2 },
-  activityDate: { color: '#8A95A3', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 15, marginTop: 2 },
-  activityAmount: { fontFamily: 'Inter_500Medium', fontSize: 22, marginLeft: 10, textAlign: 'right' },
-  transactionPanel: { paddingVertical: 4 },
-  transactionRow: { minHeight: 64, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  transactionIcon: { width: 32, height: 32, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
-  transactionName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  transactionMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
-  transactionAmount: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  transactionsError: { padding: 12, borderRadius: 14, borderWidth: 1, borderColor: '#FF6B9966', backgroundColor: '#FF6B9914' },
-  transactionsErrorText: { color: '#FFB0C9', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
-  transactionsLoadMore: { minHeight: 44, borderRadius: 16, borderWidth: 1, borderColor: '#00D2D34D', alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D314' },
-  transactionsLoadMoreText: { color: '#48EFEF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  transactionsBudgetLink: { minHeight: 48, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#8E44AD14', borderWidth: 1, borderColor: '#8E44AD4D', flexDirection: 'row', alignItems: 'center', gap: 8 },
-  transactionsBudgetText: { flex: 1, color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  insightPanel: { gap: 12 },
-  settingsPanel: { gap: 12 },
-  settingsRowGlass: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  goalCardGlass: { gap: 12 },
-  moneyPhysicalHero: { gap: 12 },
-  moneyWinsHero: { gap: 6 },
-  paywallHero: { gap: 12, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.32, shadowRadius: 28 },
-  auditCard: { gap: 10 },
-  zenEmptyText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12, paddingVertical: 18 },
-  profilePlanBadge: { minHeight: 30, paddingHorizontal: 10, borderRadius: 15, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#FFFFFF0D' },
-  profilePlanBadgeText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  profileIdentityCard: { minHeight: 102, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  profileIdentityCopy: { flex: 1, minWidth: 0 },
-  profileAvatar: { width: 72, height: 72, borderRadius: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D2D326', borderWidth: 1.5, borderColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.42, shadowRadius: 20, shadowOffset: { width: 0, height: 0 } },
-  profileName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, lineHeight: 21 },
-  profileRoleRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
-  profileRole: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 11 },
-  profileScore: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 66, paddingHorizontal: 12, borderRadius: 20, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#00D2D34D' },
-  profileScoreValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18 },
-  profileMenuGroup: { gap: 7 },
-  profileSectionLabel: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.4, marginLeft: 4 },
-  profileMenu: { paddingVertical: 2 },
-  profileMenuRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
-  profileMenuIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  profileMenuCopy: { flex: 1, minWidth: 0 },
-  profileMenuText: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 13 },
-  profileMenuDetail: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 2 },
-  zenProfileScroll: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 28, gap: 14 },
-  settingsDetailHeader: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  settingsBackButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A' },
-  settingsIdentityRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  zenHeaderEdit: { color: '#00D2D3', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  zenEditButton: { minHeight: 32, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
-  budgetGraph: { position: 'relative' },
-  budgetFlowerPetal: { position: 'absolute', backgroundColor: '#00D2D31A', borderWidth: 1, borderColor: '#00D2D326' },
-  budgetHubNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 8, borderWidth: 2, shadowColor: '#00D2D3', shadowOpacity: 0.35, shadowRadius: 24 },
-  budgetHubAmount: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 26, marginTop: 2 },
-  budgetHubLabel: { color: '#FFFFFF99', fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 1.5 },
-  budgetNode: { position: 'absolute', alignItems: 'center', justifyContent: 'center', padding: 10, borderWidth: 1.5, shadowOpacity: 0.5, shadowRadius: 14, shadowOffset: { width: 0, height: 0 } },
-  budgetNodeName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, marginTop: 5 },
-  budgetNodeAmount: { color: '#FFFFFFCC', fontFamily: 'Inter_700Bold', fontSize: 13, marginTop: 1 },
-  budgetNodeTag: { marginTop: 4, borderRadius: 8, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
-  budgetNodeTagText: { fontFamily: 'Inter_700Bold', fontSize: 7, letterSpacing: 0.5 },
-  budgetInsight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  budgetInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  budgetInsightBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16, marginTop: 3 },
-  budgetEditPanel: { gap: 10, borderColor: '#00D2D34D' },
-  budgetEditTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 14 },
-  budgetEditBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
-  budgetInput: { minHeight: 46, borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF26', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 13, fontFamily: 'Inter_500Medium', fontSize: 16 },
-  budgetEditActions: { flexDirection: 'row', gap: 8 },
-  budgetControls: { gap: 10 },
-  budgetControlHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  budgetControlTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 14 },
-  budgetControlMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
-  budgetSegmented: { flexDirection: 'row', minHeight: 36, padding: 3, borderRadius: 12, backgroundColor: '#FFFFFF0D', gap: 3 },
-  budgetSegment: { flex: 1, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  budgetSegmentActive: { backgroundColor: '#00D2D326', borderWidth: 1, borderColor: '#00D2D34D' },
-  budgetSegmentText: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 11 },
-  budgetSegmentTextActive: { color: '#FFFFFF' },
-  budgetToggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  budgetToggleTitle: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  budgetToggleMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
-  aiBudgetCard: { gap: 0, borderWidth: 1.5, backgroundColor: '#8E44AD12' },
-  aiBudgetHeader: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 11 },
-  aiBudgetIcon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  aiBudgetKicker: { color: '#B982D2', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.3 },
-  aiBudgetTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
-  aiBudgetIntro: { color: '#FFFFFF8F', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, marginTop: 3 },
-  aiBudgetBody: { marginTop: 14, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#FFFFFF1A', gap: 11 },
-  aiBudgetEmpty: { gap: 9 },
-  aiBudgetEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  aiBudgetEmptyBody: { color: '#FFFFFF8F', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
-  aiBudgetFieldLabel: { color: '#FFFFFFCC', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  aiBudgetGoalChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  aiBudgetGoalChip: { minHeight: 54, flexGrow: 1, flexBasis: '47%', maxWidth: '100%', borderRadius: 15, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#FFFFFF08' },
-  aiBudgetGoalName: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  aiBudgetGoalRemaining: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
-  aiBudgetInput: { minHeight: 48, borderRadius: 15, borderWidth: 1, borderColor: '#8E44AD66', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontFamily: 'Inter_600SemiBold', fontSize: 17 },
-  aiBudgetPresets: { flexDirection: 'row', gap: 7 },
-  aiBudgetPreset: { minHeight: 34, paddingHorizontal: 13, borderRadius: 17, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF08' },
-  aiBudgetPresetText: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  aiBudgetSafety: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 9, lineHeight: 14, textAlign: 'center' },
-  aiBudgetError: { color: '#FFB0C9', fontFamily: 'Inter_500Medium', fontSize: 11, lineHeight: 16, padding: 10, borderRadius: 12, borderWidth: 1, borderColor: '#FF6B9966', backgroundColor: '#FF6B9914' },
-  aiBudgetResult: { marginTop: 3, gap: 12, padding: 13, borderRadius: 18, borderWidth: 1, borderColor: '#FFFFFF1F', backgroundColor: '#07101999' },
-  aiBudgetResultHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  aiBudgetResultMonth: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.2 },
-  aiBudgetResultTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 3 },
-  aiBudgetStatus: { minHeight: 28, paddingHorizontal: 9, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  aiBudgetStatusText: { fontFamily: 'Inter_700Bold', fontSize: 9 },
-  aiBudgetExplanation: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 17 },
-  aiBudgetGoalCapNote: { color: '#F5D58A', fontFamily: 'Inter_500Medium', fontSize: 9, lineHeight: 14, padding: 9, borderRadius: 12, borderWidth: 1, borderColor: '#F5D58A4D', backgroundColor: '#F5D58A12' },
-  aiBudgetLedger: { borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF1A', paddingHorizontal: 11, backgroundColor: '#FFFFFF08' },
-  aiBudgetLedgerRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  aiBudgetLedgerLabel: { flex: 1, color: '#FFFFFF99', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  aiBudgetLedgerValue: { fontFamily: 'Inter_700Bold', fontSize: 11, textAlign: 'right' },
-  aiBudgetDisclosure: { minHeight: 52, paddingHorizontal: 11, borderRadius: 14, borderWidth: 1, borderColor: '#00D2D34D', backgroundColor: '#00D2D314', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  aiBudgetDisclosureTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  aiBudgetDisclosureMeta: { color: '#FFFFFF73', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 3 },
-  aiBudgetDisclosureAction: { fontFamily: 'Inter_700Bold', fontSize: 9 },
-  aiBudgetBillList: { borderRadius: 14, borderWidth: 1, borderColor: '#FFFFFF1A', paddingHorizontal: 11, backgroundColor: '#FFFFFF08' },
-  aiBudgetBillRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  aiBudgetBillName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  aiBudgetBillMeta: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
-  aiBudgetBillAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  aiBudgetCategoryList: { gap: 3 },
-  aiBudgetCategoryHeading: { color: '#FFFFFF66', fontFamily: 'Inter_700Bold', fontSize: 8, letterSpacing: 1.1, marginBottom: 3 },
-  aiBudgetCategoryRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  aiBudgetCategoryName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  aiBudgetCategoryMeta: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, marginTop: 2 },
-  aiBudgetCategoryAmount: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 11 },
-  aiBudgetApplyNote: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 8, lineHeight: 12, textAlign: 'center' },
-  categoryCapsPanel: { paddingVertical: 4 },
-  categoryCapRow: { minHeight: 58, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  categoryCapName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  categoryCapMeta: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 3 },
-  capButton: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
-  categoryCapInputWrap: { flexDirection: 'row', alignItems: 'center' },
-  categoryCapDollarSign: { color: '#FFFFFF80', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  categoryCapValue: { minWidth: 40, color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12, textAlign: 'center', padding: 0 },
-  scoreHero: { minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 5, borderColor: '#8E44AD66', shadowColor: '#8E44AD', shadowOpacity: 0.35, shadowRadius: 28 },
-  scorePageHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  scoreHeaderButton: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF1A' },
-  scoreHeroV2: { alignItems: 'center', justifyContent: 'center', paddingTop: 6, paddingBottom: 14, gap: 0 },
-  scoreHeroLabel: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 22, letterSpacing: 0.3 },
-  scoreHeroNumber: { color: '#FFFFFF', fontFamily: 'Inter_300Light', fontSize: 60, lineHeight: 64, marginTop: -2, marginBottom: -6 },
-  scoreHeroMeta: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18, marginTop: 6, textAlign: 'center' },
-  scoreHeroUpdated: { color: '#FFFFFF66', fontFamily: 'Inter_400Regular', fontSize: 10, marginTop: 6 },
-  scoreBuildingCard: { gap: 10, borderColor: '#00D2D34D' },
-  scoreMethodRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 2 },
-  scoreMethodMeta: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 10 },
-  scoreMetricStack: { gap: 10 },
-  scoreRowStack: { gap: 12 },
-  scoreRowCard: { padding: 14, gap: 12 },
-  scoreRowTop: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  scoreRowName: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 21 },
-  scoreRowDetail: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 17, marginTop: 2 },
-  scoreRowBarRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  scoreRowTrack: { flex: 1, height: 7, borderRadius: 4, backgroundColor: '#FFFFFF1A', overflow: 'hidden' },
-  scoreRowFill: { height: 7, borderRadius: 4 },
-  scoreRowPct: { width: 40, textAlign: 'right', color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  scoreGuidancePanel: { gap: 7, borderTopWidth: 1, borderTopColor: '#FFFFFF1A', paddingTop: 12 },
-  scoreGuidanceKicker: { color: '#00D2D3', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.4 },
-  scoreGuidanceTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 15, lineHeight: 20 },
-  scoreGuidanceBody: { color: '#FFFFFF99', fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 18 },
-  scoreNextBestCard: { gap: 11, marginTop: 6, borderColor: '#00D2D34D', shadowColor: '#00D2D3', shadowOpacity: 0.18, shadowRadius: 22 },
-  scoreNextBestHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  scoreNextBestLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 2 },
-  scoreCoachNote: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 15, textAlign: 'center' },
-  scoreImproveWrap: { marginTop: 18 },
-  scoreMetric: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 18 },
-  scoreMetricIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#FFFFFF14', alignItems: 'center', justifyContent: 'center' },
-  scoreMetricName: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 12 },
-  scoreMetricCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 3 },
-  scoreMetricValue: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  mindfulSavingsHero: { gap: 4, overflow: 'hidden' },
-  mindfulSavingsWatermark: { position: 'absolute', right: 14, bottom: 10 },
-  mindfulSavingsLabel: { color: '#FFFFFFB3', fontFamily: 'Inter_500Medium', fontSize: 13 },
-  mindfulSavingsAmount: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 30 },
-  mindfulSavingsCaption: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11 },
-  goalsSectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
-  goalsSectionCount: { color: '#FFFFFF80', fontFamily: 'Inter_500Medium', fontSize: 11 },
-  goalCardHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  goalCardIcon: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  goalCardName: { flex: 1, color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 16 },
-  goalCardMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  goalCardAmount: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 12 },
-  goalCardPercent: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  goalProgressTrack: { height: 12, borderRadius: 6, backgroundColor: '#FFFFFF14', overflow: 'visible' },
-  goalProgressFill: { height: '100%', borderRadius: 6, backgroundColor: '#00D2D3', shadowColor: '#00D2D3', shadowOpacity: 0.7, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 4 },
-  whatIfPlanner: { borderTopWidth: 1, paddingTop: 16, gap: 13 },
-  whatIfPlannerTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 17, lineHeight: 23, marginTop: 2 },
-  whatIfCloseButton: { width: 36, height: 36, borderWidth: 1, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  whatIfField: { gap: 4 },
-  whatIfFieldLabel: { fontFamily: 'Inter_600SemiBold', fontSize: 13 },
-  whatIfFieldHint: { fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
-  whatIfMoneyInput: { minHeight: 48, borderWidth: 1, borderRadius: 16, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 },
-  whatIfCurrency: { fontFamily: 'Inter_600SemiBold', fontSize: 16 },
-  whatIfTextInput: { flex: 1, minHeight: 46, paddingHorizontal: 7, fontFamily: 'Inter_500Medium', fontSize: 16, fontVariant: ['tabular-nums'] },
-  whatIfInputSuffix: { fontFamily: 'Inter_500Medium', fontSize: 12 },
-  whatIfPresetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  whatIfPreset: { minHeight: 34, borderWidth: 1, borderRadius: 17, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 11 },
-  whatIfPresetText: { fontFamily: 'Inter_600SemiBold', fontSize: 11 },
-  whatIfAdvancedToggle: { minHeight: 58, borderWidth: 1, borderRadius: 16, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  whatIfAdvancedFields: { gap: 13 },
-  whatIfError: { color: '#FF7A9A', fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
-  whatIfResult: { borderTopWidth: 1, marginTop: 4, paddingTop: 16, gap: 12 },
-  monthlyForecastCard: { borderWidth: 1, borderRadius: 20, padding: 15, gap: 7 },
-  monthlyForecastTopRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  monthlyForecastKicker: { fontFamily: 'Inter_700Bold', fontSize: 10, lineHeight: 14, textTransform: 'uppercase', letterSpacing: 0.8 },
-  monthlyForecastGoal: { fontFamily: 'Inter_600SemiBold', fontSize: 15, marginTop: 2 },
-  monthlyForecastDuration: { fontFamily: 'Inter_700Bold', fontSize: 30, lineHeight: 36, fontVariant: ['tabular-nums'] },
-  monthlyForecastCompletion: { fontFamily: 'Inter_500Medium', fontSize: 12, lineHeight: 17 },
-  whatIfWeeklyImpact: { minHeight: 56, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  whatIfWeeklyLabel: { flex: 1, fontFamily: 'Inter_500Medium', fontSize: 12 },
-  whatIfWeeklyValue: { fontFamily: 'Inter_700Bold', fontSize: 19, fontVariant: ['tabular-nums'] },
-  connectSteps: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 18, marginVertical: 4 },
-  connectStep: { alignItems: 'center', gap: 5 },
-  connectStepDot: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: '#FFFFFF40', alignItems: 'center', justifyContent: 'center' },
-  connectStepActive: { backgroundColor: '#00D2D3', borderColor: '#00D2D3' },
-  connectStepNumber: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 10 },
-  connectStepText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9 },
-  bankGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  bankTile: { width: '31%', minHeight: 70, borderRadius: 18, backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF26', alignItems: 'center', justifyContent: 'center', gap: 5, padding: 7, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  bankTileText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 9, textAlign: 'center' },
-  bankSearchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, minHeight: 46 },
-  bankSearchInput: { flex: 1, fontSize: 14, fontFamily: 'Inter_400Regular' },
-  securityBanner: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 4 },
-  securityBannerText: { flex: 1, color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 11, lineHeight: 16 },
-  budgetEntryCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderColor: '#8E44AD66', borderRadius: 18, backgroundColor: '#8E44AD14' },
-  budgetEntryIcon: { width: 32, height: 32, borderRadius: 11, backgroundColor: '#8E44AD33', alignItems: 'center', justifyContent: 'center' },
-  budgetEntryTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 12 },
-  budgetEntryBody: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10, lineHeight: 14, marginTop: 3 },
-  budgetEntryButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFFFFFB3', alignItems: 'center', justifyContent: 'center' },
-  milestoneBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
-  milestoneCard: { alignItems: 'center', gap: 10, width: '100%', maxWidth: 340, borderColor: '#48EFEF4D', shadowColor: '#00D2D3', shadowOpacity: 0.45, shadowRadius: 30 },
-  milestoneTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 24, textAlign: 'center' },
-  milestoneLotus: { width: 140, height: 140, alignItems: 'center', justifyContent: 'center', marginVertical: 4 },
-  milestoneBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  brandMark: { marginBottom: 16 },
-  heroTitle: { fontSize: 40, fontWeight: '800' },
-  heroTitleV2: { color: '#FFFFFF', fontSize: 36, lineHeight: 39, fontWeight: '300', textAlign: 'left', marginTop: 18 },
-  heroAccent: { color: '#FFFFFF' },
-  heroCopy: { fontSize: 17, lineHeight: 25, marginTop: 10, marginBottom: 28 },
-  heroCopyV2: { color: '#FFFFFFB3', fontSize: 16, lineHeight: 24, textAlign: 'left', marginBottom: 4 },
-  authPanel: { borderWidth: 1, borderRadius: 16, padding: 16, gap: 10, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  authPanelV2: { borderWidth: 1, borderRadius: 28, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  authInputV2: { minHeight: 48, borderWidth: 1, borderRadius: 16, borderColor: '#FFFFFF26', backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontSize: 15, fontFamily: 'Inter_500Medium' },
-  inputLabel: { fontSize: 13, fontWeight: '800', marginBottom: -4 },
-  disclosure: { fontSize: 12, lineHeight: 18, marginTop: 18 },
-  disclosureV2: { color: '#FFFFFF99', fontSize: 12, lineHeight: 18, textAlign: 'center' },
-  demoPanel: { borderWidth: 1, borderColor: '#FFFFFF1A', borderRadius: 24, backgroundColor: '#FFFFFF14', padding: 14, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  demoLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  demoInput: { minHeight: 48, borderWidth: 1, borderColor: '#FFFFFF1A', borderRadius: 14, backgroundColor: '#FFFFFF0D', color: '#FFFFFF', paddingHorizontal: 14, fontSize: 15 },
-  demoButton: { minHeight: 48, borderRadius: 14, backgroundColor: '#00D2D3', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16 },
-  demoButtonText: { color: '#0B0E14', fontSize: 15, fontWeight: '800' },
-  generatedBrief: { borderWidth: 1, borderColor: '#00D2D34D', borderRadius: 20, backgroundColor: '#00D2D326', padding: 16, flexDirection: 'row', gap: 12, alignItems: 'center' },
-  generatedCheck: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#00D2D3', alignItems: 'center', justifyContent: 'center' },
-  generatedTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '900' },
-  generatedBody: { color: '#FFFFFFB3', fontSize: 14, lineHeight: 20, marginTop: 4 },
-  generatedImpact: { color: '#00D2D3', fontSize: 14, lineHeight: 20, fontWeight: '900', marginTop: 2 },
-  authProofGrid: { flexDirection: 'row', gap: 10 },
-  authProofCard: { flex: 1, minHeight: 126, borderWidth: 1, borderColor: '#FFFFFF26', borderRadius: 24, backgroundColor: '#FFFFFF0D', padding: 12, shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  authProofKicker: { color: '#00D2D3', fontSize: 10, lineHeight: 14, fontWeight: '900', textTransform: 'uppercase' },
-  authProofTitle: { color: '#FFFFFF', fontSize: 14, lineHeight: 19, fontWeight: '900', marginTop: 6 },
-  authProofBody: { color: '#FFFFFFB3', fontSize: 12, lineHeight: 17, marginTop: 6 },
-  topBar: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A', backgroundColor: '#0B0E14B3' },
-  appTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  tinyLogo: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26' },
-  appTitle: { fontSize: 24, fontFamily: 'Inter_600SemiBold', letterSpacing: 1 },
-  appSub: { fontSize: 13, marginTop: 2 },
-  iconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#FFFFFF1A' },
-  shellRail: { paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#0B0E14B3', borderBottomWidth: 1, borderBottomColor: '#FFFFFF1A' },
-  coachConsole: { borderWidth: 1, borderRadius: 24, padding: 12, gap: 10, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  consoleHeaderRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  consoleStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  consoleChip: { minHeight: 30, borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FFFFFF0D' },
-  consoleChipText: { fontSize: 12, fontWeight: '800' },
-  consoleDot: { width: 7, height: 7, borderRadius: 4 },
-  consoleAskPill: { minHeight: 42, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 14, shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
-  consoleAskText: { color: '#fff', fontSize: 14, fontWeight: '900' },
-  consoleNextAction: { minHeight: 70, borderWidth: 1, borderRadius: 18, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26' },
-  consoleActionKicker: { fontSize: 11, lineHeight: 15, fontWeight: '900', textTransform: 'uppercase' },
-  consoleActionText: { fontSize: 14, lineHeight: 20, fontWeight: '900' },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
-  input: { minHeight: 48, borderWidth: 1, borderRadius: 16, paddingHorizontal: 14, fontSize: 15, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', color: '#FFFFFF', fontFamily: 'Inter_500Medium' },
-  primaryButton: { minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, shadowColor: '#00D2D3', shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 6 }, elevation: 5 },
-  primaryButtonText: { flexShrink: 1, fontFamily: 'Inter_600SemiBold', fontSize: 15, textAlign: 'center' },
-  secondaryButton: { minHeight: 46, borderRadius: 14, borderWidth: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 14 },
-  compactButton: { minHeight: 38, flex: 1 },
-  accentButton: { borderWidth: 1.5, borderRadius: 18, alignSelf: 'flex-start', flex: 0, paddingHorizontal: 18 },
-  secondaryButtonText: { flexShrink: 1, fontFamily: 'Inter_500Medium', fontSize: 14, textAlign: 'center' },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28, gap: 14 },
-  largeIcon: { width: 72, height: 72, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26' },
-  emptyTitle: { fontSize: 24, fontWeight: '800', textAlign: 'center' },
-  emptyCopy: { fontSize: 15, lineHeight: 22, textAlign: 'center' },
-  statusRail: { flexDirection: 'row', gap: 10 },
-  metric: { flex: 1, minHeight: 82, borderWidth: 1, borderRadius: 18, padding: 12, gap: 4, backgroundColor: '#FFFFFF0D' },
-  metricValue: { fontSize: 20, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  metricLabel: { fontSize: 12, fontWeight: '700' },
-  primaryPanel: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, backgroundColor: '#FFFFFF0D', overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 32, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  sectionBand: { borderWidth: 1, borderRadius: 24, padding: 16, gap: 12, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
-  panelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  panelKicker: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase' },
-  panelTitle: { fontSize: 20, lineHeight: 26, fontFamily: 'Inter_300Light', letterSpacing: 1 },
-  panelBody: { fontSize: 15, lineHeight: 22, fontFamily: 'Inter_400Regular' },
-  briefHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 14 },
-  impactPill: { minWidth: 82, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 10, alignItems: 'center', gap: 2, backgroundColor: '#FFFFFF0D', borderWidth: 1, borderColor: '#FFFFFF26' },
-  impactValue: { fontSize: 19, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  impactLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  evidenceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  evidenceChip: { maxWidth: '100%', borderWidth: 1, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: '#FFFFFF0D' },
-  evidenceText: { fontSize: 12, lineHeight: 16, fontWeight: '800' },
-  voiceInline: { borderTopWidth: 1, paddingTop: 12, gap: 8 },
-  actionBox: { borderRadius: 16, padding: 14, gap: 4, borderWidth: 1, borderColor: '#00D2D34D' },
-  actionRowInteractive: { backgroundColor: '#FFFFFF0D', borderRadius: 16, paddingHorizontal: 10 },
-  glassRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  actionTitle: { fontSize: 15, fontWeight: '800', lineHeight: 21 },
-  actionMeta: { fontSize: 13, lineHeight: 18 },
-  inlineButtons: { flexDirection: 'row', gap: 10 },
-  featureList: { gap: 9 },
-  featureLine: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  featureText: { flex: 1, fontSize: 14, lineHeight: 20, fontWeight: '700' },
-  planOption: { minHeight: 68, borderWidth: 1, borderRadius: 18, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 3 },
-  planTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
-  planBadge: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
-  planBadgeText: { color: '#fff', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
-  sectionTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', letterSpacing: 0.5, marginTop: 10 },
-  row: { minHeight: 64, borderBottomWidth: 1, paddingVertical: 12, paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  destructiveIconButton: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  rowTitle: { fontSize: 15, fontFamily: 'Inter_600SemiBold' },
-  rowDetail: { fontSize: 13, lineHeight: 18, fontFamily: 'Inter_400Regular', marginTop: 2 },
-  updateMeta: { fontSize: 12, lineHeight: 18, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
-  amount: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  smallIcon: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { marginHorizontal: 12, marginBottom: Platform.OS === 'ios' ? 12 : 8, borderWidth: 1, borderRadius: 22, flexDirection: 'row', paddingVertical: 7, paddingHorizontal: 7, shadowColor: '#000', shadowOpacity: 0.37, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10, backgroundColor: '#FFFFFF14' },
-  tabItem: { flex: 1, minHeight: 54, alignItems: 'center', justifyContent: 'center', gap: 3, minWidth: 0, borderRadius: 16 },
-  tabText: { fontSize: 11, fontWeight: '800' },
-  tabIconWrap: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  tabIconHalo: { position: 'absolute', width: 38, height: 38, borderRadius: 19, shadowOpacity: 0.9, shadowRadius: 10, shadowOffset: { width: 0, height: 0 } },
-  tabActiveBar: { marginTop: 4, width: 22, height: 3, borderRadius: 2, shadowRadius: 6, shadowOffset: { width: 0, height: 0 } },
-  tabLockBadge: { position: 'absolute', top: -6, right: -10, width: 15, height: 15, borderRadius: 7, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
-  loadErrorTitle: { textAlign: 'center', marginTop: 16 },
-  loadErrorBody: { textAlign: 'center', marginTop: 8, marginBottom: 20, paddingHorizontal: 24 },
-  authModeTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 16, marginBottom: 2 },
-  authInputError: { borderColor: '#FF7A9A' },
-  authFieldError: { color: '#FF7A9A', fontSize: 12, marginTop: -4, marginLeft: 4 },
-  authModeToggle: { alignItems: 'center', paddingVertical: 6 },
-  authModeToggleText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13 },
-  authModeToggleLink: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold' },
-  authForgotLink: { alignItems: 'center', paddingVertical: 2 },
-  authFieldHint: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 18 },
-  authDivider: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 2 },
-  authDividerLine: { flex: 1, height: 1, backgroundColor: '#FFFFFF1A' },
-  authDividerText: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 12 },
-  appleButton: { height: 48, width: '100%' },
-  txnEmptyCta: { alignItems: 'center', gap: 8, padding: 20, marginTop: 8 },
-  txnEmptyTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 18, marginTop: 4 },
-  txnEmptyBody: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 14, textAlign: 'center', lineHeight: 20, marginBottom: 6 },
-  chatList: { flexGrow: 1, padding: 20, gap: 14 },
-  chatTurn: { gap: 10 },
-  coachCard: { flex: 1, padding: 14, gap: 8 },
-  chatBubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  aiMessageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  chatBubbleIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#10131aB3', borderWidth: 1, borderColor: '#48EFEF80', alignItems: 'center', justifyContent: 'center' },
-  chatBubbleIconGlyph: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 15, fontStyle: 'italic' },
-  chatBubbleKicker: { color: '#FFFFFFB3', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1 },
-  chatPageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  coachScreenHeader: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 10, alignItems: 'center', gap: 3 },
-  coachHeaderTitle: { color: '#FFFFFF', fontFamily: 'Inter_700Bold', fontSize: 19 },
-  coachHeaderSubtitle: { color: '#00D2D3', fontFamily: 'Inter_600SemiBold', fontSize: 10, letterSpacing: 1.5 },
-  aiBubblePrefix: { color: '#48EFEF', fontFamily: 'Inter_700Bold', fontSize: 10, letterSpacing: 1, marginBottom: 4 },
-  userMessageWrap: { alignItems: 'flex-end' },
-  userBubble: { maxWidth: '85%', backgroundColor: '#FFFFFF14', borderWidth: 1, borderColor: '#FFFFFF1F', borderRadius: 20, paddingVertical: 12, paddingHorizontal: 16 },
-  userBubbleText: { color: '#FFFFFF', fontFamily: 'Inter_400Regular', fontSize: 14, lineHeight: 20 },
-  chatMessageBubble: { flex: 1, gap: 8, borderColor: '#48EFEF4D' },
-  chatMessageText: { color: '#FFFFFFB3', fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
-  askZenButton: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, height: 44, borderRadius: 22, shadowColor: '#00D2D3', shadowOpacity: 0.4, shadowRadius: 15, shadowOffset: { width: 0, height: 5 }, elevation: 5 },
-  askZenArrow: { color: '#003737', fontSize: 16, fontWeight: '800' },
-  askZenText: { color: '#003737', fontFamily: 'Inter_700Bold', fontSize: 14 },
-  chatPromptLabel: { color: '#FFFFFF80', fontFamily: 'Inter_700Bold', fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
-  coachInsightsCard: { alignSelf: 'stretch', gap: 8, borderColor: '#00D2D34D' },
-  coachInsightsTitle: { color: '#FFFFFF', fontFamily: 'Inter_600SemiBold', fontSize: 17 },
-  coachInsightsSubtitle: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 10 },
-  coachInsightRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 6 },
-  coachInsightIcon: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#00D2D326', alignItems: 'center', justifyContent: 'center' },
-  coachInsightTitle: { color: '#FFFFFF', fontFamily: 'Inter_500Medium', fontSize: 11 },
-  coachInsightCopy: { color: '#FFFFFF80', fontFamily: 'Inter_400Regular', fontSize: 9, marginTop: 2 },
-  promptBoard: { flexGrow: 1, alignItems: 'stretch', justifyContent: 'center', paddingVertical: 24, gap: 12 },
-  promptGroup: { borderWidth: 1, borderRadius: 18, padding: 12, gap: 8, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', shadowColor: '#000', shadowOpacity: 0.14, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 2 },
-  quickPromptRail: { borderTopWidth: 1, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
-  quickPromptRailContent: { flexDirection: 'row', gap: 8, paddingRight: 12 },
-  quickPromptChip: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 36, borderWidth: 1, borderRadius: 18, paddingHorizontal: 12, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26' },
-  quickPromptText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
-  insightLedger: { borderWidth: 1, borderRadius: 18, padding: 10, gap: 6, backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26', shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 2 },
-  ledgerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  ledgerLabel: { flex: 1, minWidth: 0, fontSize: 12, lineHeight: 17, fontWeight: '700' },
-  ledgerValue: { fontSize: 12, lineHeight: 17, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  factLine: { fontSize: 12, lineHeight: 17 },
-  suggestion: { borderWidth: 1, borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12, width: '100%', backgroundColor: '#FFFFFF0D', borderColor: '#FFFFFF26' },
-  suggestionText: { fontSize: 13, fontWeight: '700', textAlign: 'center' },
-  composer: { borderTopWidth: 1, flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  composerInput: { flex: 1, minHeight: 44, fontSize: 15 },
-  progressTrack: { height: 10, borderRadius: 10, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: 10 },
-  scenarioRow: { minHeight: 58, borderTopWidth: 1, paddingTop: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bigNumber: { fontSize: 40, fontWeight: '800', fontVariant: ['tabular-nums'] },
-  rightStack: { alignItems: 'flex-end', gap: 4 },
-  linkText: { fontSize: 12, fontWeight: '800' },
-  toggleRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-});

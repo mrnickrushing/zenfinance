@@ -1,6 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import { Redis } from 'ioredis';
-import { env } from '../env.js';
+import { getRedisClient } from '../lib/redis.js';
 import { safeErrorSummary } from '../lib/safeError.js';
 
 interface UserRateLimitOptions {
@@ -10,30 +9,13 @@ interface UserRateLimitOptions {
 }
 
 const buckets = new Map<string, { count: number; resetAt: number }>();
-let redisPromise: Promise<Redis> | null = null;
-
-async function redisClient(): Promise<Redis | null> {
-  if (!env.REDIS_URL) return null;
-  if (!redisPromise) {
-    const client = new Redis(env.REDIS_URL!, {
-      maxRetriesPerRequest: 2,
-      enableOfflineQueue: false,
-      retryStrategy: (attempt) => Math.min(attempt * 200, 2000),
-    });
-    client.on('error', (err) => {
-      console.error('[rate-limit] Redis connection error:', safeErrorSummary(err));
-    });
-    redisPromise = Promise.resolve(client);
-  }
-  return redisPromise;
-}
 
 export function userRateLimit(name: string, options: UserRateLimitOptions) {
   return async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
     const userId = res.locals.userId as number | undefined;
     const key = `${name}:${userId ?? 'anonymous'}`;
     const now = Date.now();
-    const redis = await redisClient();
+    const redis = getRedisClient();
     if (redis) {
       try {
         const redisKey = `zenfinance:rate-limit:${key}`;

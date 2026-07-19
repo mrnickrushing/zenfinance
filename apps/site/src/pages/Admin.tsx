@@ -16,7 +16,13 @@ export function AdminPage() {
 
   useEffect(() => {
     // Try to resume a session from the refresh cookie on first load.
-    refresh().finally(() => setBooted(true));
+    let active = true;
+    refresh().finally(() => {
+      if (active) setBooted(true);
+    });
+    return () => {
+      active = false;
+    };
   }, [refresh]);
 
   if (!booted) return <PageShell>Loading…</PageShell>;
@@ -88,13 +94,21 @@ function Dashboard() {
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [error, setError] = useState('');
 
-  const load = useCallback(() => {
+  const load = useCallback((signal?: AbortSignal) => {
     adminFetch<AdminMetrics>('/api/admin/metrics')
-      .then(setMetrics)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load metrics'));
+      .then((next) => {
+        if (!signal?.aborted) setMetrics(next);
+      })
+      .catch((err) => {
+        if (!signal?.aborted) setError(err instanceof Error ? err.message : 'Failed to load metrics');
+      });
   }, []);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
 
   return (
     <PageShell>
@@ -405,13 +419,21 @@ function WaitlistSection() {
 function SupportSection({ onChanged }: { onChanged: () => void }) {
   const [data, setData] = useState<Paginated<SupportTicket> | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback((signal?: AbortSignal) => {
     adminFetch<Paginated<SupportTicket>>('/api/admin/support?page=1&pageSize=50')
-      .then(setData)
-      .catch(() => setData(null));
+      .then((next) => {
+        if (!signal?.aborted) setData(next);
+      })
+      .catch(() => {
+        if (!signal?.aborted) setData(null);
+      });
   }, []);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
 
   async function setStatus(id: number, status: 'open' | 'resolved') {
     await adminFetch(`/api/admin/support/${id}`, {

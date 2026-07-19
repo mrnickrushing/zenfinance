@@ -127,6 +127,20 @@
       "when": 1784144748126,
       "tag": "0017_add_missing_fk_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784423903346,
+      "tag": "0018_sudden_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784425078871,
+      "tag": "0019_overconfident_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

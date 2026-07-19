@@ -61,6 +61,19 @@ describe('Phase 6 hardening, compliance, and beta readiness', () => {
     expect(JSON.stringify(res.body)).not.toContain('encryptedAccessToken');
   });
 
+  it('throttles repeated full data exports per user', async () => {
+    const { access } = await register('export-limit@example.com');
+
+    const first = await request(app).get('/api/me/export').set('Authorization', `Bearer ${access}`);
+    const second = await request(app).get('/api/me/export').set('Authorization', `Bearer ${access}`);
+    const third = await request(app).get('/api/me/export').set('Authorization', `Bearer ${access}`);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(third.status).toBe(429);
+    expect(third.body.error.code).toBe('rate_limited');
+  });
+
   it('deletes an account and keeps only non-PII deletion evidence', async () => {
     const { access } = await register('delete-me@example.com');
     await linkBank(access);
