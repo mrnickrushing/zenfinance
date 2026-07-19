@@ -427,7 +427,15 @@ describe('recurring-stream detection', () => {
           name: 'OPENAI', merchantName: 'OpenAI', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
+          accountId, providerTxnId: 'anthropic-usage-10-april', amountCents: 1000, postedDate: '2026-04-06',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
           accountId, providerTxnId: 'anthropic-usage-45', amountCents: 4500, postedDate: '2026-05-02',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-usage-10-may-early', amountCents: 1000, postedDate: '2026-05-06',
           name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
@@ -448,6 +456,10 @@ describe('recurring-stream detection', () => {
         },
         {
           accountId, providerTxnId: 'anthropic-plan-june-b', amountCents: 2000, postedDate: '2026-06-14',
+          name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
+        },
+        {
+          accountId, providerTxnId: 'anthropic-usage-10-june', amountCents: 1000, postedDate: '2026-06-05',
           name: 'ANTHROPIC', merchantName: 'Anthropic', providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES', pending: false,
         },
         {
@@ -522,6 +534,42 @@ describe('recurring-stream detection', () => {
       firstSeenDate: '2026-05-12', lastSeenDate: '2026-07-14',
       category: 'SUBSCRIPTIONS_AND_STREAMING', isCancelCandidate: true,
     });
+  });
+
+  it('deactivates a provisional AI stream when later history disproves monthly cadence', async () => {
+    await registerAndAuth('provisional-ai-subscription@example.com');
+    const userId = await userIdByEmail('provisional-ai-subscription@example.com');
+    const accountId = await createSavingsAccount(userId, 'provisional-ai-subscription');
+    await db.insert(transactions).values({
+      accountId,
+      providerTxnId: 'openai-first-charge',
+      amountCents: 2000,
+      postedDate: '2026-05-30',
+      name: 'OPENAI',
+      merchantName: 'OpenAI',
+      providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+      pending: false,
+    });
+
+    await enrichUserTransactions(db, new MockEnrichmentProvider(), userId);
+    const provisionalAudit = await auditSubscriptions(db, userId);
+    expect(provisionalAudit.items).toHaveLength(1);
+    expect(provisionalAudit.items[0]).toMatchObject({ merchantClean: 'OpenAI', occurrences: 1 });
+
+    await db.insert(transactions).values({
+      accountId,
+      providerTxnId: 'openai-later-api-usage',
+      amountCents: 700,
+      postedDate: '2026-06-03',
+      name: 'OPENAI',
+      merchantName: 'OpenAI',
+      providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+      pending: false,
+    });
+
+    await enrichUserTransactions(db, new MockEnrichmentProvider(), userId);
+    const disprovenAudit = await auditSubscriptions(db, userId);
+    expect(disprovenAudit.items).toHaveLength(0);
   });
 });
 

@@ -58,6 +58,11 @@ function isBetterKnownMonthlyCandidate(
   current: KnownMonthlyCandidate | null,
 ): boolean {
   if (!current) return true;
+  const candidateHasExplicitProduct = candidate.explicitProductCount > 0;
+  const currentHasExplicitProduct = current.explicitProductCount > 0;
+  if (candidateHasExplicitProduct !== currentHasExplicitProduct) {
+    return candidateHasExplicitProduct;
+  }
   if (candidate.occurrences.length !== current.occurrences.length) {
     return candidate.occurrences.length > current.occurrences.length;
   }
@@ -195,7 +200,20 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
     let cadenceRule: CadenceRule;
     if (group.knownSubscription) {
       const knownMonthly = bestKnownMonthlySequence(group.occurrences);
-      if (!knownMonthly) continue;
+      if (!knownMonthly) {
+        // A provisional stream created from a first $20 charge must not stay
+        // active after later history shows no fixed monthly plan cadence.
+        await db
+          .update(recurringStreams)
+          .set({ active: false, updatedAt: new Date() })
+          .where(and(
+            eq(recurringStreams.userId, userId),
+            eq(recurringStreams.accountId, group.accountId),
+            eq(recurringStreams.merchantKey, merchantKeyPart),
+            eq(recurringStreams.active, true),
+          ));
+        continue;
+      }
       sorted = knownMonthly;
       cadenceRule = MONTHLY_RULE;
     } else {
