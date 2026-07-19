@@ -12,6 +12,34 @@ const NON_ALNUM = /[^a-z0-9]+/g;
 const SMALL_WORDS = new Set(['and', 'of', 'the', 'llc', 'inc']);
 const KEEP_UPPER = new Set(['ATM', 'ACH', 'ATT', 'AT&T']);
 
+export interface KnownSubscriptionMerchant {
+  key: 'subscription_openai' | 'subscription_anthropic';
+  displayName: 'OpenAI' | 'Anthropic';
+}
+
+/**
+ * Billing descriptors for AI subscriptions vary between the company and
+ * product names (for example, OPENAI *CHATGPT and CLAUDE.AI). Keep this
+ * deterministic so recurring detection can join those variants without
+ * depending on the enrichment provider's category guess.
+ */
+export function knownSubscriptionMerchant(
+  rawName: string,
+  merchantName: string | null,
+): KnownSubscriptionMerchant | null {
+  const text = `${rawName} ${merchantName ?? ''}`;
+  if (/(^|[^a-z0-9])(openai|chatgpt)(?=$|[^a-z0-9])/i.test(text)) {
+    return { key: 'subscription_openai', displayName: 'OpenAI' };
+  }
+  if (
+    /(^|[^a-z0-9])anthropic(?=$|[^a-z0-9])/i.test(text) ||
+    /(^|[^a-z0-9])claude(?:\.ai|[\s_-]+(?:ai|pro|max))(?=$|[^a-z0-9])/i.test(text)
+  ) {
+    return { key: 'subscription_anthropic', displayName: 'Anthropic' };
+  }
+  return null;
+}
+
 function titleCase(s: string): string {
   return s
     .toLowerCase()
@@ -48,4 +76,16 @@ export function cleanMerchantName(rawName: string, merchantName: string | null):
 export function merchantKey(rawName: string, merchantName: string | null): string {
   const clean = cleanMerchantName(rawName, merchantName);
   return clean.toLowerCase().replace(NON_ALNUM, '');
+}
+
+/** Stable grouping key for recurring charges, including known descriptor aliases. */
+export function recurringMerchantKey(
+  rawName: string,
+  merchantName: string | null,
+  amountCents?: number,
+): string {
+  const knownSubscription = amountCents === undefined || amountCents > 0
+    ? knownSubscriptionMerchant(rawName, merchantName)
+    : null;
+  return knownSubscription?.key ?? merchantKey(rawName, merchantName);
 }

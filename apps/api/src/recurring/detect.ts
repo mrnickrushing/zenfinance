@@ -1,7 +1,11 @@
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, items, recurringStreams, transactionEnrichments, transactions } from '../db/schema.js';
-import { cleanMerchantName, merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
+import {
+  cleanMerchantName,
+  knownSubscriptionMerchant,
+  recurringMerchantKey,
+} from '../enrichment/textNormalize.js';
 
 const DAY_MS = 86400000;
 
@@ -74,8 +78,11 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
 
   const groups = new Map<string, { accountId: number; merchantClean: string; occurrences: Occurrence[] }>();
   for (const row of rows) {
-    const merchantClean = row.enrichedMerchant ?? cleanMerchantName(row.name, row.merchantName);
-    const key = computeMerchantKey(row.name, row.merchantName);
+    const knownSubscription = row.amountCents > 0
+      ? knownSubscriptionMerchant(row.name, row.merchantName)
+      : null;
+    const merchantClean = knownSubscription?.displayName ?? row.enrichedMerchant ?? cleanMerchantName(row.name, row.merchantName);
+    const key = recurringMerchantKey(row.name, row.merchantName, row.amountCents);
     const groupKey = `${row.accountId}:${key}`;
     if (!groups.has(groupKey)) {
       groups.set(groupKey, { accountId: row.accountId, merchantClean, occurrences: [] });
@@ -83,6 +90,7 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
     groups.get(groupKey)!.occurrences.push({ postedDate: row.postedDate, amountCents: row.amountCents });
   }
 
+  const detectedKnownSubscriptions = new Set<string>();
   for (const [groupKey, group] of groups) {
     if (group.occurrences.length < 2) continue;
     const merchantKeyPart = groupKey.split(':').slice(1).join(':');
@@ -104,6 +112,9 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
 
     const firstSeenDate = sorted[0]!.postedDate;
     const lastSeenDate = sorted[sorted.length - 1]!.postedDate;
+    if (knownSubscriptionMerchant(group.merchantClean, null)) {
+      detectedKnownSubscriptions.add(`${group.accountId}:${merchantKeyPart}`);
+    }
 
     await db
       .insert(recurringStreams)
@@ -137,5 +148,30 @@ export async function detectRecurringStreams(db: Db, userId: number): Promise<vo
           updatedAt: new Date(),
         },
       });
+  }
+
+  // A prior app version may have created separate streams for descriptors such
+  // as "OpenAI" and "ChatGPT". Once the canonical stream exists, hide those
+  // stale aliases so the subscription audit does not double-count them.
+  if (detectedKnownSubscriptions.size > 0) {
+    const existing = await db
+      .select({
+        id: recurringStreams.id,
+        accountId: recurringStreams.accountId,
+        merchantKey: recurringStreams.merchantKey,
+        merchantClean: recurringStreams.merchantClean,
+      })
+      .from(recurringStreams)
+      .where(and(eq(recurringStreams.userId, userId), eq(recurringStreams.active, true)));
+
+    for (const stream of existing) {
+      const known = knownSubscriptionMerchant(stream.merchantClean, null);
+      if (!known || stream.merchantKey === known.key) continue;
+      if (!detectedKnownSubscriptions.has(`${stream.accountId}:${known.key}`)) continue;
+      await db
+        .update(recurringStreams)
+        .set({ active: false, updatedAt: new Date() })
+        .where(eq(recurringStreams.id, stream.id));
+    }
   }
 }

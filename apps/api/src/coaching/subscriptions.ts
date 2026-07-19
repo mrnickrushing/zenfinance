@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { RecurringCadence, SubscriptionAuditItemView, SubscriptionAuditView } from '@zenfinance/shared';
 import type { Db } from '../db/client.js';
 import { accounts, items, recurringStreams, transactionEnrichments, transactions } from '../db/schema.js';
-import { merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
+import { knownSubscriptionMerchant, recurringMerchantKey } from '../enrichment/textNormalize.js';
 
 // Cadence → months-per-occurrence multiplier, for normalizing to a monthly cost.
 const MONTHLY_MULTIPLIER: Record<string, number> = {
@@ -57,6 +57,7 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
       accountId: transactions.accountId,
       name: transactions.name,
       merchantName: transactions.merchantName,
+      amountCents: transactions.amountCents,
       category: transactionEnrichments.category,
     })
     .from(transactions)
@@ -70,7 +71,7 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
 
   const categoryVotes = new Map<string, Map<string, number>>();
   for (const e of enriched) {
-    const key = `${e.accountId}:${computeMerchantKey(e.name, e.merchantName)}`;
+    const key = `${e.accountId}:${recurringMerchantKey(e.name, e.merchantName, e.amountCents)}`;
     const votes = categoryVotes.get(key) ?? new Map<string, number>();
     votes.set(e.category, (votes.get(e.category) ?? 0) + 1);
     categoryVotes.set(key, votes);
@@ -88,7 +89,9 @@ export async function auditSubscriptions(db: Db, userId: number): Promise<Subscr
 
   for (const s of streams) {
     if (s.avgAmountCents <= 0) continue;
-    const category = dominantCategory(s.accountId, s.merchantKey);
+    const category = knownSubscriptionMerchant(s.merchantClean, null)
+      ? 'SUBSCRIPTIONS_AND_STREAMING'
+      : dominantCategory(s.accountId, s.merchantKey);
     const multiplier = MONTHLY_MULTIPLIER[s.cadence] ?? 1;
     const monthlyEquivalentCents = Math.round(s.avgAmountCents * multiplier);
     const isCancelCandidate = category !== null && CANCEL_CANDIDATE_CATEGORIES.has(category);

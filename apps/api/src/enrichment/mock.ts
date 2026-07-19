@@ -1,6 +1,6 @@
 import { defaultDiscretionaryFor } from './categories.js';
 import { mapProviderCategoryToTaxonomy } from './fallback.js';
-import { cleanMerchantName } from './textNormalize.js';
+import { cleanMerchantName, knownSubscriptionMerchant } from './textNormalize.js';
 import type {
   EnrichmentBatchResult,
   EnrichmentInput,
@@ -124,6 +124,20 @@ const RULES: Rule[] = [
 ];
 
 function classify(input: EnrichmentInput): EnrichmentResult {
+  const knownSubscription = input.amountCents > 0
+    ? knownSubscriptionMerchant(input.name, input.merchantName)
+    : null;
+  if (knownSubscription) {
+    return {
+      transactionId: input.transactionId,
+      category: 'SUBSCRIPTIONS_AND_STREAMING',
+      merchantClean: knownSubscription.displayName,
+      isRecurring: true,
+      isDiscretionary: true,
+      confidence: 0.99,
+      source: 'llm',
+    };
+  }
   const haystack = `${input.name} ${input.merchantName ?? ''}`;
   for (const rule of RULES) {
     if (rule.pattern.test(haystack)) {

@@ -1,5 +1,5 @@
 import { defaultDiscretionaryFor, isValidCategory } from './categories.js';
-import { cleanMerchantName } from './textNormalize.js';
+import { cleanMerchantName, knownSubscriptionMerchant } from './textNormalize.js';
 import type { EnrichmentInput, EnrichmentResult } from './types.js';
 
 // Plaid's own personal-finance-category primary values, mapped onto our
@@ -28,6 +28,20 @@ const PLAID_PRIMARY_MAP: Record<string, string> = {
 
 /** Deterministic fallback categorization from the provider's own category string. */
 export function mapProviderCategoryToTaxonomy(input: EnrichmentInput): EnrichmentResult {
+  const knownSubscription = input.amountCents > 0
+    ? knownSubscriptionMerchant(input.name, input.merchantName)
+    : null;
+  if (knownSubscription) {
+    return {
+      transactionId: input.transactionId,
+      category: 'SUBSCRIPTIONS_AND_STREAMING',
+      merchantClean: knownSubscription.displayName,
+      isRecurring: true,
+      isDiscretionary: true,
+      confidence: 0.99,
+      source: 'fallback',
+    };
+  }
   const primary = (input.providerCategory ?? '').split('.')[0]?.toUpperCase() ?? '';
   const category = PLAID_PRIMARY_MAP[primary] ?? 'OTHER';
   const resolved = isValidCategory(category) ? category : 'OTHER';

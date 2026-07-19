@@ -11,7 +11,7 @@ import {
   transactions,
 } from '../db/schema.js';
 import { defaultDiscretionaryFor, labelFor } from '../enrichment/categories.js';
-import { merchantKey as computeMerchantKey } from '../enrichment/textNormalize.js';
+import { recurringMerchantKey } from '../enrichment/textNormalize.js';
 
 const DAY_MS = 86400000;
 const CADENCE_DAYS: Record<string, number> = { weekly: 7, biweekly: 14, monthly: 31, annual: 366 };
@@ -242,7 +242,7 @@ export async function verifyMoneyWins(db: Db, userId: number): Promise<void> {
     const tolerance = Math.max(100, Math.round(win.expectedChargeCents * 0.1));
     const reappeared = candidates.some(
       (c) =>
-        computeMerchantKey(c.name, c.merchantName) === stream.merchantKey &&
+        recurringMerchantKey(c.name, c.merchantName, c.amountCents) === stream.merchantKey &&
         Math.abs(c.amountCents - win.expectedChargeCents!) <= tolerance,
     );
 
