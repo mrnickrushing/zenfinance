@@ -14,6 +14,9 @@ export interface EnrichmentInput {
   providerCategory: string | null;
   amountCents: number;
   postedDate: string;
+  accountType: string;
+  accountSubtype: string | null;
+  transferPairId: string | null;
 }
 
 export interface EnrichmentResult {

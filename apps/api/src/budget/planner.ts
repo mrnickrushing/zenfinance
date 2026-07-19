@@ -15,7 +15,9 @@ import { env } from '../env.js';
 import { safeErrorSummary } from '../lib/safeError.js';
 
 const MONTHS_PER_WEEK = 52 / 12;
-const MAX_WEEKS = 8;
+// Match the 90-day Plaid history closely enough to capture monthly and
+// irregular pay cycles without letting old income dominate the plan.
+const MAX_WEEKS = 12;
 
 export type AllocationInput = { category: string; baselineCents: number };
 

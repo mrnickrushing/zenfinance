@@ -1,12 +1,14 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
+import { accounts, featureRollups, items, transactionEnrichments, transactions, users } from '../db/schema.js';
 import { getMonthlyAiCostUsd, recordAiUsage } from '../enrichment/cost.js';
-import { runNightlyRollupsForAllUsers } from '../features/rollup.js';
+import { MockEnrichmentProvider } from '../enrichment/mock.js';
+import { enrichUserTransactions } from '../enrichment/pipeline.js';
+import { mondayOf, runNightlyRollupsForAllUsers } from '../features/rollup.js';
 import { closeDb, migrateOnce, truncateAll } from './setup.js';
 
 let app: Express;
@@ -104,6 +106,67 @@ describe('enrichment pipeline (mock provider, inline queue)', () => {
       expect(leg.category).toBe('TRANSFER');
       expect(leg.isDiscretionary).toBe(false);
     }
+  });
+
+  it('repairs an unpaired paycheck deposit in savings and refreshes its income rollup', async () => {
+    const { access } = await registerAndAuth('savings-paycheck@example.com');
+    await linkBank(access);
+    const userId = await userIdByEmail('savings-paycheck@example.com');
+    const [savings] = await db
+      .select({ id: accounts.id })
+      .from(accounts)
+      .innerJoin(items, eq(accounts.itemId, items.id))
+      .where(and(eq(items.userId, userId), eq(accounts.subtype, 'savings')))
+      .limit(1);
+    const postedDate = new Date().toISOString().slice(0, 10);
+    const [deposit] = await db
+      .insert(transactions)
+      .values({
+        accountId: savings!.id,
+        providerTxnId: 'savings-paycheck-deposit',
+        amountCents: -312345,
+        postedDate,
+        name: 'MOBILE DEPOSIT',
+        merchantName: null,
+        providerCategory: 'TRANSFER_IN.TRANSFER_IN_DEPOSIT',
+        pending: false,
+      })
+      .returning({ id: transactions.id });
+    await db.insert(transactionEnrichments).values({
+      transactionId: deposit!.id,
+      category: 'TRANSFER',
+      merchantClean: 'Mobile Deposit',
+      isRecurring: false,
+      isDiscretionary: false,
+      confidence: 0.8,
+      source: 'llm',
+      model: 'test-model',
+    });
+
+    await enrichUserTransactions(db, new MockEnrichmentProvider(), userId);
+
+    const [repaired] = await db
+      .select({
+        category: transactionEnrichments.category,
+        source: transactionEnrichments.source,
+        merchantClean: transactionEnrichments.merchantClean,
+      })
+      .from(transactionEnrichments)
+      .where(and(eq(transactionEnrichments.transactionId, deposit!.id), isNull(transactionEnrichments.supersededAt)))
+      .limit(1);
+    expect(repaired).toEqual({ category: 'INCOME', source: 'fallback', merchantClean: 'Mobile Deposit' });
+
+    const weekStart = mondayOf(new Date(`${postedDate}T00:00:00Z`)).toISOString().slice(0, 10);
+    const [incomeRollup] = await db
+      .select({ valueCents: featureRollups.valueCents })
+      .from(featureRollups)
+      .where(and(
+        eq(featureRollups.userId, userId),
+        eq(featureRollups.weekStart, weekStart),
+        eq(featureRollups.metric, 'income_total'),
+      ))
+      .limit(1);
+    expect(incomeRollup!.valueCents).toBeGreaterThanOrEqual(312345);
   });
 
   it('flags the payroll and Netflix charges as recurring', async () => {

@@ -86,6 +86,9 @@ export class AnthropicEnrichmentProvider implements EnrichmentProvider {
         providerCategory: t.providerCategory,
         amountCents: t.amountCents,
         postedDate: t.postedDate,
+        accountType: t.accountType,
+        accountSubtype: t.accountSubtype,
+        transferPairId: t.transferPairId,
       })),
     )}`;
 

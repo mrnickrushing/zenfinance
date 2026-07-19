@@ -42,6 +42,9 @@ export async function runDiscretionaryEval(
       providerCategory: f.providerCategory,
       amountCents: f.amountCents,
       postedDate: f.postedDate,
+      accountType: 'depository',
+      accountSubtype: 'checking',
+      transferPairId: null,
     }));
     const { results } = await provider.enrichBatch(inputs, []);
     for (const r of results) {

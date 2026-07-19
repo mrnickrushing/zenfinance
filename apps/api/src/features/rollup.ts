@@ -3,6 +3,7 @@ import { and, eq, gte, inArray, isNull, lt } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, featureRollups, items, transactionEnrichments, transactions, users } from '../db/schema.js';
 import { NON_SPEND_CATEGORIES } from '../enrichment/categories.js';
+import { isIncomeTransaction } from '../finance/classify.js';
 
 const DAY_MS = 86400000;
 const TOTAL_CATEGORY = '_total';
@@ -51,7 +52,14 @@ export async function computeRollupsForWeek(db: Db, userId: number, weekStart: D
     .select({
       amountCents: transactions.amountCents,
       postedDate: transactions.postedDate,
+      name: transactions.name,
+      merchantName: transactions.merchantName,
+      providerCategory: transactions.providerCategory,
+      transferPairId: transactions.transferPairId,
+      accountType: accounts.type,
+      accountSubtype: accounts.subtype,
       category: transactionEnrichments.category,
+      enrichmentSource: transactionEnrichments.source,
       isDiscretionary: transactionEnrichments.isDiscretionary,
       isRecurring: transactionEnrichments.isRecurring,
     })
@@ -81,8 +89,18 @@ export async function computeRollupsForWeek(db: Db, userId: number, weekStart: D
 
   for (const row of rows) {
     if (!row.category) continue; // not yet enriched — excluded until the next run
+    const isIncome = isIncomeTransaction({
+      ...row,
+      // Explicit user corrections outrank automatic raw-provider inference.
+      providerCategory: row.enrichmentSource === 'user_correction' ? null : row.providerCategory,
+      name: row.enrichmentSource === 'user_correction' ? null : row.name,
+      merchantName: row.enrichmentSource === 'user_correction' ? null : row.merchantName,
+    });
+    if (isIncome) {
+      incomeTotal += Math.abs(row.amountCents);
+      continue;
+    }
     const isSpend = !NON_SPEND_CATEGORIES.has(row.category);
-    if (row.category === 'INCOME') incomeTotal += -row.amountCents;
     if (!isSpend) continue;
 
     spendByCategory.set(row.category, (spendByCategory.get(row.category) ?? 0) + row.amountCents);
