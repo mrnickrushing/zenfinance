@@ -1,9 +1,12 @@
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { accounts, categoryCorrections, items, transactionEnrichments, transactions } from '../db/schema.js';
+import { computeRollupsForWeek, mondayOf } from '../features/rollup.js';
+import { isIncomeTransaction } from '../finance/classify.js';
 import { detectRecurringStreams } from '../recurring/detect.js';
 import { isValidCategory } from './categories.js';
 import { recordAiUsage } from './cost.js';
+import { cleanMerchantName, merchantKey as computeMerchantKey } from './textNormalize.js';
 import type { EnrichmentInput, EnrichmentProvider, FewShotExample } from './types.js';
 
 const BATCH_SIZE = 75;
@@ -19,18 +22,48 @@ interface EnrichmentWrite {
   model: string | null;
 }
 
+interface ExpectedCurrentEnrichment {
+  id: number | null;
+  source: EnrichmentWrite['source'] | null;
+}
+
 /**
  * Supersede-then-insert, mirroring the pending→posted append-friendly
  * pattern already used on `transactions`: re-categorizing never destroys
  * history, it just marks the prior enrichment row superseded.
  */
-export async function applyEnrichment(db: Db, transactionId: number, write: EnrichmentWrite): Promise<void> {
+export async function applyEnrichment(
+  db: Db,
+  transactionId: number,
+  write: EnrichmentWrite,
+  expectedCurrent?: ExpectedCurrentEnrichment,
+): Promise<boolean> {
   const category = isValidCategory(write.category) ? write.category : 'OTHER';
+  let applied = false;
   await db.transaction(async (tx) => {
     // Serialize writers for this transaction. The partial unique index is the
     // final invariant; this lock prevents two workers from both superseding
     // and then racing to insert the next current row.
     await tx.execute(sql`select id from ${transactions} where id = ${transactionId} for update`);
+    if (expectedCurrent) {
+      const [current] = await tx
+        .select({ id: transactionEnrichments.id, source: transactionEnrichments.source })
+        .from(transactionEnrichments)
+        .where(
+          and(
+            eq(transactionEnrichments.transactionId, transactionId),
+            isNull(transactionEnrichments.supersededAt),
+          ),
+        )
+        .limit(1);
+      if (
+        (current?.id ?? null) !== expectedCurrent.id ||
+        (current?.source ?? null) !== expectedCurrent.source ||
+        current?.source === 'user_correction'
+      ) {
+        return;
+      }
+    }
     await tx
       .update(transactionEnrichments)
       .set({ supersededAt: new Date() })
@@ -45,7 +78,9 @@ export async function applyEnrichment(db: Db, transactionId: number, write: Enri
       source: write.source,
       model: write.model,
     });
+    applied = true;
   });
+  return applied;
 }
 
 async function getFewShotExamples(db: Db, userId: number): Promise<FewShotExample[]> {
@@ -71,6 +106,66 @@ async function getFewShotExamples(db: Db, userId: number): Promise<FewShotExampl
   return examples;
 }
 
+async function repairMisclassifiedIncome(
+  db: Db,
+  userId: number,
+  correctedMerchantKeys: ReadonlySet<string>,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      id: transactions.id,
+      name: transactions.name,
+      merchantName: transactions.merchantName,
+      providerCategory: transactions.providerCategory,
+      amountCents: transactions.amountCents,
+      postedDate: transactions.postedDate,
+      transferPairId: transactions.transferPairId,
+      accountType: accounts.type,
+      accountSubtype: accounts.subtype,
+      enrichmentId: transactionEnrichments.id,
+      enrichmentSource: transactionEnrichments.source,
+      isRecurring: transactionEnrichments.isRecurring,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .innerJoin(items, eq(accounts.itemId, items.id))
+    .innerJoin(
+      transactionEnrichments,
+      and(eq(transactionEnrichments.transactionId, transactions.id), isNull(transactionEnrichments.supersededAt)),
+    )
+    .where(
+      and(
+        eq(items.userId, userId),
+        isNull(transactions.removedAt),
+        isNull(transactions.supersededAt),
+        eq(transactions.pending, false),
+        lt(transactions.amountCents, 0),
+        ne(transactionEnrichments.category, 'INCOME'),
+        inArray(transactionEnrichments.source, ['llm', 'fallback']),
+      ),
+    );
+
+  const repairedWeeks = new Set<string>();
+  for (const row of rows) {
+    if (correctedMerchantKeys.has(computeMerchantKey(row.name, row.merchantName))) continue;
+    if (!isIncomeTransaction(row)) continue;
+    const applied = await applyEnrichment(db, row.id, {
+      category: 'INCOME',
+      merchantClean: cleanMerchantName(row.name, row.merchantName),
+      isRecurring: row.isRecurring,
+      isDiscretionary: false,
+      confidence: 0.99,
+      source: 'fallback',
+      model: null,
+    }, {
+      id: row.enrichmentId,
+      source: row.enrichmentSource,
+    });
+    if (applied) repairedWeeks.add(row.postedDate);
+  }
+  return repairedWeeks;
+}
+
 /**
  * Batch-enrich every un-enriched, non-pending transaction for a user (PLAN
  * §4 Stage 2): categorize, clean the merchant name, flag recurring/
@@ -82,6 +177,9 @@ export async function enrichUserTransactions(
   provider: EnrichmentProvider,
   userId: number,
 ): Promise<void> {
+  const fewShot = await getFewShotExamples(db, userId);
+  const fewShotByMerchantKey = new Map(fewShot.map((example) => [example.merchantKey, example]));
+  const repairedIncomeDates = await repairMisclassifiedIncome(db, userId, new Set(fewShotByMerchantKey.keys()));
   const rows = await db
     .select({
       id: transactions.id,
@@ -90,6 +188,9 @@ export async function enrichUserTransactions(
       providerCategory: transactions.providerCategory,
       amountCents: transactions.amountCents,
       postedDate: transactions.postedDate,
+      accountType: accounts.type,
+      accountSubtype: accounts.subtype,
+      transferPairId: transactions.transferPairId,
     })
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
@@ -108,9 +209,13 @@ export async function enrichUserTransactions(
       ),
     );
 
-  if (rows.length === 0) return;
-
-  const fewShot = await getFewShotExamples(db, userId);
+  if (rows.length === 0) {
+    for (const postedDate of repairedIncomeDates) {
+      await computeRollupsForWeek(db, userId, mondayOf(new Date(`${postedDate}T00:00:00Z`)));
+    }
+    if (repairedIncomeDates.size > 0) await detectRecurringStreams(db, userId);
+    return;
+  }
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE);
@@ -121,6 +226,9 @@ export async function enrichUserTransactions(
       providerCategory: t.providerCategory,
       amountCents: t.amountCents,
       postedDate: t.postedDate,
+      accountType: t.accountType,
+      accountSubtype: t.accountSubtype,
+      transferPairId: t.transferPairId,
     }));
 
     const { results, usage } = await provider.enrichBatch(inputs, fewShot);
@@ -128,8 +236,36 @@ export async function enrichUserTransactions(
 
     for (const input of inputs) {
       const result = byId.get(input.transactionId);
-      if (!result) continue;
-      await applyEnrichment(db, input.transactionId, { ...result, model: provider.model });
+      const learnedCorrection = fewShotByMerchantKey.get(computeMerchantKey(input.name, input.merchantName));
+      const forceIncome = !learnedCorrection && isIncomeTransaction(input) && result?.category !== 'INCOME';
+      if (!result && !forceIncome && !learnedCorrection) continue;
+      const normalized = learnedCorrection
+        ? {
+            transactionId: input.transactionId,
+            category: learnedCorrection.category,
+            merchantClean: cleanMerchantName(input.name, input.merchantName),
+            isRecurring: result?.isRecurring ?? false,
+            isDiscretionary: learnedCorrection.isDiscretionary,
+            confidence: 0.99,
+            source: 'llm' as const,
+          }
+        : forceIncome
+        ? {
+            transactionId: input.transactionId,
+            category: 'INCOME',
+            merchantClean: cleanMerchantName(input.name, input.merchantName),
+            isRecurring: result?.isRecurring ?? false,
+            isDiscretionary: false,
+            confidence: 0.99,
+            source: 'fallback' as const,
+          }
+        : result!;
+      await applyEnrichment(
+        db,
+        input.transactionId,
+        { ...normalized, model: forceIncome ? null : provider.model },
+        { id: null, source: null },
+      );
     }
 
     if (usage) {
@@ -143,5 +279,8 @@ export async function enrichUserTransactions(
     }
   }
 
+  for (const postedDate of repairedIncomeDates) {
+    await computeRollupsForWeek(db, userId, mondayOf(new Date(`${postedDate}T00:00:00Z`)));
+  }
   await detectRecurringStreams(db, userId);
 }

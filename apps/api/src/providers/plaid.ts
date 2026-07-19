@@ -22,16 +22,23 @@ function toCents(amount: number | null | undefined): number {
   return Math.round((amount ?? 0) * 100);
 }
 
-function mapTxn(t: PlaidTransaction): ProviderTransaction {
+export function mapPlaidTransaction(t: PlaidTransaction): ProviderTransaction {
+  const incomeSource = t.counterparties?.find((counterparty) => counterparty.type === 'income_source');
+  const primaryCategory = incomeSource ? 'INCOME' : t.personal_finance_category?.primary ?? null;
+  const detailedCategory = t.personal_finance_category?.detailed ?? null;
+  const providerCategory = primaryCategory
+    ? [primaryCategory, detailedCategory].filter(Boolean).join('.')
+    : null;
+  const originalDescription = t.original_description?.trim();
   return {
     providerTxnId: t.transaction_id,
     providerAccountId: t.account_id,
     amountCents: toCents(t.amount),
     isoCurrency: t.iso_currency_code ?? 'USD',
     postedDate: t.date,
-    name: t.name,
-    merchantName: t.merchant_name ?? null,
-    providerCategory: t.personal_finance_category?.primary ?? null,
+    name: originalDescription || t.name,
+    merchantName: incomeSource?.name?.trim() || t.merchant_name || null,
+    providerCategory,
     pending: t.pending,
     pendingTxnId: t.pending_transaction_id ?? null,
   };
@@ -123,10 +130,11 @@ export class PlaidProvider implements TransactionProvider {
       access_token: accessToken,
       cursor: cursor ?? undefined,
       count: 500,
+      options: { include_original_description: true },
     });
     return {
-      added: res.data.added.map(mapTxn),
-      modified: res.data.modified.map(mapTxn),
+      added: res.data.added.map(mapPlaidTransaction),
+      modified: res.data.modified.map(mapPlaidTransaction),
       removedProviderTxnIds: res.data.removed
         .map((r) => r.transaction_id)
         .filter((id): id is string => Boolean(id)),

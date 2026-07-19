@@ -308,6 +308,40 @@ describe('Phase 4 mobile product API', () => {
     expect(zeroIncome.body.status).toBe('shortfall');
   });
 
+  it('models monthly income across twelve weeks so older monthly pay is not dropped', async () => {
+    const email = 'budget-income-horizon@example.com';
+    const { access } = await registerAndLink(email);
+    await grantPremium(email);
+    const [budgetUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+    const goal = await request(app)
+      .post('/api/goals')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ name: 'Income horizon', targetAmountCents: 500000 });
+    expect(goal.status).toBe(201);
+
+    await db.delete(featureRollups).where(eq(featureRollups.userId, budgetUser!.id));
+    const weekStarts = [
+      '2026-04-27', '2026-05-04', '2026-05-11', '2026-05-18',
+      '2026-05-25', '2026-06-01', '2026-06-08', '2026-06-15',
+      '2026-06-22', '2026-06-29', '2026-07-06', '2026-07-13',
+    ];
+    await db.insert(featureRollups).values(weekStarts.map((weekStart, index) => ({
+      aggregateId: `budget:horizon:${weekStart}`,
+      userId: budgetUser!.id,
+      weekStart,
+      metric: 'income_total',
+      valueCents: index === 0 ? 300000 : 0,
+    })));
+
+    const plan = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({ goalId: goal.body.id, monthlySavingsCents: 10000, planMonth: '2026-07-01' });
+    expect(plan.status).toBe(200);
+    expect(plan.body.dataCoverage.weeksAnalyzed).toBe(12);
+    expect(plan.body.monthlyIncomeCents).toBe(108333);
+  });
+
   it('persists push token and per-type notification preferences', async () => {
     const { access } = await registerAndLink('notifications@example.com');
 
