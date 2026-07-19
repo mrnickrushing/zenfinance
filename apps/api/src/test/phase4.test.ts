@@ -251,6 +251,32 @@ describe('Phase 4 mobile product API', () => {
     expect(plan.body.categories.some((category: { category: string }) => category.category === 'GROCERIES')).toBe(true);
     expect(plan.body.explanation).toContain('detected recurring bill');
 
+    const detectedBill = plan.body.bills.find((bill: { recurringStreamId: number | null }) => bill.recurringStreamId !== null);
+    expect(detectedBill).toBeDefined();
+    const adjustedPlan = await request(app)
+      .post('/api/budget/plan')
+      .set('Authorization', `Bearer ${access}`)
+      .send({
+        goalId: goal.body.id,
+        monthlySavingsCents: 80000,
+        planMonth: '2026-07-01',
+        monthlyIncomeOverrideCents: 600000,
+        targetBufferCents: 25000,
+        billOverrides: [{ recurringStreamId: detectedBill.recurringStreamId, included: false, monthlyEquivalentCents: detectedBill.monthlyEquivalentCents }],
+        customBills: [{ clientId: 'manual-openai', merchantClean: 'OpenAI', monthlyEquivalentCents: 2000, category: 'SUBSCRIPTIONS_AND_STREAMING', cadence: 'monthly' }],
+        categoryOverrides: [{ category: 'GROCERIES', recommendedCents: 60000 }],
+      });
+    expect(adjustedPlan.status).toBe(200);
+    expect(adjustedPlan.body.monthlyIncomeCents).toBe(600000);
+    expect(adjustedPlan.body.adjustments.incomeSource).toBe('user');
+    expect(adjustedPlan.body.adjustments.detectedMonthlyIncomeCents).toBe(433333);
+    expect(adjustedPlan.body.adjustments.targetBufferCents).toBe(25000);
+    expect(adjustedPlan.body.adjustments.billOverrideCount).toBe(1);
+    expect(adjustedPlan.body.adjustments.customBillCount).toBe(1);
+    expect(adjustedPlan.body.dataCoverage.allDetectedBillsIncluded).toBe(false);
+    expect(adjustedPlan.body.bills.some((bill: { merchantClean: string; source: string }) => bill.merchantClean === 'OpenAI' && bill.source === 'user')).toBe(true);
+    expect(adjustedPlan.body.categories.find((category: { category: string }) => category.category === 'GROCERIES')?.recommendedCents).toBe(60000);
+
     const stretchGoal = await request(app)
       .post('/api/goals')
       .set('Authorization', `Bearer ${access}`)
