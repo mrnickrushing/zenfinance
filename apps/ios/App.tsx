@@ -1385,7 +1385,7 @@ function ProductShell() {
     if (PREMIUM_TABS.has(tab) && !home.billing.isPremium) {
       return <PaywallScreen billing={home.billing} home={home} source={tab} onChanged={refresh} />;
     }
-    if (tab === 'coach') return <CoachScreen initialQuestion={coachInitialQuestion} />;
+    if (tab === 'coach') return <CoachScreen home={home} initialQuestion={coachInitialQuestion} />;
     if (tab === 'transactions') return <TransactionsScreen home={home} onBack={() => setTab('brief')} onProfile={() => setTab('profile')} onConnect={() => setTab('link')} onBudget={() => setTab('budget')} onRefresh={refresh} />;
     if (tab === 'link') return <LinkingScreen onLinked={() => { void refresh(); setTab('transactions'); }} onBack={() => openSettings('banks')} onBudget={() => setTab('budget')} />;
     if (tab === 'profile') return <ZenProfileScreen accountProfile={accountProfile} billing={home.billing} score={home.zenScore.score} onNavigate={navigateFromProfile} />;
@@ -3000,13 +3000,17 @@ function InsightPanel({ insight }: { insight: InsightView }) {
 
 type CoachTurn = { id: string; question: string; answer: ChatAnswerView };
 
-function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
+function CoachScreen({ home, initialQuestion = '' }: { home: MobileHomeSummaryView; initialQuestion?: string }) {
   const theme = useTheme();
   const [question, setQuestion] = useReducerState(initialQuestion);
   const [busy, setBusy] = useReducerState(false);
   const [turns, setTurns] = useReducerState<CoachTurn[]>([]);
   const [keyboardOffset, setKeyboardOffset] = useReducerState(0);
   const listRef = useRef<FlatList>(null);
+  const activeGoal = home.goals.find((goal) => goal.status === 'active');
+  const linkedAccountCount = home.items.reduce((total, item) => total + item.accounts.length, 0);
+  const goalPace = activeGoal?.pacing.pacingStatus.replace(/_/g, ' ') ?? 'add a goal';
+  const canSend = question.trim().length >= 3 && !busy;
 
   useEffect(() => {
     if (turns.length > 0) {
@@ -3056,8 +3060,34 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   return (
     <View style={[styles.flex, { paddingBottom: keyboardOffset }]}>
       <View style={styles.coachScreenHeader}>
-        <Text style={styles.coachHeaderTitle}>Coach</Text>
-        <Text style={styles.coachHeaderSubtitle}>MINDFUL PRESENCE</Text>
+        <View style={styles.coachHeaderTopRow}>
+          <View style={styles.coachBrandRow}>
+            <View style={[styles.coachBrandIcon, { backgroundColor: theme.accentSoft, borderColor: `${theme.accent}66` }]}>
+              <Brain color={theme.accentBright} size={21} />
+            </View>
+            <View style={styles.flexShrink}>
+              <Text style={[styles.coachHeaderTitle, { color: theme.ink }]}>Zen Coach</Text>
+              <Text style={[styles.coachHeaderSubtitle, { color: theme.muted }]}>Clear answers for your money</Text>
+            </View>
+          </View>
+          <View style={[styles.coachScorePill, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+            <Sparkles color={theme.accentBright} size={13} />
+            <Text style={[styles.coachScoreText, { color: theme.ink }]}>{home.zenScore.score ?? '—'}</Text>
+          </View>
+        </View>
+        <View style={[styles.coachGroundingRow, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+          <LockKeyhole color={theme.muted} size={13} />
+          <Text style={[styles.coachGroundingText, { color: theme.muted }]} numberOfLines={1}>
+            {linkedAccountCount > 0
+              ? `Grounded in ${linkedAccountCount} linked account${linkedAccountCount === 1 ? '' : 's'} · ${latestSyncLabel(home.items)}`
+              : 'Link an account to ground answers in your money'}
+          </Text>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.coachContextRail}>
+          <CoachContextChip icon={Target} label={activeGoal?.name ?? 'Savings goal'} value={goalPace} accent={theme.accentBright} />
+          <CoachContextChip icon={CreditCard} label="Recurring" value={`${usd(home.subscriptionAudit.totalMonthlyCents, true)}/mo`} accent="#DFA0F2" />
+          <CoachContextChip icon={Sparkles} label="Zen Score" value={home.zenScore.score === null ? 'building' : home.zenScore.caption} accent={theme.success} />
+        </ScrollView>
       </View>
       <FlatList
         ref={listRef}
@@ -3065,40 +3095,42 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
         data={turns}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatList}
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
-          <CoachPromptBoard onPress={setQuestion} />
+          <CoachPromptBoard home={home} onPress={setQuestion} />
         }
         renderItem={({ item }) => (
           <View style={styles.chatTurn}>
             <UserMessageBubble text={item.question} />
-            <ChatBubble answer={item.answer} />
+            <ChatBubble answer={item.answer} question={item.question} onFollowUp={setQuestion} />
           </View>
         )}
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={[styles.quickPromptRail, { borderColor: theme.border, backgroundColor: theme.surface }]}
-        contentContainerStyle={styles.quickPromptRailContent}
-      >
-        <QuickPromptChip label="Can I afford this?" value="Can I afford $600 this month?" onPress={setQuestion} />
-        <QuickPromptChip label="Review subscriptions" value="Which subscriptions should I cancel?" onPress={setQuestion} />
-        <QuickPromptChip label="Set budget limit" value="Help me set a new budget limit." onPress={setQuestion} />
-      </ScrollView>
-      <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-        <TextInput
-          style={[styles.composerInput, { color: theme.ink }]}
-          placeholder="Type your financial question..."
-          placeholderTextColor={theme.muted}
-          value={question}
-          onChangeText={setQuestion}
-          returnKeyType="send"
-          onSubmitEditing={ask}
-        />
-        <Pressable style={[styles.askZenButton, { backgroundColor: theme.accent }]} disabled={busy} onPress={ask}>
-          {busy ? <ActivityIndicator color="#003737" /> : <Text style={styles.askZenArrow}>↑</Text>}
-          <Text style={styles.askZenText}>Ask Zen</Text>
-        </Pressable>
+      <View style={styles.coachComposerDock}>
+        <View style={[styles.composer, { borderColor: theme.border, backgroundColor: theme.surface }]}>
+          <TextInput
+            style={[styles.composerInput, { color: theme.ink }]}
+            placeholder="Ask about your money"
+            placeholderTextColor={theme.muted}
+            value={question}
+            onChangeText={setQuestion}
+            editable={!busy}
+            returnKeyType="send"
+            onSubmitEditing={ask}
+            accessibilityLabel="Ask Zen Coach"
+          />
+          <Pressable
+            style={[styles.coachSendButton, { backgroundColor: canSend ? theme.accent : theme.surfaceAlt, opacity: canSend ? 1 : 0.62 }]}
+            disabled={!canSend}
+            onPress={ask}
+            accessibilityRole="button"
+            accessibilityLabel="Send question"
+            accessibilityState={{ disabled: !canSend }}
+          >
+            {busy ? <ActivityIndicator color={theme.muted} /> : <Send color={canSend ? '#003737' : theme.muted} size={19} />}
+          </Pressable>
+        </View>
+        <Text style={[styles.coachDisclaimer, { color: theme.muted }]}>AI can make mistakes. Verify important money decisions.</Text>
       </View>
     </View>
   );
@@ -3126,112 +3158,142 @@ function UserMessageBubble({ text }: { text: string }) {
   );
 }
 
-function ChatBubble({ answer }: { answer: ChatAnswerView }) {
+function ChatBubble({ answer, question, onFollowUp }: { answer: ChatAnswerView; question: string; onFollowUp: (value: string) => void }) {
   const theme = useTheme();
+  const firstAction = answer.actions[0];
   return (
-    <View style={styles.aiMessageRow}>
-      <ZenAiAvatar />
-      <CoachCard>
-        <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
-        <Text style={[styles.panelBody, { color: theme.ink }]}>{answer.answer}</Text>
-        <InsightLedger facts={answer.facts} />
-        {answer.actions.map((action) => (
-          <Text key={action} style={[styles.actionMeta, { color: theme.accent }]}>→ {action}</Text>
-        ))}
-      </CoachCard>
+    <View style={[styles.coachAnswerCard, { backgroundColor: theme.surface, borderColor: `${theme.accent}66` }]}>
+      <View style={styles.coachAnswerHeader}>
+        <ZenAiAvatar />
+        <View style={styles.flexShrink}>
+          <Text style={[styles.coachAnswerKicker, { color: theme.accentBright }]}>ZEN COACH</Text>
+          <Text style={[styles.coachAnswerMeta, { color: theme.muted }]}>{answer.facts.length > 0 ? 'Grounded in your money' : 'General guidance'}</Text>
+        </View>
+      </View>
+      <Text style={[styles.coachAnswerText, { color: theme.ink }]}>{answer.answer}</Text>
+      <InsightLedger facts={answer.facts} />
+      {answer.actions.length > 0 ? (
+        <View style={[styles.coachRecommendation, { backgroundColor: theme.surfaceAlt, borderColor: `${theme.accent}55` }]}>
+          <Text style={[styles.coachRecommendationKicker, { color: theme.accentBright }]}>RECOMMENDED MOVE</Text>
+          {answer.actions.map((action) => (
+            <View key={action} style={styles.coachRecommendationRow}>
+              <CheckCircle2 color={theme.success} size={16} />
+              <Text style={[styles.coachRecommendationText, { color: theme.ink }]}>{action}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+      <View style={styles.coachAnswerActions}>
+        {firstAction ? (
+          <Pressable
+            style={[styles.coachPlanButton, { backgroundColor: theme.accent }]}
+            onPress={() => onFollowUp(`Turn this into a step-by-step plan for me: ${firstAction}`.slice(0, 500))}
+            accessibilityRole="button"
+          >
+            <Target color="#003737" size={17} />
+            <Text style={styles.coachPlanButtonText}>Build this plan</Text>
+          </Pressable>
+        ) : null}
+        <Pressable
+          style={[styles.coachMathButton, { borderColor: theme.border }]}
+          onPress={() => onFollowUp(`Show me the math behind your answer to: ${question}`.slice(0, 500))}
+          accessibilityRole="button"
+        >
+          <CircleDollarSign color={theme.accentBright} size={17} />
+          <Text style={[styles.coachMathButtonText, { color: theme.ink }]}>Show the math</Text>
+        </Pressable>
+      </View>
+      <View style={styles.coachSourceNote}>
+        <ShieldCheck color={theme.muted} size={13} />
+        <Text style={[styles.coachSourceText, { color: theme.muted }]}>
+          {answer.facts.length > 0 ? 'Based on the linked-account facts shown above.' : 'Link accounts or ask a more specific question for a grounded answer.'}
+        </Text>
+      </View>
     </View>
   );
 }
 
-function CoachPromptBoard({ onPress }: { onPress: (value: string) => void }) {
+function CoachPromptBoard({ home, onPress }: { home: MobileHomeSummaryView; onPress: (value: string) => void }) {
   const theme = useTheme();
-  const groups = [
+  const activeGoal = home.goals.find((goal) => goal.status === 'active');
+  const prompts: Array<{ kicker: string; title: string; value: string; icon: IconComponent; accent: string }> = [
     {
-      title: 'Spending',
-      icon: WalletCards,
-      prompts: ['How much did I spend on coffee in the last 90 days?', 'What changed in my dining spend?'],
-    },
-    {
-      title: 'Affordability',
-      icon: CircleDollarSign,
-      prompts: ['Can I afford $600 this month?', 'What would I need to cut to save $150?'],
-    },
-    {
-      title: 'Subscriptions',
-      icon: CreditCard,
-      prompts: ['Which subscriptions should I cancel?', 'Did any recurring charge get more expensive?'],
-    },
-    {
-      title: 'Goals',
+      kicker: 'Feasibility check',
+      title: activeGoal ? `Can I get ${activeGoal.name} on track?` : 'Can I comfortably save $800 this month?',
+      value: activeGoal ? `Am I on pace for my ${activeGoal.name} goal?` : 'What would I need to cut to save $800 this month?',
       icon: Target,
-      prompts: ['Am I on pace for my top goal?', 'What would move my goal up by two weeks?'],
+      accent: theme.accentBright,
+    },
+    {
+      kicker: 'Cash flow',
+      title: 'Plan around upcoming bills',
+      value: 'Help me plan my spending around upcoming recurring bills.',
+      icon: CalendarDays,
+      accent: '#DFA0F2',
+    },
+    {
+      kicker: 'Analysis',
+      title: 'Explain what changed',
+      value: 'What changed in my spending and cash flow this month?',
+      icon: CircleDollarSign,
+      accent: '#FF9C9C',
+    },
+    {
+      kicker: 'Optimization',
+      title: 'Find room in my budget',
+      value: 'Help me find room in my budget without falling behind on my goals.',
+      icon: WalletCards,
+      accent: theme.success,
     },
   ];
 
   return (
     <View style={styles.promptBoard}>
-      <View style={styles.aiMessageRow}>
-        <ZenAiAvatar />
-        <ZenGlass style={styles.chatMessageBubble}>
-          <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
-          <Text style={styles.chatMessageText}>
-            Good evening! Based on your spending this month, you’re on track. I found one small move that could help you reach your goal faster.
-          </Text>
-        </ZenGlass>
+      <View style={styles.coachPromptHero}>
+        <Text style={[styles.coachPromptTitle, { color: theme.ink }]}>What do you want to solve?</Text>
+        <Text style={[styles.coachPromptBody, { color: theme.muted }]}>Ask a question or start with a decision. Zen Coach will show the account facts behind its answer.</Text>
       </View>
-      <View style={styles.aiMessageRow}>
-        <ZenAiAvatar />
-        <ZenGlass style={styles.chatMessageBubble}>
-          <Text style={styles.aiBubblePrefix}>ZEN COACH</Text>
-          <Text style={styles.chatMessageText}>
-            Ask me about a charge, a goal, or what you can comfortably spend next.
-          </Text>
-        </ZenGlass>
+      <View style={styles.coachPromptGrid}>
+        {prompts.map((prompt) => (
+          <CoachPromptCard key={prompt.kicker} {...prompt} onPress={onPress} />
+        ))}
       </View>
-      <ZenGlass style={styles.coachInsightsCard}>
-        <Text style={styles.coachInsightsTitle}>Your Path to Zen</Text>
-        <Text style={styles.coachInsightsSubtitle}>Recent Milestones</Text>
-        {[['Emergency Fund Goal Reached', 'You successfully saved $1,000', CheckCircle2], ['Mindful Spending Tip', 'Try tracking your coffee purchases', Target], ['Weekly Budget Review Completed', 'Good job staying within your limits', Sparkles]].map(([title, copy, Icon]) => {
-          const InsightIcon = Icon as typeof Sparkles;
-          return <View key={title as string} style={styles.coachInsightRow}><View style={styles.coachInsightIcon}><InsightIcon color="#00D2D3" size={15} /></View><View style={styles.flexShrink}><Text style={styles.coachInsightTitle}>{title as string}</Text><Text style={styles.coachInsightCopy}>{copy as string}</Text></View></View>;
-        })}
-      </ZenGlass>
-      <Text style={styles.chatPromptLabel}>TRY ASKING</Text>
-      {groups.map((group) => {
-        const Icon = group.icon;
-        return (
-          <View key={group.title} style={[styles.promptGroup, { borderColor: theme.border, backgroundColor: theme.surface }]}>
-            <View style={styles.panelHeader}>
-              <Icon color={theme.accent} size={18} />
-              <Text style={[styles.actionTitle, { color: theme.ink }]}>{group.title}</Text>
-            </View>
-            {group.prompts.map((prompt) => (
-              <Suggestion key={prompt} onPress={onPress} value={prompt} />
-            ))}
-          </View>
-        );
-      })}
     </View>
   );
 }
 
-function QuickPromptChip({ label, value, onPress }: { label: string; value: string; onPress: (value: string) => void }) {
+function CoachPromptCard({ kicker, title, value, icon: Icon, accent, onPress }: {
+  kicker: string; title: string; value: string; icon: IconComponent; accent: string; onPress: (value: string) => void;
+}) {
   const theme = useTheme();
   return (
-    <Pressable style={[styles.quickPromptChip, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]} onPress={() => onPress(value)}>
-      <Text style={[styles.quickPromptText, { color: theme.ink }]} numberOfLines={1}>
-        {label}
-      </Text>
+    <Pressable
+      style={[styles.coachPromptCard, { borderColor: theme.border, backgroundColor: theme.surface }]}
+      onPress={() => onPress(value)}
+      accessibilityRole="button"
+      accessibilityLabel={`${kicker}: ${title}`}
+    >
+      <View style={[styles.coachPromptIcon, { backgroundColor: `${accent}1F` }]}>
+        <Icon color={accent} size={18} />
+      </View>
+      <Text style={[styles.coachPromptKicker, { color: accent }]}>{kicker}</Text>
+      <Text style={[styles.coachPromptCardTitle, { color: theme.ink }]}>{title}</Text>
+      <View style={styles.coachPromptCta}>
+        <Text style={[styles.coachPromptCtaText, { color: theme.muted }]}>Start here</Text>
+        <ChevronRight color={theme.muted} size={14} />
+      </View>
     </Pressable>
   );
 }
 
-function Suggestion({ value, onPress }: { value: string; onPress: (value: string) => void }) {
+function CoachContextChip({ icon: Icon, label, value, accent }: { icon: IconComponent; label: string; value: string; accent: string }) {
   const theme = useTheme();
   return (
-    <Pressable style={[styles.suggestion, { borderColor: theme.border, backgroundColor: theme.surface }]} onPress={() => onPress(value)}>
-      <Text style={[styles.suggestionText, { color: theme.ink }]}>{value}</Text>
-    </Pressable>
+    <View style={[styles.coachContextChip, { backgroundColor: theme.surfaceAlt, borderColor: theme.border }]}>
+      <Icon color={accent} size={14} />
+      <Text style={[styles.coachContextLabel, { color: theme.muted }]} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.coachContextValue, { color: theme.ink }]} numberOfLines={1}>{value}</Text>
+    </View>
   );
 }
 
@@ -4927,26 +4989,22 @@ function MoneyMetric({ label, value, icon: Icon }: { label: string; value: strin
   );
 }
 
-function CoachCard({ children }: { children: ReactNode }) {
-  return (
-    <ZenGlass style={[styles.coachCard, { borderColor: '#48EFEF4D' }]}>
-      {children}
-    </ZenGlass>
-  );
-}
-
 function InsightLedger({ facts }: { facts: ChatAnswerView['facts'] }) {
   const theme = useTheme();
   if (facts.length === 0) return null;
   return (
-    <View style={[styles.insightLedger, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}>
-      {facts.map((fact) => (
-        <View key={`${fact.label}-${fact.source}`} style={styles.ledgerRow}>
-          <Text style={[styles.ledgerLabel, { color: theme.muted }]} numberOfLines={1}>
+    <View style={styles.coachEvidenceWrap}>
+      {facts.map((fact, index) => (
+        <View
+          key={`${fact.label}-${fact.source}-${index}`}
+          style={[styles.coachEvidencePill, { borderColor: theme.border, backgroundColor: theme.surfaceAlt }]}
+        >
+          <View style={[styles.coachEvidenceDot, { backgroundColor: theme.accentBright }]} />
+          <Text style={[styles.coachEvidenceLabel, { color: theme.muted }]} numberOfLines={1}>
             {fact.label}
           </Text>
-          <Text style={[styles.ledgerValue, { color: theme.ink }]}>
-            {fact.amountCents === null ? 'not available' : usd(fact.amountCents)}
+          <Text style={[styles.coachEvidenceValue, { color: theme.ink }]}>
+            {fact.amountCents === null ? 'Not available' : usd(fact.amountCents)}
           </Text>
         </View>
       ))}
