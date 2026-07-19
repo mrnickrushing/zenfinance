@@ -21,10 +21,11 @@ function plan(status: BudgetPlanView['status']): BudgetPlanView {
     shortfallCents: 0,
     bills: [],
     categories: [
-      { category: 'GROCERIES', label: 'Groceries', historicalMonthlyCents: 51000, recurringMonthlyCents: 0, recommendedCents: 50125, adjustmentCents: -875, isDiscretionary: false },
-      { category: 'COFFEE_SHOPS', label: 'Coffee Shops', historicalMonthlyCents: 1900, recurringMonthlyCents: 0, recommendedCents: 0, adjustmentCents: -1900, isDiscretionary: true },
+      { category: 'GROCERIES', label: 'Groceries', historicalMonthlyCents: 51000, recurringMonthlyCents: 0, recommendedCents: 50125, baselineRecommendedCents: 50125, adjustmentCents: -875, isDiscretionary: false, userAdjusted: false },
+      { category: 'COFFEE_SHOPS', label: 'Coffee Shops', historicalMonthlyCents: 1900, recurringMonthlyCents: 0, recommendedCents: 0, baselineRecommendedCents: 0, adjustmentCents: -1900, isDiscretionary: true, userAdjusted: false },
     ],
-    dataCoverage: { weeksAnalyzed: 8, detectedBillCount: 2, allDetectedBillsIncluded: true, uncategorizedBillCount: 0, hasIncomeData: true },
+    dataCoverage: { weeksAnalyzed: 8, detectedBillCount: 2, includedBillCount: 2, customBillCount: 0, allDetectedBillsIncluded: true, uncategorizedBillCount: 0, hasIncomeData: true, hasDetectedIncomeData: true },
+    adjustments: { detectedMonthlyIncomeCents: 400000, incomeSource: 'detected', targetBufferCents: 0, billOverrideCount: 0, customBillCount: 0, categoryOverrideCount: 0 },
     explanation: 'A grounded plan.',
     explanationSource: 'deterministic',
     actions: ['Review it.'],
@@ -41,9 +42,31 @@ describe('AI monthly budget plan', () => {
 
   it('rejects missing goals and invalid savings amounts', () => {
     expect(buildBudgetPlanRequest(null, '500')).toEqual({ ok: false, error: 'Choose a savings goal first.' });
-    expect(buildBudgetPlanRequest(4, '')).toEqual({ ok: false, error: 'Enter what you want to save this month.' });
+    expect(buildBudgetPlanRequest(4, '')).toEqual({ ok: false, error: 'Enter monthly savings.' });
     expect(buildBudgetPlanRequest(4, '-20').ok).toBe(false);
     expect(buildBudgetPlanRequest(4, '100000.01').ok).toBe(false);
+  });
+
+  it('parses user-controlled income, bills, category caps, and buffer assumptions', () => {
+    expect(buildBudgetPlanRequest(4, '800', new Date(2026, 6, 18, 12), {
+      monthlyIncome: '$5,420',
+      billOverrides: [{ recurringStreamId: 9, included: false, monthlyAmount: '20' }],
+      customBills: [{ clientId: 'manual-openai', merchantClean: 'OpenAI', monthlyAmount: '$20' }],
+      categoryOverrides: [{ category: 'GROCERIES', recommendedAmount: '600' }],
+      targetBuffer: '240',
+    })).toEqual({
+      ok: true,
+      value: {
+        goalId: 4,
+        monthlySavingsCents: 80000,
+        planMonth: '2026-07-01',
+        monthlyIncomeOverrideCents: 542000,
+        billOverrides: [{ recurringStreamId: 9, included: false, monthlyEquivalentCents: 2000 }],
+        customBills: [{ clientId: 'manual-openai', merchantClean: 'OpenAI', monthlyEquivalentCents: 2000, category: null, cadence: 'monthly' }],
+        categoryOverrides: [{ category: 'GROCERIES', recommendedCents: 60000 }],
+        targetBufferCents: 24000,
+      },
+    });
   });
 
   it('applies only viable plans and rounds targets up to whole dollars', () => {

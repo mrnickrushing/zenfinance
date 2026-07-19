@@ -1,4 +1,5 @@
 import type {
+  BudgetPlanBillView,
   BudgetPlanCategoryView,
   BudgetPlanInput,
   BudgetPlanStatus,
@@ -64,21 +65,28 @@ function deterministicExplanation(
   spendingCents: number,
   bufferCents: number,
   shortfallCents: number,
+  detectedBillCount: number,
+  allDetectedBillsIncluded: boolean,
+  adjustmentCount: number,
 ): { answer: string; actions: string[] } {
+  const coverage = allDetectedBillsIncluded
+    ? `all ${detectedBillCount} detected recurring bill${detectedBillCount === 1 ? '' : 's'}`
+    : `${billCount} included bill${billCount === 1 ? '' : 's'} after your exclusions`;
+  const adjustmentNote = adjustmentCount > 0 ? ` using ${adjustmentCount} custom value${adjustmentCount === 1 ? '' : 's'}` : '';
   if (status === 'needs_income') {
     return {
-      answer: `I included all ${billCount} detected recurring bill${billCount === 1 ? '' : 's'}, but I need recent linked income before I can build a safe monthly plan for ${goalName}.`,
+      answer: `I included ${coverage}, but I need recent linked income or a monthly income amount before I can build a safe plan for ${goalName}.`,
       actions: ['Sync the account that receives income, then build the plan again.', 'Review the detected bill list for anything missing.'],
     };
   }
   if (status === 'shortfall') {
     return {
-      answer: `Saving ${cents(savingsCents)} toward ${goalName} while covering all ${billCount} detected bills (${cents(billsCents)}) and historical essential spending requires ${cents(shortfallCents)} more than modeled monthly income of ${cents(incomeCents)}.`,
+      answer: `Saving ${cents(savingsCents)} toward ${goalName} while covering ${coverage} (${cents(billsCents)}) and the spending limits you set${adjustmentNote} requires ${cents(shortfallCents)} more than monthly income of ${cents(incomeCents)}.`,
       actions: ['Lower this month\'s savings, reduce essential costs, or review recurring bills.', 'Do not apply a plan until the shortfall is resolved.'],
     };
   }
   return {
-    answer: `This plan covers all ${billCount} detected recurring bill${billCount === 1 ? '' : 's'}, puts ${cents(savingsCents)} toward ${goalName}, allows ${cents(spendingCents)} for monthly spending, and keeps ${cents(bufferCents)} unassigned.`,
+    answer: `This plan covers ${coverage}, puts ${cents(savingsCents)} toward ${goalName}, allows ${cents(spendingCents)} for monthly spending, and keeps ${cents(bufferCents)} unassigned${adjustmentNote}.`,
     actions: [
       'Review every included bill and suggested category cap.',
       'Apply the plan only when the amounts look right; no money will move.',
@@ -115,7 +123,9 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   const incomeRows = selectedRollups.filter((row) => row.metric === 'income_total');
   const incomeTotal = incomeRows
     .reduce((sum, row) => sum + Math.max(0, row.valueCents ?? 0), 0);
-  const monthlyIncomeCents = weekCount > 0 ? Math.round((incomeTotal / weekCount) * MONTHS_PER_WEEK) : 0;
+  const detectedMonthlyIncomeCents = weekCount > 0 ? Math.round((incomeTotal / weekCount) * MONTHS_PER_WEEK) : 0;
+  const incomeSource = input.monthlyIncomeOverrideCents === undefined ? 'detected' : 'user';
+  const monthlyIncomeCents = input.monthlyIncomeOverrideCents ?? detectedMonthlyIncomeCents;
 
   const historicalByCategory = new Map<string, number>();
   for (const row of selectedRollups) {
@@ -128,13 +138,55 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     }
   }
 
-  const spendBills = subscriptionAudit.items.filter((bill) => isBudgetBillCategory(bill.category));
+  const detectedBills = subscriptionAudit.items.filter((bill) => isBudgetBillCategory(bill.category));
+  const billOverrideMap = new Map((input.billOverrides ?? []).map((override) => [override.recurringStreamId, override]));
+  const resolvedDetectedBills: BudgetPlanBillView[] = detectedBills.map((bill) => {
+    const override = billOverrideMap.get(bill.recurringStreamId);
+    const monthlyEquivalentCents = override?.monthlyEquivalentCents ?? bill.monthlyEquivalentCents;
+    const included = override?.included ?? true;
+    return {
+      recurringStreamId: bill.recurringStreamId,
+      clientId: `detected-${bill.recurringStreamId}`,
+      merchantClean: bill.merchantClean,
+      cadence: bill.cadence,
+      category: bill.category,
+      monthlyEquivalentCents,
+      detectedMonthlyEquivalentCents: bill.monthlyEquivalentCents,
+      nextExpectedDate: bill.nextExpectedDate,
+      isAdjustable: bill.isCancelCandidate,
+      included,
+      source: 'detected',
+      userAdjusted: included !== true || monthlyEquivalentCents !== bill.monthlyEquivalentCents,
+    };
+  });
+  const customBills: BudgetPlanBillView[] = (input.customBills ?? []).map((bill) => ({
+    recurringStreamId: null,
+    clientId: bill.clientId,
+    merchantClean: bill.merchantClean,
+    cadence: bill.cadence,
+    category: bill.category ?? null,
+    monthlyEquivalentCents: bill.monthlyEquivalentCents,
+    detectedMonthlyEquivalentCents: null,
+    nextExpectedDate: null,
+    isAdjustable: true,
+    included: true,
+    source: 'user',
+    userAdjusted: true,
+  }));
+  const bills = [...resolvedDetectedBills, ...customBills];
+  const includedBills = bills.filter((bill) => bill.included);
+  const detectedRecurringByCategory = new Map<string, number>();
+  for (const bill of detectedBills) {
+    if (!bill.category) continue;
+    detectedRecurringByCategory.set(bill.category, (detectedRecurringByCategory.get(bill.category) ?? 0) + bill.monthlyEquivalentCents);
+  }
   const billsByCategory = new Map<string, number>();
-  for (const bill of spendBills) {
+  for (const bill of includedBills) {
     if (!bill.category) continue;
     billsByCategory.set(bill.category, (billsByCategory.get(bill.category) ?? 0) + bill.monthlyEquivalentCents);
   }
-  const allCategories = new Set([...historicalByCategory.keys(), ...billsByCategory.keys()]);
+  const categoryOverrideMap = new Map((input.categoryOverrides ?? []).map((override) => [override.category, override.recommendedCents]));
+  const allCategories = new Set([...historicalByCategory.keys(), ...billsByCategory.keys(), ...categoryOverrideMap.keys()]);
   const baselines = [...allCategories].map((category) => {
     const historicalMonthlyCents = historicalByCategory.get(category) ?? 0;
     const recurringMonthlyCents = billsByCategory.get(category) ?? 0;
@@ -142,16 +194,18 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
       category,
       historicalMonthlyCents,
       recurringMonthlyCents,
-      flexibleBaselineCents: Math.max(0, historicalMonthlyCents - recurringMonthlyCents),
+      flexibleBaselineCents: Math.max(0, historicalMonthlyCents - (detectedRecurringByCategory.get(category) ?? 0)),
       isDiscretionary: defaultDiscretionaryFor(category),
     };
   });
 
   const remainingAmountCents = Math.max(0, goal.targetAmountCents - goal.currentAmountCents);
   const plannedSavingsCents = Math.min(input.monthlySavingsCents, remainingAmountCents);
-  const billsTotalCents = spendBills.reduce((sum, bill) => sum + bill.monthlyEquivalentCents, 0);
+  const billsTotalCents = includedBills.reduce((sum, bill) => sum + bill.monthlyEquivalentCents, 0);
   const rawAvailableCents = monthlyIncomeCents - plannedSavingsCents - billsTotalCents;
-  const hasIncomeData = incomeRows.length > 0;
+  const hasDetectedIncomeData = incomeRows.length > 0;
+  const hasIncomeData = hasDetectedIncomeData || input.monthlyIncomeOverrideCents !== undefined;
+  const targetBufferCents = input.targetBufferCents ?? 0;
 
   const essentialInputs = baselines
     .filter((entry) => !entry.isDiscretionary && entry.flexibleBaselineCents > 0)
@@ -159,63 +213,90 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   const discretionaryInputs = baselines
     .filter((entry) => entry.isDiscretionary && entry.flexibleBaselineCents > 0)
     .map((entry) => ({ category: entry.category, baselineCents: entry.flexibleBaselineCents }));
-  const essentialBaselineTotalCents = essentialInputs.reduce((sum, entry) => sum + entry.baselineCents, 0);
-  const shortfallCents = hasIncomeData
-    ? Math.max(0, plannedSavingsCents + billsTotalCents + essentialBaselineTotalCents - monthlyIncomeCents)
-    : 0;
-  const availableForFlexibleCents = hasIncomeData ? Math.max(0, rawAvailableCents) : 0;
+  const availableForFlexibleCents = hasIncomeData ? Math.max(0, rawAvailableCents - targetBufferCents) : 0;
   const essentialAllocation = allocateProportionally(essentialInputs, availableForFlexibleCents);
   const essentialAllocatedCents = [...essentialAllocation.values()].reduce((sum, amount) => sum + amount, 0);
   const discretionaryAllocation = allocateProportionally(discretionaryInputs, availableForFlexibleCents - essentialAllocatedCents);
   const flexibleSpendingCents = essentialAllocatedCents + [...discretionaryAllocation.values()].reduce((sum, amount) => sum + amount, 0);
   const flexibleBaselineTotalCents = baselines.reduce((sum, entry) => sum + entry.flexibleBaselineCents, 0);
 
-  let status: BudgetPlanStatus;
-  if (!hasIncomeData) status = 'needs_income';
-  else if (shortfallCents > 0) status = 'shortfall';
-  else if (flexibleSpendingCents < flexibleBaselineTotalCents) status = 'tight';
-  else status = 'ready';
-
   const categories: BudgetPlanCategoryView[] = baselines
     .map((entry) => {
       const flexibleRecommendedCents = entry.isDiscretionary
         ? discretionaryAllocation.get(entry.category) ?? 0
         : essentialAllocation.get(entry.category) ?? 0;
-      const recommendedCents = entry.recurringMonthlyCents + flexibleRecommendedCents;
+      const baselineRecommendedCents = entry.recurringMonthlyCents + flexibleRecommendedCents;
+      const overrideCents = categoryOverrideMap.get(entry.category);
+      const recommendedCents = overrideCents === undefined
+        ? baselineRecommendedCents
+        : Math.max(entry.recurringMonthlyCents, overrideCents);
       return {
         category: entry.category,
         label: labelFor(entry.category),
         historicalMonthlyCents: entry.historicalMonthlyCents,
         recurringMonthlyCents: entry.recurringMonthlyCents,
         recommendedCents,
+        baselineRecommendedCents,
         adjustmentCents: recommendedCents - entry.historicalMonthlyCents,
         isDiscretionary: entry.isDiscretionary,
+        userAdjusted: overrideCents !== undefined && recommendedCents !== baselineRecommendedCents,
       };
     })
     .filter((entry) => entry.historicalMonthlyCents > 0 || entry.recommendedCents > 0)
     .sort((a, b) => b.recommendedCents - a.recommendedCents);
 
-  const recommendedSpendingCents = billsTotalCents + flexibleSpendingCents;
-  const bufferCents = status === 'ready' || status === 'tight'
+  const uncategorizedBillsCents = includedBills
+    .filter((bill) => !bill.category)
+    .reduce((sum, bill) => sum + bill.monthlyEquivalentCents, 0);
+  const recommendedSpendingCents = uncategorizedBillsCents + categories.reduce((sum, category) => sum + category.recommendedCents, 0);
+  const adjustedFlexibleSpendingCents = Math.max(0, recommendedSpendingCents - billsTotalCents);
+  const essentialFlexibleCents = baselines
+    .filter((entry) => !entry.isDiscretionary)
+    .reduce((sum, entry) => {
+      const overrideCents = categoryOverrideMap.get(entry.category);
+      return sum + (overrideCents === undefined
+        ? entry.flexibleBaselineCents
+        : Math.max(0, overrideCents - entry.recurringMonthlyCents));
+    }, 0);
+  const essentialShortfallCents = hasIncomeData
+    ? Math.max(0, plannedSavingsCents + billsTotalCents + essentialFlexibleCents + targetBufferCents - monthlyIncomeCents)
+    : 0;
+  const planShortfallCents = hasIncomeData
+    ? Math.max(0, plannedSavingsCents + recommendedSpendingCents + targetBufferCents - monthlyIncomeCents)
+    : 0;
+  const shortfallCents = Math.max(essentialShortfallCents, planShortfallCents);
+  const bufferCents = hasIncomeData
     ? Math.max(0, monthlyIncomeCents - plannedSavingsCents - recommendedSpendingCents)
     : 0;
+  let status: BudgetPlanStatus;
+  if (!hasIncomeData) status = 'needs_income';
+  else if (shortfallCents > 0) status = 'shortfall';
+  else if (adjustedFlexibleSpendingCents < flexibleBaselineTotalCents || bufferCents < targetBufferCents) status = 'tight';
+  else status = 'ready';
+  const billOverrideCount = resolvedDetectedBills.filter((bill) => bill.userAdjusted).length;
+  const categoryOverrideCount = categories.filter((category) => category.userAdjusted).length;
+  const adjustmentCount = (incomeSource === 'user' ? 1 : 0) + billOverrideCount + customBills.length + categoryOverrideCount + (targetBufferCents > 0 ? 1 : 0);
+  const allDetectedBillsIncluded = resolvedDetectedBills.every((bill) => bill.included);
   const deterministic = deterministicExplanation(
     status,
     goal.name,
     plannedSavingsCents,
     monthlyIncomeCents,
     billsTotalCents,
-    spendBills.length,
+    includedBills.length,
     recommendedSpendingCents,
     bufferCents,
     shortfallCents,
+    detectedBills.length,
+    allDetectedBillsIncluded,
+    adjustmentCount,
   );
   const facts: ChatFactView[] = [
-    { label: 'Modeled monthly income', amountCents: monthlyIncomeCents, source: 'feature_rollup' },
-    { label: 'All detected recurring bills per month', amountCents: billsTotalCents, source: 'subscription_audit' },
+    { label: incomeSource === 'user' ? 'User-entered monthly income' : 'Modeled monthly income', amountCents: monthlyIncomeCents, source: incomeSource === 'user' ? 'user_input' : 'feature_rollup' },
+    { label: allDetectedBillsIncluded ? 'All detected recurring bills per month' : 'Included recurring bills per month', amountCents: billsTotalCents, source: billOverrideCount > 0 || customBills.length > 0 ? 'user_input' : 'subscription_audit' },
     { label: `Planned monthly savings for ${goal.name}`, amountCents: plannedSavingsCents, source: 'goal' },
-    { label: 'Recommended monthly spending', amountCents: recommendedSpendingCents, source: 'transaction_query' },
-    { label: 'Unassigned monthly buffer', amountCents: bufferCents, source: 'transaction_query' },
+    { label: 'Recommended monthly spending', amountCents: recommendedSpendingCents, source: categoryOverrideCount > 0 ? 'user_input' : 'transaction_query' },
+    { label: 'Unassigned monthly buffer', amountCents: bufferCents, source: targetBufferCents > 0 ? 'user_input' : 'transaction_query' },
   ];
   if (shortfallCents > 0) facts.push({ label: 'Monthly plan shortfall', amountCents: shortfallCents, source: 'transaction_query' });
 
@@ -224,15 +305,18 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
   let explanationSource: BudgetPlanView['explanationSource'] = 'deterministic';
   try {
     const generated = await generateGroundedChatAnswer(
-      'Explain this monthly budget plan. Confirm that every detected recurring bill was included while account movements were excluded, explain the savings-goal tradeoff, and do not change any server-computed numbers.',
+      'Explain this monthly budget plan. Accurately state whether every detected recurring bill is included or whether the user excluded one, identify user-entered assumptions, explain the savings-goal tradeoff, and do not change any server-computed numbers.',
       { answer: deterministic.answer, facts, actions: deterministic.actions },
       facts,
       {
         status,
         planMonth: input.planMonth ?? currentMonthStart(),
-        billCount: spendBills.length,
-        bills: spendBills.map((bill) => ({ merchant: bill.merchantClean, monthlyEquivalentCents: bill.monthlyEquivalentCents })),
+        billCount: includedBills.length,
+        detectedBillCount: detectedBills.length,
+        allDetectedBillsIncluded,
+        bills: bills.map((bill) => ({ merchant: bill.merchantClean, monthlyEquivalentCents: bill.monthlyEquivalentCents, included: bill.included, source: bill.source })),
         categories: categories.map((category) => ({ category: category.category, recommendedCents: category.recommendedCents })),
+        adjustments: { incomeSource, targetBufferCents, billOverrideCount, customBillCount: customBills.length, categoryOverrideCount },
       },
     );
     explanation = generated.answer;
@@ -256,25 +340,28 @@ export async function buildBudgetPlan(db: Db, userId: number, input: BudgetPlanI
     recurringBillsTotalCents: billsTotalCents,
     availableAfterGoalAndBillsCents: Math.max(0, rawAvailableCents),
     recommendedSpendingCents,
-    flexibleSpendingCents,
+    flexibleSpendingCents: adjustedFlexibleSpendingCents,
     bufferCents,
     shortfallCents,
-    bills: spendBills.map((bill) => ({
-      recurringStreamId: bill.recurringStreamId,
-      merchantClean: bill.merchantClean,
-      cadence: bill.cadence,
-      category: bill.category,
-      monthlyEquivalentCents: bill.monthlyEquivalentCents,
-      nextExpectedDate: bill.nextExpectedDate,
-      isAdjustable: bill.isCancelCandidate,
-    })),
+    bills,
     categories,
     dataCoverage: {
       weeksAnalyzed: weekCount,
-      detectedBillCount: spendBills.length,
-      allDetectedBillsIncluded: true,
-      uncategorizedBillCount: spendBills.filter((bill) => !bill.category).length,
+      detectedBillCount: detectedBills.length,
+      includedBillCount: includedBills.length,
+      customBillCount: customBills.length,
+      allDetectedBillsIncluded,
+      uncategorizedBillCount: includedBills.filter((bill) => !bill.category).length,
       hasIncomeData,
+      hasDetectedIncomeData,
+    },
+    adjustments: {
+      detectedMonthlyIncomeCents,
+      incomeSource,
+      targetBufferCents,
+      billOverrideCount,
+      customBillCount: customBills.length,
+      categoryOverrideCount,
     },
     explanation,
     explanationSource,

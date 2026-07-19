@@ -882,7 +882,7 @@ export type ChatQuestionInput = z.infer<typeof chatQuestionSchema>;
 export interface ChatFactView {
   label: string;
   amountCents: number | null;
-  source: 'transaction_query' | 'feature_rollup' | 'goal' | 'subscription_audit' | 'money_wins';
+  source: 'transaction_query' | 'feature_rollup' | 'goal' | 'subscription_audit' | 'money_wins' | 'user_input';
 }
 
 export interface ChatAnswerView {
@@ -893,23 +893,55 @@ export interface ChatAnswerView {
   createdAt: string;
 }
 
+export const budgetPlanBillOverrideSchema = z.object({
+  recurringStreamId: z.number().int().positive(),
+  included: z.boolean(),
+  monthlyEquivalentCents: z.number().int().min(0).max(100_000_00),
+});
+export type BudgetPlanBillOverrideInput = z.infer<typeof budgetPlanBillOverrideSchema>;
+
+export const budgetPlanCustomBillSchema = z.object({
+  clientId: z.string().trim().min(1).max(80),
+  merchantClean: z.string().trim().min(1).max(120),
+  monthlyEquivalentCents: z.number().int().positive().max(100_000_00),
+  category: z.string().trim().min(1).max(100).nullable().optional(),
+  cadence: z.enum(['weekly', 'biweekly', 'monthly', 'annual']).default('monthly'),
+});
+export type BudgetPlanCustomBillInput = z.infer<typeof budgetPlanCustomBillSchema>;
+
+export const budgetPlanCategoryOverrideSchema = z.object({
+  category: z.string().trim().min(1).max(100),
+  recommendedCents: z.number().int().min(0).max(100_000_00),
+});
+export type BudgetPlanCategoryOverrideInput = z.infer<typeof budgetPlanCategoryOverrideSchema>;
+
 export const budgetPlanSchema = z.object({
   goalId: z.number().int().positive(),
   monthlySavingsCents: z.number().int().positive().max(100_000_00),
   planMonth: z.string().regex(/^\d{4}-(?:0[1-9]|1[0-2])-01$/).optional(),
+  monthlyIncomeOverrideCents: z.number().int().min(0).max(100_000_00).optional(),
+  billOverrides: z.array(budgetPlanBillOverrideSchema).max(100).optional(),
+  customBills: z.array(budgetPlanCustomBillSchema).max(50).optional(),
+  categoryOverrides: z.array(budgetPlanCategoryOverrideSchema).max(50).optional(),
+  targetBufferCents: z.number().int().min(0).max(100_000_00).optional(),
 });
 export type BudgetPlanInput = z.infer<typeof budgetPlanSchema>;
 
 export type BudgetPlanStatus = 'ready' | 'tight' | 'shortfall' | 'needs_income';
 
 export interface BudgetPlanBillView {
-  recurringStreamId: number;
+  recurringStreamId: number | null;
+  clientId: string;
   merchantClean: string;
   cadence: RecurringCadence;
   category: string | null;
   monthlyEquivalentCents: number;
+  detectedMonthlyEquivalentCents: number | null;
   nextExpectedDate: string | null;
   isAdjustable: boolean;
+  included: boolean;
+  source: 'detected' | 'user';
+  userAdjusted: boolean;
 }
 
 export interface BudgetPlanCategoryView {
@@ -918,8 +950,10 @@ export interface BudgetPlanCategoryView {
   historicalMonthlyCents: number;
   recurringMonthlyCents: number;
   recommendedCents: number;
+  baselineRecommendedCents: number;
   adjustmentCents: number;
   isDiscretionary: boolean;
+  userAdjusted: boolean;
 }
 
 export interface BudgetPlanView {
@@ -944,9 +978,20 @@ export interface BudgetPlanView {
   dataCoverage: {
     weeksAnalyzed: number;
     detectedBillCount: number;
+    includedBillCount: number;
+    customBillCount: number;
     allDetectedBillsIncluded: boolean;
     uncategorizedBillCount: number;
     hasIncomeData: boolean;
+    hasDetectedIncomeData: boolean;
+  };
+  adjustments: {
+    detectedMonthlyIncomeCents: number;
+    incomeSource: 'detected' | 'user';
+    targetBufferCents: number;
+    billOverrideCount: number;
+    customBillCount: number;
+    categoryOverrideCount: number;
   };
   explanation: string;
   explanationSource: 'anthropic' | 'deterministic';

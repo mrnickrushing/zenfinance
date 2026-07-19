@@ -2,7 +2,7 @@ import * as Sentry from '@sentry/react-native';
 import { Inter_300Light, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import materialSymbolsMap from './assets/fonts/material-symbols-map.json';
 import { budgetCategories, moneyMovementDisplay, type BudgetPeriod } from './src/budget';
-import { appliedBudgetTarget, appliedCategoryCaps, buildBudgetPlanRequest, canApplyBudgetPlan } from './src/budgetPlan';
+import { appliedBudgetTarget, appliedCategoryCaps, buildBudgetPlanRequest, canApplyBudgetPlan, parseBudgetAmount, type BudgetPlanAdjustmentDraft } from './src/budgetPlan';
 import { useAuthScreenState } from './src/hooks/useAuthScreenState';
 import { useReducerState } from './src/hooks/useReducerState';
 import { useSettingsScreenState } from './src/hooks/useSettingsScreenState';
@@ -142,7 +142,7 @@ import type {
 const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
-const OTA_DIAGNOSTIC_LABEL = 'AI goal budget plan · 2026-07-18.4';
+const OTA_DIAGNOSTIC_LABEL = 'AI Smart Budget tab · 2026-07-19.1';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -2403,44 +2403,50 @@ function budgetPlanMonthLabel(value: string): string {
   return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
 }
 
+type SmartBudgetBillDraft = { included: boolean; monthlyAmount: string };
+type SmartBudgetCustomBillDraft = { clientId: string; merchantClean: string; monthlyAmount: string; category: string | null };
+
+function budgetInputDollars(cents: number): string {
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
+}
+
+function validBudgetDraftCents(value: string): number | null {
+  const parsed = parseBudgetAmount(value, 'Amount', true);
+  return typeof parsed === 'number' ? parsed : null;
+}
+
 function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; onGoals: () => void }) {
   const theme = useTheme();
-  const [editing, setEditing] = useReducerState(false);
   const [targets, setTargets] = useReducerState<Record<BudgetPeriod, string>>({ monthly: '', weekly: '' });
-  const [draftBudgetTarget, setDraftBudgetTarget] = useReducerState('');
-  const [period, setPeriod] = useReducerState<BudgetPeriod>('monthly');
   const [alertsEnabled, setAlertsEnabled] = useReducerState(true);
-  const [categoryCaps, setCategoryCaps] = useReducerState<Record<string, number>>({});
-  const [capDraftText, setCapDraftText] = useReducerState<Record<string, string>>({});
-  const [transactions, setTransactions] = useReducerState<EnrichedTransactionView[]>(home.recentTransactions);
-  const [showAiPlanner, setShowAiPlanner] = useReducerState(false);
   const [selectedGoalId, setSelectedGoalId] = useReducerState<number | null>(() => home.goals.find((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0)?.id ?? null);
   const [monthlySavings, setMonthlySavings] = useReducerState('');
   const [budgetPlan, setBudgetPlan] = useReducerState<BudgetPlanView | null>(null);
   const [budgetPlanError, setBudgetPlanError] = useReducerState<string | null>(null);
   const [buildingBudgetPlan, setBuildingBudgetPlan] = useReducerState(false);
-  const [showAllBills, setShowAllBills] = useReducerState(false);
+  const [showAllBills, setShowAllBills] = useReducerState(true);
+  const [showPlanSettings, setShowPlanSettings] = useReducerState(false);
+  const [incomeOverrideEnabled, setIncomeOverrideEnabled] = useReducerState(false);
+  const [incomeDraft, setIncomeDraft] = useReducerState('');
+  const [billDrafts, setBillDrafts] = useReducerState<Record<number, SmartBudgetBillDraft>>({});
+  const [customBills, setCustomBills] = useReducerState<SmartBudgetCustomBillDraft[]>([]);
+  const [categoryDrafts, setCategoryDrafts] = useReducerState<Record<string, string>>({});
+  const [targetBufferDraft, setTargetBufferDraft] = useReducerState('');
+  const [newBillDraft, setNewBillDraft] = useReducerState({ visible: false, name: '', amount: '' });
+  const [lastBuiltSignature, setLastBuiltSignature] = useReducerState<string | null>(null);
   const budgetPlanRequestId = useRef(0);
   const activeGoals = useMemo(() => home.goals.filter((goal) => goal.status === 'active' && goal.pacing.remainingAmountCents > 0), [home.goals]);
+  const linkedAccountCount = home.items.reduce((sum, item) => sum + item.accounts.length, 0);
+  const fallbackPlanMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
 
   useEffect(() => {
     let active = true;
-    void Promise.all([
-      SecureStore.getItemAsync(BUDGET_CONFIG_KEY),
-      fetchBudgetTransactions(),
-    ]).then(([stored, loadedTransactions]) => {
-      if (!active) return;
-      if (stored) {
-        const config = JSON.parse(stored) as BudgetConfig;
-        setTargets(config.targets);
-        setDraftBudgetTarget(config.targets[config.period]);
-        setPeriod(config.period);
-        setAlertsEnabled(config.alertsEnabled);
-        setCategoryCaps(config.categoryCaps);
-      } else {
-        setEditing(true);
-      }
-      setTransactions(loadedTransactions);
+    void SecureStore.getItemAsync(BUDGET_CONFIG_KEY).then((stored) => {
+      if (!active || !stored) return;
+      const config = JSON.parse(stored) as BudgetConfig;
+      setTargets(config.targets);
+      setAlertsEnabled(config.alertsEnabled);
     }).catch((err) => {
       if (active) Alert.alert('Budget unavailable', err instanceof Error ? err.message : 'Unable to load your budget.');
     });
@@ -2453,327 +2459,215 @@ function SmartBudgetingScreen({ home, onGoals }: { home: MobileHomeSummaryView; 
     });
   }, []);
 
-  const allCategories = useMemo(() => {
-    return budgetCategories(transactions, period);
-  }, [period, transactions]);
-  const categories = allCategories.slice(0, 5);
-  const total = allCategories.reduce((sum, [, amount]) => sum + amount, 0);
-  const budgetTarget = editing ? draftBudgetTarget : targets[period];
-  const targetCents = Math.max(0, Math.round(Number(budgetTarget.replace(/[$,\s]/g, '')) * 100) || 0);
-  const availableCents = Math.max(0, targetCents - total);
+  const adjustmentDraft = useMemo<BudgetPlanAdjustmentDraft>(() => ({
+    monthlyIncome: incomeOverrideEnabled ? incomeDraft : undefined,
+    billOverrides: budgetPlan?.bills
+      .filter((bill) => bill.source === 'detected' && bill.recurringStreamId !== null)
+      .flatMap((bill) => {
+        const draft = billDrafts[bill.recurringStreamId!] ?? { included: bill.included, monthlyAmount: budgetInputDollars(bill.monthlyEquivalentCents) };
+        const amountCents = validBudgetDraftCents(draft.monthlyAmount);
+        return draft.included !== true || amountCents !== bill.detectedMonthlyEquivalentCents
+          ? [{ recurringStreamId: bill.recurringStreamId!, included: draft.included, monthlyAmount: draft.monthlyAmount }]
+          : [];
+      }),
+    customBills,
+    categoryOverrides: budgetPlan?.categories.flatMap((category) => {
+      const recommendedAmount = categoryDrafts[category.category] ?? budgetInputDollars(category.recommendedCents);
+      return validBudgetDraftCents(recommendedAmount) !== category.baselineRecommendedCents
+        ? [{ category: category.category, recommendedAmount }]
+        : [];
+    }),
+    targetBuffer: targetBufferDraft || undefined,
+  }), [billDrafts, budgetPlan, categoryDrafts, customBills, incomeDraft, incomeOverrideEnabled, targetBufferDraft]);
 
-  function openEditor() {
-    setDraftBudgetTarget(budgetTarget);
-    setEditing(true);
+  const currentRequest = useMemo(
+    () => buildBudgetPlanRequest(selectedGoalId, monthlySavings, new Date(), adjustmentDraft),
+    [adjustmentDraft, monthlySavings, selectedGoalId],
+  );
+  const currentSignature = currentRequest.ok ? JSON.stringify(currentRequest.value) : null;
+  const needsRebuild = Boolean(budgetPlan && currentSignature !== lastBuiltSignature);
+
+  const customValueCount = useMemo(() => {
+    if (!budgetPlan) return 0;
+    const changedBills = budgetPlan.bills.filter((bill) => {
+      if (bill.source !== 'detected' || bill.recurringStreamId === null) return false;
+      const draft = billDrafts[bill.recurringStreamId];
+      const cents = validBudgetDraftCents(draft?.monthlyAmount ?? budgetInputDollars(bill.monthlyEquivalentCents));
+      return draft?.included === false || cents !== bill.detectedMonthlyEquivalentCents;
+    }).length;
+    const changedCategories = budgetPlan.categories.filter((category) => {
+      const cents = validBudgetDraftCents(categoryDrafts[category.category] ?? budgetInputDollars(category.recommendedCents));
+      return cents !== category.baselineRecommendedCents;
+    }).length;
+    return (incomeOverrideEnabled ? 1 : 0) + changedBills + customBills.length + changedCategories + ((validBudgetDraftCents(targetBufferDraft || '0') ?? 0) > 0 ? 1 : 0);
+  }, [billDrafts, budgetPlan, categoryDrafts, customBills.length, incomeOverrideEnabled, targetBufferDraft]);
+
+  const draftIncomeCents = incomeOverrideEnabled
+    ? validBudgetDraftCents(incomeDraft) ?? budgetPlan?.monthlyIncomeCents ?? 0
+    : budgetPlan?.adjustments.detectedMonthlyIncomeCents ?? budgetPlan?.monthlyIncomeCents ?? 0;
+  const draftSavingsCents = validBudgetDraftCents(monthlySavings) ?? budgetPlan?.goal.plannedSavingsCents ?? 0;
+  const draftBillsTotalCents = budgetPlan
+    ? budgetPlan.bills.filter((bill) => bill.source === 'detected').reduce((sum, bill) => {
+      if (bill.recurringStreamId === null) return sum;
+      const draft = billDrafts[bill.recurringStreamId];
+      return (draft?.included ?? bill.included) ? sum + (validBudgetDraftCents(draft?.monthlyAmount ?? budgetInputDollars(bill.monthlyEquivalentCents)) ?? 0) : sum;
+    }, 0) + customBills.reduce((sum, bill) => sum + (validBudgetDraftCents(bill.monthlyAmount) ?? 0), 0)
+    : 0;
+  const draftCategoryTotalCents = budgetPlan?.categories.reduce(
+    (sum, category) => sum + (validBudgetDraftCents(categoryDrafts[category.category] ?? budgetInputDollars(category.recommendedCents)) ?? 0),
+    0,
+  ) ?? 0;
+  const draftUncategorizedBillsCents = budgetPlan?.bills.filter((bill) => bill.source === 'detected' && !bill.category).reduce((sum, bill) => {
+    if (bill.recurringStreamId === null) return sum;
+    const draft = billDrafts[bill.recurringStreamId];
+    return (draft?.included ?? bill.included) ? sum + (validBudgetDraftCents(draft?.monthlyAmount ?? budgetInputDollars(bill.monthlyEquivalentCents)) ?? 0) : sum;
+  }, 0) ?? 0;
+  const draftRecommendedSpendingCents = draftCategoryTotalCents + draftUncategorizedBillsCents + customBills.reduce((sum, bill) => sum + (validBudgetDraftCents(bill.monthlyAmount) ?? 0), 0);
+  const draftAvailableCents = Math.max(0, draftIncomeCents - draftSavingsCents - draftBillsTotalCents);
+  const draftBufferCents = Math.max(0, draftIncomeCents - draftSavingsCents - draftRecommendedSpendingCents);
+  const draftTargetBufferCents = validBudgetDraftCents(targetBufferDraft || '0') ?? 0;
+  const draftShortfallCents = Math.max(0, draftSavingsCents + draftRecommendedSpendingCents + draftTargetBufferCents - draftIncomeCents);
+
+  function adoptBudgetPlan(plan: BudgetPlanView, signature: string) {
+    setBudgetPlan(plan);
+    setLastBuiltSignature(signature);
+    setMonthlySavings(budgetInputDollars(plan.goal.requestedSavingsCents));
+    setIncomeOverrideEnabled(plan.adjustments.incomeSource === 'user');
+    setIncomeDraft(budgetInputDollars(plan.monthlyIncomeCents));
+    setBillDrafts(Object.fromEntries(plan.bills.filter((bill) => bill.source === 'detected' && bill.recurringStreamId !== null).map((bill) => [bill.recurringStreamId!, { included: bill.included, monthlyAmount: budgetInputDollars(bill.monthlyEquivalentCents) }])));
+    setCustomBills(plan.bills.filter((bill) => bill.source === 'user').map((bill) => ({ clientId: bill.clientId, merchantClean: bill.merchantClean, monthlyAmount: budgetInputDollars(bill.monthlyEquivalentCents), category: bill.category })));
+    setCategoryDrafts(Object.fromEntries(plan.categories.map((category) => [category.category, budgetInputDollars(category.recommendedCents)])));
+    setTargetBufferDraft(plan.adjustments.targetBufferCents > 0 ? budgetInputDollars(plan.adjustments.targetBufferCents) : '');
+    setShowAllBills(true);
   }
 
-  function saveBudget() {
-    const next = Number(draftBudgetTarget.replace(/[$,\s]/g, ''));
-    if (!Number.isFinite(next) || next <= 0) return;
-    const nextTargets = { ...targets, [period]: String(Math.round(next)) };
-    setTargets(nextTargets);
-    persistBudget({ targets: nextTargets, period, alertsEnabled, categoryCaps });
-    setEditing(false);
-  }
-
-  function selectPeriod(nextPeriod: BudgetPeriod) {
-    setPeriod(nextPeriod);
-    setDraftBudgetTarget(targets[nextPeriod]);
-    if (!targets[nextPeriod]) setEditing(true);
-    persistBudget({ targets, period: nextPeriod, alertsEnabled, categoryCaps });
-  }
-
-  function adjustCategoryCap(category: string, amountCents: number, delta: number) {
-    setCategoryCaps((current) => {
-      const currentCap = current[category] ?? Math.max(50, Math.round(amountCents / 100));
-      const next = { ...current, [category]: Math.max(25, currentCap + delta) };
-      persistBudget({ targets, period, alertsEnabled, categoryCaps: next });
-      return next;
-    });
-    setCapDraftText((current) => {
-      const { [category]: _dropped, ...rest } = current;
-      return rest;
-    });
-  }
-
-  function commitCategoryCapText(category: string, amountCents: number, text: string) {
-    const parsed = Math.round(Number(text.replace(/[^0-9]/g, '')));
-    const fallback = categoryCaps[category] ?? Math.max(50, Math.round(amountCents / 100));
-    const next = Number.isFinite(parsed) && parsed > 0 ? Math.max(25, parsed) : fallback;
-    setCategoryCaps((current) => {
-      const nextCaps = { ...current, [category]: next };
-      persistBudget({ targets, period, alertsEnabled, categoryCaps: nextCaps });
-      return nextCaps;
-    });
-    setCapDraftText((current) => {
-      const { [category]: _dropped, ...rest } = current;
-      return rest;
-    });
-  }
-
-  async function buildAiBudgetPlan() {
-    const request = buildBudgetPlanRequest(selectedGoalId, monthlySavings);
+  async function requestBudgetPlan(adjustments: BudgetPlanAdjustmentDraft) {
+    const request = buildBudgetPlanRequest(selectedGoalId, monthlySavings, new Date(), adjustments);
     if (!request.ok) {
       budgetPlanRequestId.current += 1;
       setBudgetPlanError(request.error);
       return;
     }
     const requestId = ++budgetPlanRequestId.current;
+    const signature = JSON.stringify(request.value);
     setBuildingBudgetPlan(true);
-    setBudgetPlan(null);
     setBudgetPlanError(null);
-    setShowAllBills(false);
     try {
-      const plan = await requestApi<BudgetPlanView>('/api/budget/plan', {
-        method: 'POST',
-        body: JSON.stringify(request.value),
-      });
-      if (requestId === budgetPlanRequestId.current) setBudgetPlan(plan);
+      const plan = await requestApi<BudgetPlanView>('/api/budget/plan', { method: 'POST', body: JSON.stringify(request.value) });
+      if (requestId === budgetPlanRequestId.current) adoptBudgetPlan(plan, signature);
     } catch (error) {
-      if (requestId === budgetPlanRequestId.current) {
-        setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
-      }
+      if (requestId === budgetPlanRequestId.current) setBudgetPlanError(error instanceof Error ? error.message : 'Unable to build your monthly plan.');
     } finally {
       if (requestId === budgetPlanRequestId.current) setBuildingBudgetPlan(false);
     }
   }
 
+  function addCustomBill() {
+    const parsed = parseBudgetAmount(newBillDraft.amount, 'Bill amount');
+    if (!newBillDraft.name.trim()) {
+      setBudgetPlanError('Enter the bill name.');
+      return;
+    }
+    if (typeof parsed === 'string') {
+      setBudgetPlanError(parsed);
+      return;
+    }
+    setCustomBills((current) => [...current, { clientId: `manual-${Date.now()}`, merchantClean: newBillDraft.name.trim(), monthlyAmount: budgetInputDollars(parsed), category: null }]);
+    setNewBillDraft({ visible: false, name: '', amount: '' });
+    setBudgetPlanError(null);
+  }
+
   function applyAiBudgetPlan() {
-    if (!budgetPlan || !canApplyBudgetPlan(budgetPlan)) return;
+    if (!budgetPlan || needsRebuild || !canApplyBudgetPlan(budgetPlan)) return;
     const monthlyTarget = appliedBudgetTarget(budgetPlan);
     const nextTargets = { ...targets, monthly: monthlyTarget };
     const nextCaps = appliedCategoryCaps(budgetPlan);
     setTargets(nextTargets);
-    setDraftBudgetTarget(monthlyTarget);
-    setPeriod('monthly');
-    setCategoryCaps(nextCaps);
-    setCapDraftText({});
     persistBudget({ targets: nextTargets, period: 'monthly', alertsEnabled, categoryCaps: nextCaps });
-    Alert.alert(
-      'Monthly plan applied',
-      `Your ${budgetPlanMonthLabel(budgetPlan.planMonth)} spending budget and category caps now reflect ${usd(budgetPlan.goal.plannedSavingsCents, true)} toward ${budgetPlan.goal.name}. No money was moved.`,
-    );
+    Alert.alert('Monthly plan applied', `Your ${budgetPlanMonthLabel(budgetPlan.planMonth)} plan now protects ${usd(budgetPlan.goal.plannedSavingsCents, true)} for ${budgetPlan.goal.name}. No money was moved.`);
   }
 
+  const displayedStatus = draftShortfallCents > 0 ? 'shortfall' : budgetPlan?.status ?? 'ready';
+  const displayedStatusCopy = budgetPlanStatusCopy(displayedStatus);
+
   return (
-    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Smart Budgeting</Text><Text style={styles.zenPageSubtitle}>A softer way to see your spending</Text></View><Pressable accessibilityRole="button" accessibilityLabel={editing ? 'Cancel editing budget' : 'Edit budget'} style={styles.zenEditButton} onPress={editing ? () => setEditing(false) : openEditor}><Text style={styles.zenHeaderEdit}>{editing ? 'Cancel' : 'Edit'}</Text></Pressable></View>
-      {editing ? <ZenGlass style={styles.budgetEditPanel}><Text style={styles.budgetEditTitle}>{period === 'monthly' ? 'Monthly' : 'Weekly'} budget</Text><Text style={styles.budgetEditBody}>Set the amount you want to keep available after planned spending for this {period === 'monthly' ? 'month' : 'week'}.</Text><TextInput value={draftBudgetTarget} onChangeText={setDraftBudgetTarget} keyboardType="decimal-pad" placeholder={period === 'monthly' ? '$3,000' : '$750'} placeholderTextColor={theme.muted} style={styles.budgetInput} /><View style={styles.budgetEditActions}><SecondaryButton label="Cancel" compact onPress={() => setEditing(false)} /><PrimaryButton label="Save budget" icon={CheckCircle2} compact onPress={saveBudget} /></View></ZenGlass> : null}
-      <BudgetNodeGraph availableCents={availableCents} categories={categories} caps={categoryCaps} />
-      <ZenGlass style={styles.budgetControls}>
-        <View style={styles.budgetControlHeader}><Text style={styles.budgetControlTitle}>Budget Period</Text><Text style={styles.budgetControlMeta}>{period === 'monthly' ? 'Resets monthly' : 'Resets weekly'}</Text></View>
-        <View style={styles.budgetSegmented}><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'monthly' }} style={[styles.budgetSegment, period === 'monthly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('monthly')}><Text style={[styles.budgetSegmentText, period === 'monthly' ? styles.budgetSegmentTextActive : null]}>Monthly</Text></Pressable><Pressable accessibilityRole="button" accessibilityState={{ selected: period === 'weekly' }} style={[styles.budgetSegment, period === 'weekly' ? styles.budgetSegmentActive : null]} onPress={() => selectPeriod('weekly')}><Text style={[styles.budgetSegmentText, period === 'weekly' ? styles.budgetSegmentTextActive : null]}>Weekly</Text></Pressable></View>
-        <View style={styles.budgetToggleRow}><View style={styles.flexShrink}><Text style={styles.budgetToggleTitle}>Mindful alerts</Text><Text style={styles.budgetToggleMeta}>Remember whether budget nudges are enabled</Text></View><Switch value={alertsEnabled} onValueChange={(value) => { setAlertsEnabled(value); persistBudget({ targets, period, alertsEnabled: value, categoryCaps }); }} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /></View>
-      </ZenGlass>
-      <ZenGlass style={[styles.aiBudgetCard, { borderColor: budgetPlan ? `${budgetPlanStatusCopy(budgetPlan.status).color}66` : theme.violet }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={showAiPlanner ? 'Collapse AI budget plan' : 'Open AI budget plan'}
-          accessibilityState={{ expanded: showAiPlanner }}
-          style={styles.aiBudgetHeader}
-          onPress={() => setShowAiPlanner((current) => !current)}
-        >
-          <View style={[styles.aiBudgetIcon, { backgroundColor: theme.violetSoft }]}><Brain color={theme.violet} size={20} /></View>
-          <View style={styles.flexShrink}>
-            <Text style={styles.aiBudgetKicker}>AI MONTHLY PLAN</Text>
-            <Text style={styles.aiBudgetTitle}>Plan around a savings goal</Text>
-            <Text style={styles.aiBudgetIntro}>Income − every detected bill − your goal = a budget you can review and apply.</Text>
+    <ScrollView contentContainerStyle={styles.smartBudgetScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+      <View style={styles.smartBudgetHeader}>
+        <View style={styles.flexShrink}>
+          <Text style={styles.smartBudgetTitle}>Smart Budget</Text>
+          <Text style={styles.smartBudgetMonth}>{budgetPlanMonthLabel(budgetPlan?.planMonth ?? fallbackPlanMonth)}</Text>
+        </View>
+        <View style={styles.smartBudgetSyncBadge}><ShieldCheck color={theme.accent} size={14} /><Text style={styles.smartBudgetSyncText}>{linkedAccountCount} account{linkedAccountCount === 1 ? '' : 's'} synced</Text></View>
+      </View>
+
+      <ZenGlass style={styles.smartBudgetTargetCard}>
+        <Text style={styles.smartBudgetEyebrow}>SAVE THIS MONTH</Text>
+        <Text style={styles.smartBudgetPrompt}>What do you want to save?</Text>
+        <View style={styles.smartBudgetCurrencyInput}><Text style={styles.smartBudgetCurrencySign}>$</Text><TextInput value={monthlySavings} onChangeText={(value) => setMonthlySavings(value.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" placeholder="800" placeholderTextColor={theme.muted} style={styles.smartBudgetCurrencyValue} accessibilityLabel="Savings target for this month" /></View>
+        {activeGoals.length > 0 ? (
+          <View style={styles.aiBudgetGoalChips}>
+            {activeGoals.map((goal) => {
+              const selected = selectedGoalId === goal.id;
+              return <Pressable key={goal.id} accessibilityRole="button" accessibilityState={{ selected }} style={[styles.aiBudgetGoalChip, selected ? { borderColor: theme.accent, backgroundColor: theme.accentSoft } : { borderColor: theme.border }]} onPress={() => { setSelectedGoalId(goal.id); setBudgetPlan(null); setLastBuiltSignature(null); setBudgetPlanError(null); }}><Target color={selected ? theme.accent : theme.muted} size={14} /><View style={styles.flexShrink}><Text style={[styles.aiBudgetGoalName, { color: selected ? theme.accent : theme.ink }]} numberOfLines={1}>{goal.name}</Text><Text style={styles.aiBudgetGoalRemaining}>{usd(goal.pacing.remainingAmountCents, true)} remaining</Text></View></Pressable>;
+            })}
           </View>
-          <ChevronRight color={theme.muted} size={18} style={{ transform: [{ rotate: showAiPlanner ? '90deg' : '0deg' }] }} />
-        </Pressable>
-        {showAiPlanner ? (
-          <View style={styles.aiBudgetBody}>
-            {activeGoals.length === 0 ? (
-              <View style={styles.aiBudgetEmpty}>
-                <Text style={styles.aiBudgetEmptyTitle}>Create a savings goal first</Text>
-                <Text style={styles.aiBudgetEmptyBody}>The plan needs a goal so it knows what to protect before recommending spending.</Text>
-                <SecondaryButton label="Create savings goal" icon={Target} compact onPress={onGoals} />
-              </View>
-            ) : (
-              <>
-                <Text style={styles.aiBudgetFieldLabel}>Savings goal</Text>
-                <View style={styles.aiBudgetGoalChips}>
-                  {activeGoals.map((goal) => {
-                    const selected = selectedGoalId === goal.id;
-                    return (
-                      <Pressable
-                        key={goal.id}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        style={[styles.aiBudgetGoalChip, selected ? { borderColor: theme.accent, backgroundColor: theme.accentSoft } : { borderColor: theme.border }]}
-                        onPress={() => {
-                          budgetPlanRequestId.current += 1;
-                          setBuildingBudgetPlan(false);
-                          setSelectedGoalId(goal.id);
-                          setBudgetPlan(null);
-                          setBudgetPlanError(null);
-                        }}
-                      >
-                        <Target color={selected ? theme.accent : theme.muted} size={14} />
-                        <View style={styles.flexShrink}>
-                          <Text style={[styles.aiBudgetGoalName, { color: selected ? theme.accent : theme.ink }]} numberOfLines={1}>{goal.name}</Text>
-                          <Text style={styles.aiBudgetGoalRemaining}>{usd(goal.pacing.remainingAmountCents, true)} remaining</Text>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <Text style={styles.aiBudgetFieldLabel}>Save toward it this month</Text>
-                <TextInput
-                  value={monthlySavings}
-                  onChangeText={(value) => {
-                    budgetPlanRequestId.current += 1;
-                    setBuildingBudgetPlan(false);
-                    setMonthlySavings(value);
-                    setBudgetPlan(null);
-                    setBudgetPlanError(null);
-                  }}
-                  keyboardType="decimal-pad"
-                  placeholder="$500"
-                  placeholderTextColor={theme.muted}
-                  style={styles.aiBudgetInput}
-                  accessibilityLabel="Savings amount for this month's AI budget plan"
-                />
-                <View style={styles.aiBudgetPresets}>
-                  {['100', '300', '500'].map((amount) => (
-                    <Pressable key={amount} style={[styles.aiBudgetPreset, { borderColor: theme.border }]} onPress={() => { budgetPlanRequestId.current += 1; setBuildingBudgetPlan(false); setMonthlySavings(amount); setBudgetPlan(null); setBudgetPlanError(null); }}>
-                      <Text style={[styles.aiBudgetPresetText, { color: theme.accent }]}>${amount}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <PrimaryButton label={buildingBudgetPlan ? 'Building your plan...' : 'Build my monthly plan'} icon={Sparkles} disabled={buildingBudgetPlan} onPress={() => void buildAiBudgetPlan()} />
-                <Text style={styles.aiBudgetSafety}>Preview only. Zen uses linked income, recent spending, and every detected recurring bill. No money moves.</Text>
-                {budgetPlanError ? <Text style={styles.aiBudgetError}>{budgetPlanError}</Text> : null}
-                {budgetPlan ? (
-                  <View style={styles.aiBudgetResult}>
-                    <View style={styles.aiBudgetResultHeader}>
-                      <View>
-                        <Text style={styles.aiBudgetResultMonth}>{budgetPlanMonthLabel(budgetPlan.planMonth).toUpperCase()}</Text>
-                        <Text style={styles.aiBudgetResultTitle}>{budgetPlan.goal.name}</Text>
-                      </View>
-                      <View style={[styles.aiBudgetStatus, { borderColor: budgetPlanStatusCopy(budgetPlan.status).color, backgroundColor: `${budgetPlanStatusCopy(budgetPlan.status).color}1F` }]}>
-                        <Text style={[styles.aiBudgetStatusText, { color: budgetPlanStatusCopy(budgetPlan.status).color }]}>{budgetPlanStatusCopy(budgetPlan.status).label}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.aiBudgetExplanation}>{budgetPlan.explanation}</Text>
-                    {budgetPlan.goal.requestedSavingsCents > budgetPlan.goal.plannedSavingsCents ? (
-                      <Text style={styles.aiBudgetGoalCapNote}>Your input is above the amount remaining on this goal, so the plan protects {usd(budgetPlan.goal.plannedSavingsCents, true)} instead.</Text>
-                    ) : null}
-                    <View style={styles.aiBudgetLedger}>
-                      {[
-                        ['Modeled income', budgetPlan.monthlyIncomeCents],
-                        [`All ${budgetPlan.dataCoverage.detectedBillCount} bills`, -budgetPlan.recurringBillsTotalCents],
-                        [`Save for ${budgetPlan.goal.name}`, -budgetPlan.goal.plannedSavingsCents],
-                        ['Recommended spending', budgetPlan.recommendedSpendingCents],
-                        [budgetPlan.shortfallCents > 0 ? 'Shortfall' : 'Unassigned buffer', budgetPlan.shortfallCents > 0 ? -budgetPlan.shortfallCents : budgetPlan.bufferCents],
-                      ].map(([label, amount], index) => (
-                        <View key={String(label)} style={[styles.aiBudgetLedgerRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
-                          <Text style={styles.aiBudgetLedgerLabel}>{label}</Text>
-                          <Text style={[styles.aiBudgetLedgerValue, Number(amount) < 0 ? { color: budgetPlan.shortfallCents > 0 && label === 'Shortfall' ? '#FF8FB3' : theme.muted } : { color: theme.accent }]}>
-                            {Number(amount) < 0 ? '−' : ''}{usd(Math.abs(Number(amount)), true)}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                    {budgetPlan.dataCoverage.detectedBillCount > 0 ? (
-                      <Pressable accessibilityRole="button" accessibilityState={{ expanded: showAllBills }} style={styles.aiBudgetDisclosure} onPress={() => setShowAllBills((current) => !current)}>
-                        <View style={styles.flexShrink}>
-                          <Text style={styles.aiBudgetDisclosureTitle}>{budgetPlan.dataCoverage.detectedBillCount} detected bills included</Text>
-                          <Text style={styles.aiBudgetDisclosureMeta}>{budgetPlan.dataCoverage.allDetectedBillsIncluded ? `Every active recurring charge · ${budgetPlan.dataCoverage.weeksAnalyzed} recent week${budgetPlan.dataCoverage.weeksAnalyzed === 1 ? '' : 's'} analyzed` : 'Review data coverage'}</Text>
-                        </View>
-                        <Text style={[styles.aiBudgetDisclosureAction, { color: theme.accent }]}>{showAllBills ? 'Hide' : 'Review all'}</Text>
-                      </Pressable>
-                    ) : (
-                      <View style={styles.aiBudgetDisclosure}>
-                        <View style={styles.flexShrink}>
-                          <Text style={styles.aiBudgetDisclosureTitle}>No recurring bills detected</Text>
-                          <Text style={styles.aiBudgetDisclosureMeta}>Sync linked accounts if you expected bills here.</Text>
-                        </View>
-                      </View>
-                    )}
-                    {showAllBills && budgetPlan.bills.length > 0 ? (
-                      <View style={styles.aiBudgetBillList}>
-                        {budgetPlan.bills.map((bill, index) => (
-                          <View key={bill.recurringStreamId} style={[styles.aiBudgetBillRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
-                            <View style={styles.flexShrink}>
-                              <Text style={styles.aiBudgetBillName}>{bill.merchantClean}</Text>
-                              <Text style={styles.aiBudgetBillMeta}>{bill.cadence}{bill.isAdjustable ? ' · adjustable' : ' · protected'}</Text>
-                            </View>
-                            <Text style={styles.aiBudgetBillAmount}>{usd(bill.monthlyEquivalentCents, true)}/mo</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                    {budgetPlan.categories.length > 0 ? (
-                      <View style={styles.aiBudgetCategoryList}>
-                        <Text style={styles.aiBudgetCategoryHeading}>SUGGESTED CATEGORY CAPS</Text>
-                        {budgetPlan.categories.slice(0, 6).map((category) => (
-                          <View key={category.category} style={styles.aiBudgetCategoryRow}>
-                            <View style={styles.flexShrink}>
-                              <Text style={styles.aiBudgetCategoryName}>{category.label}</Text>
-                              <Text style={styles.aiBudgetCategoryMeta}>{category.isDiscretionary ? 'Adjustable' : 'Essential'}{category.recurringMonthlyCents > 0 ? ' · includes bills' : ''}</Text>
-                            </View>
-                            <Text style={styles.aiBudgetCategoryAmount}>{usd(category.recommendedCents, true)}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
-                    <PrimaryButton
-                      label={canApplyBudgetPlan(budgetPlan) ? 'Apply this monthly budget' : budgetPlan.status === 'needs_income' ? 'Income data required' : 'Resolve shortfall first'}
-                      icon={CheckCircle2}
-                      disabled={!canApplyBudgetPlan(budgetPlan)}
-                      onPress={applyAiBudgetPlan}
-                    />
-                    <Text style={styles.aiBudgetApplyNote}>Applying updates this device's monthly target and category caps only.</Text>
-                  </View>
-                ) : null}
-              </>
-            )}
-          </View>
-        ) : null}
+        ) : <SecondaryButton label="Create a savings goal" icon={Target} onPress={onGoals} />}
+        <Text style={styles.smartBudgetSupport}>We’ll build the rest of your month around this target.</Text>
+        <PrimaryButton label={buildingBudgetPlan ? 'Building your budget…' : budgetPlan ? 'Rebuild plan' : 'Build my budget'} icon={Sparkles} disabled={buildingBudgetPlan || activeGoals.length === 0} onPress={() => void requestBudgetPlan(adjustmentDraft)} />
+        <Text style={styles.aiBudgetSafety}>Preview only. No money moves until you apply.</Text>
+        {budgetPlanError ? <Text style={styles.aiBudgetError}>{budgetPlanError}</Text> : null}
       </ZenGlass>
-      <Text style={styles.zenSectionLabel}>CATEGORY CAPS</Text>
-      <ZenGlass style={styles.categoryCapsPanel}>
-        {categories.map(([category, amount], index) => {
-          const cap = categoryCaps[category] ?? Math.max(50, Math.round(amount / 100));
-          return (
-            <View key={category} style={[styles.categoryCapRow, index > 0 ? { borderTopWidth: 1, borderTopColor: theme.border } : null]}>
-              <View style={styles.flexShrink}>
-                <Text style={styles.categoryCapName}>{titleCaseFromCode(category)}</Text>
-                <Text style={styles.categoryCapMeta}>Spent {usd(amount, true)}</Text>
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Decrease ${titleCaseFromCode(category)} cap`}
-                style={styles.capButton}
-                onPress={() => adjustCategoryCap(category, amount, -50)}
-              >
-                <Minus color={theme.muted} size={18} />
-              </Pressable>
-              <View style={styles.categoryCapInputWrap}>
-                <Text style={styles.categoryCapDollarSign}>$</Text>
-                <TextInput
-                  value={capDraftText[category] ?? String(cap)}
-                  onChangeText={(text) => setCapDraftText((current) => ({ ...current, [category]: text.replace(/[^0-9]/g, '') }))}
-                  onEndEditing={() => commitCategoryCapText(category, amount, capDraftText[category] ?? String(cap))}
-                  keyboardType="number-pad"
-                  style={styles.categoryCapValue}
-                  accessibilityLabel={`${titleCaseFromCode(category)} cap amount`}
-                />
-              </View>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Increase ${titleCaseFromCode(category)} cap`}
-                style={styles.capButton}
-                onPress={() => adjustCategoryCap(category, amount, 50)}
-              >
-                <Plus color={theme.accent} size={18} />
-              </Pressable>
+
+      {budgetPlan ? (
+        <>
+          <ZenGlass style={[styles.smartBudgetPlanCard, { borderColor: `${displayedStatusCopy.color}66` }]}>
+            <View style={styles.aiBudgetResultHeader}>
+              <View style={styles.flexShrink}><Text style={styles.aiBudgetResultMonth}>AI PLAN {customValueCount > 0 ? 'WITH YOUR ADJUSTMENTS' : 'FROM LINKED DATA'}</Text><Text style={styles.aiBudgetResultTitle}>{draftShortfallCents > 0 ? 'This plan needs an adjustment' : `Your ${budgetPlanMonthLabel(budgetPlan.planMonth).split(' ')[0]} plan works`}</Text></View>
+              <View style={[styles.aiBudgetStatus, { borderColor: displayedStatusCopy.color, backgroundColor: `${displayedStatusCopy.color}1F` }]}><Text style={[styles.aiBudgetStatusText, { color: displayedStatusCopy.color }]}>{draftShortfallCents > 0 ? 'Shortfall' : displayedStatusCopy.label}</Text></View>
             </View>
-          );
-        })}
-      </ZenGlass>
-      <ZenGlass style={styles.budgetInsight}><Sparkles color={theme.accent} size={18} /><View style={styles.flexShrink}><Text style={styles.budgetInsightTitle}>A gentle nudge</Text><Text style={styles.budgetInsightBody}>Your essentials are steady. Keep one flexible category open for joy.</Text></View></ZenGlass>
+            <Text style={styles.aiBudgetExplanation}>{budgetPlan.explanation}</Text>
+            <View style={styles.smartBudgetLedger}>
+              <View style={styles.smartBudgetLedgerRow}><Text style={styles.aiBudgetLedgerLabel}>Modeled income</Text><Text style={styles.smartBudgetLedgerValue}>{usd(draftIncomeCents, true)}</Text></View>
+              <View style={styles.smartBudgetLedgerRow}><Text style={styles.aiBudgetLedgerLabel}>Recurring bills</Text><Text style={styles.smartBudgetLedgerSubtract}>−{usd(draftBillsTotalCents, true)}</Text></View>
+              <View style={styles.smartBudgetLedgerRow}><Text style={styles.aiBudgetLedgerLabel}>Savings target</Text><Text style={styles.smartBudgetLedgerSubtract}>−{usd(draftSavingsCents, true)}</Text></View>
+              <View style={styles.smartBudgetLedgerDivider} />
+              <View style={styles.smartBudgetLedgerRow}><Text style={styles.smartBudgetLedgerStrong}>Available after bills</Text><Text style={styles.smartBudgetLedgerStrongValue}>{usd(draftAvailableCents, true)}</Text></View>
+            </View>
+            <View style={[styles.smartBudgetBuffer, draftShortfallCents > 0 ? styles.smartBudgetBufferShortfall : null]}><SlidersHorizontal color={draftShortfallCents > 0 ? '#FF8FB3' : theme.accent} size={16} /><View style={styles.flexShrink}><Text style={styles.smartBudgetBufferLabel}>{draftShortfallCents > 0 ? 'Plan shortfall' : 'Safety buffer'}</Text><Text style={styles.smartBudgetBufferMeta}>Calculated from your current inputs</Text></View><Text style={[styles.smartBudgetBufferValue, draftShortfallCents > 0 ? { color: '#FF8FB3' } : null]}>{usd(draftShortfallCents > 0 ? draftShortfallCents : draftBufferCents, true)}</Text></View>
+            {needsRebuild ? <Text style={styles.smartBudgetNeedsRebuild}>Inputs changed. Rebuild the plan before applying it.</Text> : null}
+          </ZenGlass>
+
+          <ZenGlass style={styles.smartBudgetControlsCard}>
+            <View style={styles.smartBudgetSectionHeader}><View style={styles.flexShrink}><Text style={styles.smartBudgetSectionTitle}>Adjust the assumptions</Text><Text style={styles.smartBudgetSectionMeta}>Detected values stay available whenever you want to reset.</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Open plan settings" style={styles.smartBudgetIconButton} onPress={() => setShowPlanSettings((current) => !current)}><SlidersHorizontal color={theme.accent} size={18} /></Pressable></View>
+            <Text style={styles.aiBudgetFieldLabel}>MONTHLY INCOME</Text>
+            <View style={styles.smartBudgetChoiceRow}><Pressable style={[styles.smartBudgetChoice, !incomeOverrideEnabled ? styles.smartBudgetChoiceActive : null]} onPress={() => setIncomeOverrideEnabled(false)}><Text style={[styles.smartBudgetChoiceText, !incomeOverrideEnabled ? styles.smartBudgetChoiceTextActive : null]}>Use detected</Text></Pressable><Pressable style={[styles.smartBudgetChoice, incomeOverrideEnabled ? styles.smartBudgetChoiceActive : null]} onPress={() => { setIncomeOverrideEnabled(true); if (!incomeDraft) setIncomeDraft(budgetInputDollars(budgetPlan.monthlyIncomeCents)); }}><Text style={[styles.smartBudgetChoiceText, incomeOverrideEnabled ? styles.smartBudgetChoiceTextActive : null]}>Use my amount</Text></Pressable></View>
+            {incomeOverrideEnabled ? <View style={styles.smartBudgetInlineInput}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={incomeDraft} onChangeText={(value) => setIncomeDraft(value.replace(/[^0-9.,]/g, ''))} keyboardType="decimal-pad" style={styles.smartBudgetInlineValue} accessibilityLabel="Monthly income amount" /></View> : <Text style={styles.smartBudgetDetectedValue}>{usd(budgetPlan.adjustments.detectedMonthlyIncomeCents, true)} detected across linked accounts</Text>}
+            {showPlanSettings ? <View style={styles.smartBudgetSettingsPanel}><View style={styles.flexShrink}><Text style={styles.aiBudgetBillName}>Target safety buffer</Text><Text style={styles.aiBudgetBillMeta}>Held back before flexible spending</Text></View><View style={styles.smartBudgetSmallInput}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={targetBufferDraft} onChangeText={(value) => setTargetBufferDraft(value.replace(/[^0-9.,]/g, ''))} placeholder="0" placeholderTextColor={theme.muted} keyboardType="decimal-pad" style={styles.smartBudgetSmallInputValue} accessibilityLabel="Target safety buffer" /></View></View> : null}
+          </ZenGlass>
+
+          <ZenGlass style={styles.smartBudgetControlsCard}>
+            <Pressable accessibilityRole="button" accessibilityState={{ expanded: showAllBills }} style={styles.smartBudgetSectionHeader} onPress={() => setShowAllBills((current) => !current)}><View style={styles.flexShrink}><Text style={styles.smartBudgetSectionTitle}>What the AI included</Text><Text style={styles.smartBudgetSectionMeta}>{budgetPlan.dataCoverage.allDetectedBillsIncluded ? `All ${budgetPlan.dataCoverage.detectedBillCount} detected recurring bills included` : `${budgetPlan.dataCoverage.includedBillCount} bills included after your changes`} · {budgetPlan.dataCoverage.weeksAnalyzed} weeks analyzed</Text></View><ChevronRight color={theme.accent} size={18} style={{ transform: [{ rotate: showAllBills ? '90deg' : '0deg' }] }} /></Pressable>
+            {showAllBills ? <View style={styles.smartBudgetBillEditorList}>
+              {budgetPlan.bills.filter((bill) => bill.source === 'detected' && bill.recurringStreamId !== null).map((bill) => {
+                const draft = billDrafts[bill.recurringStreamId!] ?? { included: bill.included, monthlyAmount: budgetInputDollars(bill.monthlyEquivalentCents) };
+                const edited = draft.included !== true || validBudgetDraftCents(draft.monthlyAmount) !== bill.detectedMonthlyEquivalentCents;
+                return <View key={bill.clientId} style={styles.smartBudgetBillEditorRow}><Switch value={draft.included} onValueChange={(included) => setBillDrafts((current) => ({ ...current, [bill.recurringStreamId!]: { ...draft, included } }))} trackColor={{ false: '#FFFFFF26', true: theme.accent }} thumbColor="#FFFFFF" /><View style={styles.flexShrink}><Text style={[styles.aiBudgetBillName, !draft.included ? { color: theme.muted } : null]} numberOfLines={1}>{bill.merchantClean}</Text><Text style={[styles.aiBudgetBillMeta, edited ? { color: theme.accent } : null]}>{edited ? 'USER EDITED' : 'DETECTED'}{bill.nextExpectedDate ? ` · due ${bill.nextExpectedDate.slice(5)}` : ` · ${bill.cadence}`}</Text></View><View style={styles.smartBudgetSmallInput}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={draft.monthlyAmount} onChangeText={(value) => setBillDrafts((current) => ({ ...current, [bill.recurringStreamId!]: { ...draft, monthlyAmount: value.replace(/[^0-9.,]/g, '') } }))} keyboardType="decimal-pad" style={styles.smartBudgetSmallInputValue} accessibilityLabel={`${bill.merchantClean} monthly amount`} /></View></View>;
+              })}
+              {customBills.map((bill) => <View key={bill.clientId} style={styles.smartBudgetBillEditorRow}><View style={styles.smartBudgetUserBillIcon}><Plus color={theme.violet} size={14} /></View><View style={styles.flexShrink}><Text style={styles.aiBudgetBillName}>{bill.merchantClean}</Text><Text style={[styles.aiBudgetBillMeta, { color: theme.violet }]}>USER ADDED · MONTHLY</Text></View><View style={styles.smartBudgetSmallInput}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={bill.monthlyAmount} onChangeText={(value) => setCustomBills((current) => current.map((item) => item.clientId === bill.clientId ? { ...item, monthlyAmount: value.replace(/[^0-9.,]/g, '') } : item))} keyboardType="decimal-pad" style={styles.smartBudgetSmallInputValue} accessibilityLabel={`${bill.merchantClean} monthly amount`} /></View><Pressable accessibilityRole="button" accessibilityLabel={`Remove ${bill.merchantClean}`} style={styles.smartBudgetRemoveButton} onPress={() => setCustomBills((current) => current.filter((item) => item.clientId !== bill.clientId))}><X color="#FF8FB3" size={16} /></Pressable></View>)}
+              {newBillDraft.visible ? <View style={styles.smartBudgetAddBillPanel}><TextInput value={newBillDraft.name} onChangeText={(name) => setNewBillDraft((current) => ({ ...current, name }))} placeholder="Bill name" placeholderTextColor={theme.muted} style={styles.smartBudgetTextInput} accessibilityLabel="New bill name" /><View style={styles.smartBudgetAddBillActions}><View style={[styles.smartBudgetInlineInput, styles.flexShrink]}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={newBillDraft.amount} onChangeText={(value) => setNewBillDraft((current) => ({ ...current, amount: value.replace(/[^0-9.,]/g, '') }))} placeholder="Monthly amount" placeholderTextColor={theme.muted} keyboardType="decimal-pad" style={styles.smartBudgetInlineValue} accessibilityLabel="New bill monthly amount" /></View><Pressable accessibilityRole="button" accessibilityLabel="Save added bill" style={styles.smartBudgetAddButton} onPress={addCustomBill}><CheckCircle2 color="#071019" size={18} /></Pressable></View></View> : <Pressable accessibilityRole="button" style={styles.smartBudgetAddLink} onPress={() => setNewBillDraft((current) => ({ ...current, visible: true }))}><Plus color={theme.accent} size={16} /><Text style={styles.smartBudgetAddLinkText}>Add a bill</Text></Pressable>}
+            </View> : null}
+          </ZenGlass>
+
+          {budgetPlan.categories.length > 0 ? <ZenGlass style={styles.smartBudgetControlsCard}><View style={styles.smartBudgetSectionHeader}><View style={styles.flexShrink}><Text style={styles.smartBudgetSectionTitle}>Your spending limits</Text><Text style={styles.smartBudgetSectionMeta}>Edit any cap, then rebuild to have AI rebalance the plan.</Text></View></View><View style={styles.smartBudgetCategoryList}>{budgetPlan.categories.map((category) => <View key={category.category} style={styles.smartBudgetCategoryRow}><View style={styles.smartBudgetCategoryIcon}><CircleDollarSign color={category.isDiscretionary ? theme.violet : theme.accent} size={17} /></View><View style={styles.flexShrink}><Text style={styles.aiBudgetCategoryName}>{category.label}</Text><Text style={styles.aiBudgetCategoryMeta}>{category.isDiscretionary ? 'Flexible' : 'Essential'}{category.recurringMonthlyCents > 0 ? ' · bills included' : ''}</Text></View><View style={styles.smartBudgetSmallInput}><Text style={styles.smartBudgetInlineSign}>$</Text><TextInput value={categoryDrafts[category.category] ?? budgetInputDollars(category.recommendedCents)} onChangeText={(value) => setCategoryDrafts((current) => ({ ...current, [category.category]: value.replace(/[^0-9.,]/g, '') }))} keyboardType="decimal-pad" style={styles.smartBudgetSmallInputValue} accessibilityLabel={`${category.label} spending limit`} /></View></View>)}</View></ZenGlass> : null}
+
+          <ZenGlass style={styles.smartBudgetWhyCard}><Brain color={theme.violet} size={20} /><View style={styles.flexShrink}><Text style={styles.smartBudgetSectionTitle}>Why this plan works</Text><Text style={styles.smartBudgetWhyLine}>• Protects {usd(draftSavingsCents, true)} for {budgetPlan.goal.name}</Text><Text style={styles.smartBudgetWhyLine}>• Covers every bill you kept included before flexible spending</Text><Text style={styles.smartBudgetAuditLink}>How AI calculated this · detected and user-entered values are labeled above</Text></View></ZenGlass>
+
+          {customValueCount > 0 ? <View style={styles.smartBudgetOverrideRow}><Text style={styles.smartBudgetOverrideText}>{customValueCount} custom value{customValueCount === 1 ? '' : 's'} in this plan</Text><Pressable onPress={() => void requestBudgetPlan({})}><Text style={styles.smartBudgetResetText}>Reset to detected</Text></Pressable></View> : null}
+          <SecondaryButton label={buildingBudgetPlan ? 'Rebuilding…' : 'Rebuild plan'} icon={RotateCcw} disabled={buildingBudgetPlan || !needsRebuild} onPress={() => void requestBudgetPlan(adjustmentDraft)} />
+          <PrimaryButton label={needsRebuild ? 'Rebuild before applying' : canApplyBudgetPlan(budgetPlan) ? 'Apply monthly plan' : budgetPlan.status === 'needs_income' ? 'Enter monthly income' : 'Resolve shortfall first'} icon={CheckCircle2} disabled={needsRebuild || !canApplyBudgetPlan(budgetPlan)} onPress={applyAiBudgetPlan} />
+          <Text style={styles.aiBudgetApplyNote}>You stay in control. Applying updates this device’s budget and category caps only.</Text>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -4923,8 +4817,8 @@ function TabBar({ active, onChange, isPremium }: { active: TabKey; onChange: (ta
   const theme = useTheme();
   const tabs: Array<{ key: TabKey; icon: typeof Sparkles; label: string }> = [
     { key: 'brief', icon: Home, label: 'Home' },
-    { key: 'transactions', icon: Wallet, label: 'Transactions' },
-    { key: 'score', icon: Sparkles, label: 'Zen Score' },
+    { key: 'transactions', icon: Wallet, label: 'Activity' },
+    { key: 'budget', icon: WalletCards, label: 'Budget' },
     { key: 'coach', icon: Brain, label: 'Coach' },
     { key: 'profile', icon: UserRound, label: 'Profile' },
   ];
