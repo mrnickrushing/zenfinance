@@ -3037,13 +3037,14 @@ function CoachScreen({ initialQuestion = '' }: { initialQuestion?: string }) {
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.coachScreenHeader}>
         <Text style={styles.coachHeaderTitle}>Coach</Text>
         <Text style={styles.coachHeaderSubtitle}>MINDFUL PRESENCE</Text>
       </View>
       <FlatList
         ref={listRef}
+        style={styles.flex}
         data={turns}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.chatList}
