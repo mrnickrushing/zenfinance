@@ -82,6 +82,7 @@ describe('Phase 5 RevenueCat billing and monetization', () => {
       'com.rushingtechnologies.zenfinance.coach.monthly',
       'com.rushingtechnologies.zenfinance.coach.annual',
     ]);
+    expect(res.body.packages.map((p: { introTrialDays: number }) => p.introTrialDays)).toEqual([3, 3]);
     expect(res.body.pricingExperiment.experimentId).toBe('paywall_money_wins_v1');
     expect(['control', 'money_wins']).toContain(res.body.pricingExperiment.variant);
   });

@@ -6,6 +6,7 @@ import { appliedBudgetTarget, appliedCategoryCaps, buildBudgetPlanRequest, canAp
 import { useAuthScreenState } from './src/hooks/useAuthScreenState';
 import { useReducerState } from './src/hooks/useReducerState';
 import { useSettingsScreenState } from './src/hooks/useSettingsScreenState';
+import { PaywallView } from './src/components/PaywallView';
 import { styles } from './src/styles';
 import {
   PROFILE_MENU_GROUPS,
@@ -129,7 +130,6 @@ import type {
   MoneyPhysicalStatusView,
   MoneyWinsSummaryView,
   NotificationPreferencesView,
-  PaywallPackageView,
   ReferralRedeemView,
   ReferralStatusView,
   SubscriptionAuditView,
@@ -143,6 +143,7 @@ const API_URL = resolveApiUrl(Constants.expoConfig?.extra?.apiUrl, __DEV__);
 const SENTRY_DSN = resolveSentryDsn(Constants.expoConfig?.extra?.sentryDsn);
 const REVENUECAT_IOS_API_KEY: string | undefined = Constants.expoConfig?.extra?.revenueCatIosApiKey || undefined;
 const OTA_DIAGNOSTIC_LABEL = 'AI Smart Budget timeout fix · 2026-07-19.2';
+const WELCOME_PAYWALL_KEY = 'pendingWelcomePaywall';
 const DEVICE_BOUND_STORE_OPTIONS = Platform.OS === 'ios'
   ? { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY }
   : undefined;
@@ -212,10 +213,12 @@ interface AppState {
   refreshToken: string | null;
   home: MobileHomeSummaryView | null;
   notificationPrefs: NotificationPreferencesView | null;
+  showWelcomePaywall: boolean;
   loading: boolean;
   setTokens: (tokens: AuthTokens | null) => void;
   setHome: (home: MobileHomeSummaryView | null) => void;
   setNotificationPrefs: (prefs: NotificationPreferencesView | null) => void;
+  setShowWelcomePaywall: (show: boolean) => void;
   setLoading: (loading: boolean) => void;
 }
 
@@ -224,10 +227,12 @@ const useAppStore = createStore<AppState>((set) => ({
   refreshToken: null,
   home: null,
   notificationPrefs: null,
+  showWelcomePaywall: false,
   loading: true,
   setTokens: (tokens) => set({ accessToken: tokens?.accessToken ?? null, refreshToken: tokens?.refreshToken ?? null }),
   setHome: (home) => set({ home }),
   setNotificationPrefs: (notificationPrefs) => set({ notificationPrefs }),
+  setShowWelcomePaywall: (showWelcomePaywall) => set({ showWelcomePaywall }),
   setLoading: (loading) => set({ loading }),
 }));
 
@@ -444,9 +449,11 @@ async function signOutUser(): Promise<void> {
   }
   await clearRevenueCatIdentity();
   await SecureStore.deleteItemAsync(BUDGET_CONFIG_KEY).catch(() => {});
+  await SecureStore.deleteItemAsync(WELCOME_PAYWALL_KEY).catch(() => {});
   try {
     await persistTokens(null);
   } finally {
+    useAppStore.getState().setShowWelcomePaywall(false);
     useAppStore.getState().setTokens(null);
   }
 }
@@ -806,8 +813,12 @@ function ZenStonesIcon({ size = 15 }: { size?: number }) {
 function ZenScorePill({ score }: { score: number | null }) {
   return (
     <ZenGlass style={styles.zenScorePill}>
+      <View pointerEvents="none" style={styles.zenScorePillGlow} />
       <View style={styles.zenScoreIcon}><ZenStonesIcon size={19} /></View>
-      <Text style={styles.zenScoreText}>{score === null ? 'Zen Score: building' : `Zen Score: ${score}/100`}</Text>
+      <View style={styles.flexShrink}>
+        <Text style={styles.zenScoreOverline}>YOUR FINANCIAL RHYTHM</Text>
+        <Text style={styles.zenScoreText}>{score === null ? 'Zen Score: building' : `Zen Score: ${score}/100`}</Text>
+      </View>
       <View style={styles.zenScoreDot} />
     </ZenGlass>
   );
@@ -828,7 +839,7 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { failed: bool
 }
 
 export default function App() {
-  const { accessToken, loading, setTokens, setLoading } = useAppStore();
+  const { accessToken, loading, setTokens, setLoading, setShowWelcomePaywall } = useAppStore();
   const theme = useTheme();
   const [privacyShielded, setPrivacyShielded] = useReducerState(NativeAppState.currentState !== 'active');
   const [fontsLoaded, fontError] = useFonts({
@@ -843,12 +854,14 @@ export default function App() {
   useEffect(() => {
     void (async () => {
       try {
-        const [access, refresh] = await Promise.all([
+        const [access, refresh, pendingWelcomePaywall] = await Promise.all([
           SecureStore.getItemAsync('accessToken'),
           SecureStore.getItemAsync('refreshToken'),
+          SecureStore.getItemAsync(WELCOME_PAYWALL_KEY),
         ]);
         const tokens = access && refresh ? { accessToken: access, refreshToken: refresh } : null;
         if (tokens) await persistTokens(tokens);
+        setShowWelcomePaywall(Boolean(tokens && pendingWelcomePaywall === '1'));
         setTokens(tokens);
       } catch (err) {
         Sentry.captureException(err);
@@ -857,7 +870,7 @@ export default function App() {
         setLoading(false);
       }
     })();
-  }, [setLoading, setTokens]);
+  }, [setLoading, setShowWelcomePaywall, setTokens]);
 
   useEffect(() => {
     const subscription = NativeAppState.addEventListener('change', (state) => {
@@ -888,17 +901,123 @@ export default function App() {
   );
 }
 
+const ONBOARDING_SLIDES = [
+  {
+    eyebrow: 'CLARITY, NOT CLUTTER',
+    title: 'Find your financial peace.',
+    body: 'Link your accounts and get one calm, practical money move grounded in what you actually spent.',
+  },
+  {
+    eyebrow: 'SEE WHAT IS HIDING',
+    title: 'Catch the quiet money leaks.',
+    body: 'Review subscriptions, price changes, and unusual charges before they quietly become another month of spending.',
+  },
+  {
+    eyebrow: 'PROGRESS YOU CAN FEEL',
+    title: 'Turn small choices into momentum.',
+    body: 'Watch your Zen Score, savings goals, and verified Money Wins move together—without shame or spreadsheets.',
+  },
+  {
+    eyebrow: 'A COACH GROUNDED IN YOU',
+    title: 'Ask what your money can do next.',
+    body: 'Get transaction-scoped answers and run what-if forecasts before a goal slips or a purchase becomes stressful.',
+  },
+] as const;
+
+function OnboardingStory({ index }: { index: number }) {
+  if (index === 0) {
+    return (
+      <View style={styles.onboardingVisualStage}>
+        <View style={styles.onboardingLotus}><ZenLotusPhoto variant="onboarding" width={206} /></View>
+        <View style={styles.onboardingMoveCard}>
+          <View style={styles.onboardingMoveIcon}><Sparkles color={midnightZen.accentBright} size={16} /></View>
+          <View style={styles.flexShrink}>
+            <Text style={styles.onboardingMoveKicker}>TODAY'S MOVE</Text>
+            <Text style={styles.onboardingMoveText}>Move $45 toward your travel goal.</Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+  if (index === 1) {
+    return (
+      <View style={styles.onboardingVisualStage}>
+        <View style={styles.onboardingOrbit}>
+          <View style={styles.onboardingOrbitCenter}><CreditCard color={midnightZen.accentBright} size={32} /></View>
+          <View style={[styles.onboardingLeakChip, styles.onboardingLeakChipLeft]}><Text style={styles.onboardingLeakName}>Streaming</Text><Text style={styles.onboardingLeakPrice}>+$3</Text></View>
+          <View style={[styles.onboardingLeakChip, styles.onboardingLeakChipRight]}><Text style={styles.onboardingLeakName}>Cloud storage</Text><Text style={styles.onboardingLeakPrice}>$9.99</Text></View>
+          <View style={[styles.onboardingLeakChip, styles.onboardingLeakChipBottom]}><Bell color={midnightZen.gold} size={14} /><Text style={styles.onboardingLeakName}>1 charge to review</Text></View>
+        </View>
+      </View>
+    );
+  }
+  if (index === 2) {
+    return (
+      <View style={styles.onboardingVisualStage}>
+        <View style={styles.onboardingScoreRing}>
+          <ZenLotus size={42} />
+          <Text style={styles.onboardingScoreValue}>78</Text>
+          <Text style={styles.onboardingScoreLabel}>ZEN SCORE</Text>
+        </View>
+        <View style={[styles.onboardingWinCard, styles.onboardingWinCardLeft]}><CheckCircle2 color={midnightZen.success} size={15} /><Text style={styles.onboardingWinText}>Coffee cap kept · +$18</Text></View>
+        <View style={[styles.onboardingWinCard, styles.onboardingWinCardRight]}><Target color={midnightZen.accentBright} size={15} /><Text style={styles.onboardingWinText}>Travel goal · 64%</Text></View>
+      </View>
+    );
+  }
+  return (
+    <View style={styles.onboardingVisualStage}>
+      <View style={styles.onboardingCoachHalo}><ZenLotus size={44} /></View>
+      <View style={[styles.onboardingChatCard, styles.onboardingUserChat]}><Text style={styles.onboardingChatText}>Can I afford $600 this month?</Text></View>
+      <View style={[styles.onboardingChatCard, styles.onboardingCoachChat]}>
+        <Text style={styles.onboardingCoachKicker}>ZEN COACH</Text>
+        <Text style={styles.onboardingChatText}>Yes—if dining stays under $120. Your goal date stays on track.</Text>
+        <View style={styles.onboardingForecastRow}><SlidersHorizontal color={midnightZen.violet} size={14} /><Text style={styles.onboardingForecastText}>Based on 90 days of transactions</Text></View>
+      </View>
+    </View>
+  );
+}
+
 function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
+  const [index, setIndex] = useReducerState(0);
+  const slide = ONBOARDING_SLIDES[index]!;
+  const last = index === ONBOARDING_SLIDES.length - 1;
   return (
     <SafeAreaView style={styles.onboardingScreen}>
       <ZenBackdrop />
-      <Pressable style={styles.onboardingSkip} onPress={onStart}><Text style={styles.onboardingSkipText}>Skip</Text></Pressable>
-      <View style={styles.onboardingHero}>
-        <View style={styles.onboardingLotus}><ZenLotusPhoto variant="onboarding" width={220} /></View>
-        <Text style={styles.onboardingTitle}>Find your{`\n`}financial peace.</Text>
-        <Text style={styles.onboardingBody}>AI-powered coaching to help you reach your goals without the stress.</Text>
+      <View style={styles.onboardingTopRow}>
+        <View style={styles.onboardingBrand}><ZenLotus size={24} /><Text style={styles.onboardingBrandText}>Zen-Finance</Text></View>
+        <Pressable style={styles.onboardingSkip} onPress={onStart}><Text style={styles.onboardingSkipText}>Skip</Text></Pressable>
       </View>
-      <PrimaryButton label="Start Your Journey" icon={ChevronRight} onPress={onStart} />
+      <View style={styles.onboardingFeatureCard}>
+        <OnboardingStory index={index} />
+        <View style={styles.onboardingCopy}>
+          <Text style={styles.onboardingEyebrow}>{slide.eyebrow}</Text>
+          <Text style={styles.onboardingTitle}>{slide.title}</Text>
+          <Text style={styles.onboardingBody}>{slide.body}</Text>
+        </View>
+      </View>
+      <View style={styles.onboardingFooter}>
+        <View style={styles.onboardingPagination}>
+          {ONBOARDING_SLIDES.map((item, page) => (
+            <View key={item.title} style={[styles.onboardingDot, page === index ? styles.onboardingDotActive : null]} />
+          ))}
+        </View>
+        <View style={styles.onboardingButtonRow}>
+          {index > 0 ? (
+            <Pressable style={styles.onboardingBackButton} accessibilityLabel="Previous card" onPress={() => setIndex((page) => Math.max(0, page - 1))}>
+              <ChevronLeft color={midnightZen.ink} size={20} />
+            </Pressable>
+          ) : null}
+          <View style={index > 0 ? styles.onboardingNextButton : styles.flex}>
+            <PrimaryButton
+              label={last ? 'Create my account' : 'Next'}
+              icon={ChevronRight}
+              onPress={() => (last ? onStart() : setIndex((page) => Math.min(ONBOARDING_SLIDES.length - 1, page + 1)))}
+            />
+          </View>
+        </View>
+        <Text style={styles.onboardingPromise}>Private by design · Read-only bank connection · You stay in control</Text>
+      </View>
     </SafeAreaView>
   );
 }
@@ -906,6 +1025,7 @@ function ZenOnboardingWelcome({ onStart }: { onStart: () => void }) {
 function AuthScreen() {
   const theme = useTheme();
   const setTokens = useAppStore((s) => s.setTokens);
+  const setShowWelcomePaywall = useAppStore((s) => s.setShowWelcomePaywall);
   const {
     transaction, setTransaction, brief, setBrief, email, setEmail, password, setPassword,
     busy, setBusy, showLogin, setShowLogin, mode, setMode, touched, setTouched,
@@ -1002,6 +1122,10 @@ function AuthScreen() {
         { method: 'POST', body: JSON.stringify({ email: email.trim(), password }) },
         false,
       );
+      if (path === 'register') {
+        await SecureStore.setItemAsync(WELCOME_PAYWALL_KEY, '1', DEVICE_BOUND_STORE_OPTIONS);
+        setShowWelcomePaywall(true);
+      }
       await persistTokens(tokens);
       setTokens(tokens);
       void requestApi('/api/app-events', {
@@ -1046,6 +1170,10 @@ function AuthScreen() {
         },
         false,
       );
+      if (mode === 'register') {
+        await SecureStore.setItemAsync(WELCOME_PAYWALL_KEY, '1', DEVICE_BOUND_STORE_OPTIONS);
+        setShowWelcomePaywall(true);
+      }
       await persistTokens(tokens);
       setTokens(tokens);
       void requestApi('/api/app-events', {
@@ -1287,6 +1415,8 @@ function ProductShell() {
   const theme = useTheme();
   const home = useAppStore((s) => s.home);
   const setHome = useAppStore((s) => s.setHome);
+  const showWelcomePaywall = useAppStore((s) => s.showWelcomePaywall);
+  const setShowWelcomePaywall = useAppStore((s) => s.setShowWelcomePaywall);
   const setNotificationPrefs = useAppStore((s) => s.setNotificationPrefs);
   const [tab, setTab] = useReducerState<TabKey>('brief');
   const [settingsSection, setSettingsSection] = useReducerState<SettingsSection>('account');
@@ -1353,6 +1483,11 @@ function ProductShell() {
     setTab(destination.tab);
   }, [openSettings]);
 
+  const dismissWelcomePaywall = useCallback(() => {
+    setShowWelcomePaywall(false);
+    void SecureStore.deleteItemAsync(WELCOME_PAYWALL_KEY).catch((err) => Sentry.captureException(err));
+  }, [setShowWelcomePaywall]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
@@ -1383,6 +1518,20 @@ function ProductShell() {
         <View style={styles.centerGrow}>
           <ActivityIndicator color={theme.accent} />
         </View>
+      );
+    }
+    if (showWelcomePaywall && !home.billing.isPremium) {
+      return (
+        <PaywallScreen
+          billing={home.billing}
+          home={home}
+          source="post_registration"
+          onDismiss={dismissWelcomePaywall}
+          onChanged={() => {
+            dismissWelcomePaywall();
+            void refresh();
+          }}
+        />
       );
     }
     const hasLinkedItems = home.items.length > 0;
@@ -1417,9 +1566,10 @@ function ProductShell() {
     if (tab === 'subs') return <SubscriptionsScreen audit={home.subscriptionAudit} onChanged={refresh} />;
     if (tab === 'wins') return <WinsScreen wins={home.moneyWins} moneyPhysical={home.moneyPhysical} billing={home.billing} anomalies={home.openAnomalies} onChanged={refresh} />;
     return <SettingsScreen accountProfile={accountProfile} section={settingsSection} items={home.items} billing={home.billing} onBack={() => setTab('profile')} onChanged={refresh} onNavigate={setTab} />;
-  }, [accountProfile, coachInitialQuestion, home, loadError, navigateFromProfile, openSettings, refresh, refreshInsight, refreshing, settingsSection, tab, theme.accent]);
+  }, [accountProfile, coachInitialQuestion, dismissWelcomePaywall, home, loadError, navigateFromProfile, openSettings, refresh, refreshInsight, refreshing, settingsSection, showWelcomePaywall, tab, theme.accent]);
 
   const isZenRoute = new Set<TabKey>(['brief', 'coach', 'transactions', 'profile', 'goals', 'budget', 'score', 'settings', 'link']).has(tab);
+  const welcomePaywallActive = Boolean(home && showWelcomePaywall && !home.billing.isPremium);
 
   return (
     <SafeAreaView style={[styles.appScreen, { backgroundColor: theme.bg }]}>
@@ -1450,7 +1600,7 @@ function ProductShell() {
           </View>
         ) : null}
         <View style={styles.content}>{content}</View>
-        {home ? <TabBar active={tab === 'settings' ? 'profile' : tab === 'link' ? 'transactions' : tab} onChange={setTab} isPremium={home.billing.isPremium} /> : null}
+        {home && !welcomePaywallActive ? <TabBar active={tab === 'settings' ? 'profile' : tab === 'link' ? 'transactions' : tab} onChange={setTab} isPremium={home.billing.isPremium} /> : null}
       </View>
     </SafeAreaView>
   );
@@ -1730,7 +1880,7 @@ function BriefScreen({
       )}
       <StatusRail>
         <View style={styles.zenStatCard}>
-          <Text style={styles.zenStatCardLabel}>Recent Activity:</Text>
+          <View style={styles.zenStatHeader}><View style={styles.zenStatIcon}><WalletCards color={theme.accentBright} size={14} /></View><Text style={styles.zenStatCardLabel}>Recent Activity</Text></View>
           <Text style={styles.zenStatCardBody} numberOfLines={2}>
             {home.recentTransactions.length > 0
               ? home.recentTransactions
@@ -1739,24 +1889,30 @@ function BriefScreen({
                   .join(', ')
               : 'No activity yet'}
           </Text>
+          <View style={styles.zenStatSignal}><View style={[styles.zenStatSignalFill, { width: home.recentTransactions.length > 0 ? '72%' : '18%' }]} /></View>
         </View>
         <View style={styles.zenStatCard}>
-          <Text style={styles.zenStatCardLabel}>Savings Goal:</Text>
+          <View style={styles.zenStatHeader}><View style={[styles.zenStatIcon, styles.zenStatIconViolet]}><Target color="#D9A8FF" size={14} /></View><Text style={styles.zenStatCardLabel}>Savings Goal</Text></View>
           <Text style={styles.zenStatCardBody}>
             {home.goals[0] ? `${home.goals[0].name} (${Math.round(home.goals[0].pacing.progressRatio * 100)}%)` : 'Set your first goal'}
           </Text>
+          <View style={[styles.zenStatSignal, styles.zenStatSignalViolet]}><View style={[styles.zenStatSignalFill, styles.zenStatSignalFillViolet, { width: home.goals[0] ? `${Math.min(100, Math.max(5, Math.round(home.goals[0].pacing.progressRatio * 100)))}%` : '10%' }]} /></View>
         </View>
       </StatusRail>
       <View style={styles.zenLinkGrid}>
         <Pressable style={styles.zenLinkCard} onPress={() => onNavigate('goals')}>
-          <Target color={theme.accent} size={18} />
+          <View style={styles.zenLinkGlowTeal} />
+          <View style={styles.zenLinkIcon}><Target color={theme.accentBright} size={18} /></View>
           <Text style={styles.zenLinkTitle}>Savings Goals</Text>
           <Text style={styles.zenLinkMeta}>Your path to Zen</Text>
+          <ChevronRight color={theme.accentBright} size={15} style={styles.zenLinkArrow} />
         </Pressable>
-        <Pressable style={styles.zenLinkCard} onPress={() => onNavigate('budget')}>
-          <CircleDollarSign color={theme.violet} size={18} />
+        <Pressable style={[styles.zenLinkCard, styles.zenLinkCardViolet]} onPress={() => onNavigate('budget')}>
+          <View style={styles.zenLinkGlowViolet} />
+          <View style={[styles.zenLinkIcon, styles.zenLinkIconViolet]}><CircleDollarSign color="#D9A8FF" size={18} /></View>
           <Text style={styles.zenLinkTitle}>Smart Budgeting</Text>
           <Text style={styles.zenLinkMeta}>Balance your flow</Text>
+          <ChevronRight color="#D9A8FF" size={15} style={styles.zenLinkArrow} />
         </Pressable>
       </View>
       <SectionHeader title="This Week" />
@@ -1871,6 +2027,9 @@ function MoneyBriefHero({
 
   return (
     <ZenGlass style={styles.zenInsightCard}>
+      <View pointerEvents="none" style={styles.zenInsightGlowTeal} />
+      <View pointerEvents="none" style={styles.zenInsightGlowViolet} />
+      <View pointerEvents="none" style={styles.zenInsightLotusWatermark}><ZenLotus size={112} /></View>
       <View style={styles.zenInsightHeader}>
         <View style={styles.zenInsightIcon}>
           <Sparkles color={theme.accent} size={18} />
@@ -3208,15 +3367,17 @@ function PaywallScreen({
   home,
   source,
   onChanged,
+  onDismiss,
 }: {
   billing: BillingStatusView;
   home?: MobileHomeSummaryView;
   source: string;
   onChanged: () => void;
+  onDismiss?: () => void;
 }) {
-  const theme = useTheme();
   const [storePackages, setStorePackages] = useReducerState<RevenueCatPackage[]>([]);
-  const [selectedProductId, setSelectedProductId] = useReducerState(billing.packages[1]?.productId ?? billing.packages[0]?.productId);
+  const annualPackage = billing.packages.find((pkg) => pkg.identifier === 'annual');
+  const [selectedProductId, setSelectedProductId] = useReducerState(annualPackage?.productId ?? billing.packages[0]?.productId);
   const [busy, setBusy] = useReducerState<string | null>(null);
   const [storeMessage, setStoreMessage] = useReducerState<string | null>(null);
 
@@ -3232,14 +3393,15 @@ function PaywallScreen({
         const offerings = await Purchases.getOfferings();
         const available = offerings.current?.availablePackages ?? [];
         setStorePackages(available);
-        if (available[0]) setSelectedProductId(available[0].product.identifier);
+        const preferred = available.find((pkg) => pkg.product.identifier === annualPackage?.productId) ?? available[0];
+        if (preferred) setSelectedProductId(preferred.product.identifier);
         if (available.length === 0) setStoreMessage('No RevenueCat offering is available for this app user.');
       } catch (err) {
         Sentry.captureException(err);
         setStoreMessage(err instanceof Error ? err.message : 'RevenueCat offerings could not be loaded.');
       }
     })();
-  }, [billing, source]);
+  }, [annualPackage?.productId, billing, source]);
 
   const selectedStorePackage = storePackages.find((pkg) => pkg.product.identifier === selectedProductId);
 
@@ -3285,78 +3447,30 @@ function PaywallScreen({
     }
   }
 
-  function livePrice(pkg: PaywallPackageView): string {
-    const live = storePackages.find((storePkg) => storePkg.product.identifier === pkg.productId);
-    return live?.product.priceString ?? pkg.priceLabel;
-  }
-
-  const totalWins = home ? home.moneyWins.verifiedTotalCents + home.moneyWins.estimatedTotalCents : 0;
+  const selectedPackage = billing.packages.find((pkg) => pkg.productId === selectedProductId) ?? annualPackage ?? billing.packages[0];
+  const trialDays = selectedPackage?.introTrialDays ?? 3;
 
   return (
-    <ScrollView contentContainerStyle={styles.zenScreenScroll} showsVerticalScrollIndicator={false}>
-      <View style={styles.zenPageHeader}><View><Text style={styles.zenPageTitle}>Zen-Finance Coach</Text><Text style={styles.zenPageSubtitle}>A calmer way to make your next money move</Text></View><Crown color={theme.gold} size={19} /></View>
-      <ZenGlass style={styles.paywallHero}>
-        <View style={[styles.largeIcon, { backgroundColor: theme.accentSoft }]}>
-          <Crown color={theme.accent} size={36} />
-        </View>
-        <Text style={[styles.panelTitle, { color: theme.ink }]}>Keep the dollars Zen-Finance already found.</Text>
-        <Text style={[styles.panelBody, { color: theme.muted }]}>{billing.pricingExperiment.paywallBody}</Text>
-        <StatusRail>
-          <MoneyMetric label="Found" value={home ? usd(totalWins, true) : 'Coach'} icon={CircleDollarSign} />
-          <MoneyMetric label="Audit" value={home ? String(home.subscriptionAudit.cancelCandidateCount) : 'Subs'} icon={CreditCard} />
-          <MoneyMetric label="Forecast" value="What-if" icon={SlidersHorizontal} />
-          <MoneyMetric label="Chat" value="24/7" icon={MessageCircle} />
-        </StatusRail>
-        <View style={styles.featureList}>
-          <FeatureLine text="Ask the coach scoped questions from your own transactions" />
-          <FeatureLine text="Run what-if forecasts before a goal slips off pace" />
-          <FeatureLine text="Audit subscriptions and track every verified Money Win" />
-        </View>
-      </ZenGlass>
-
-      {billing.packages.map((pkg) => {
-        const selected = selectedProductId === pkg.productId;
-        const featured = pkg.identifier === 'annual' && Boolean(pkg.savingsLabel);
-        return (
-          <PlanOption
-            key={pkg.productId}
-            selected={selected}
-            featured={featured}
-            title={pkg.identifier === 'annual' ? 'Annual' : 'Monthly'}
-            detail={`${pkg.introTrialDays}-day trial · ${pkg.savingsLabel ?? 'Cancel anytime'}`}
-            price={livePrice(pkg)}
-            onPress={() => setSelectedProductId(pkg.productId)}
-          />
-        );
-      })}
-
-      {storeMessage ? <Text style={[styles.actionMeta, { color: theme.gold }]}>{storeMessage}</Text> : null}
-      <PrimaryButton
-        label={busy === 'purchase' ? 'Purchasing...' : 'Start free trial'}
-        icon={LockKeyhole}
-        disabled={busy !== null || !selectedStorePackage}
-        onPress={purchase}
-      />
-      <Text style={[styles.disclosure, { color: theme.muted }]}>
-        Trial and renewal are managed by the App Store. Cancel anytime before renewal.
-      </Text>
-      <SecondaryButton
-        label={busy === 'restore' ? 'Restoring...' : 'Restore purchases'}
-        icon={RefreshCcw}
-        disabled={busy !== null}
-        onPress={restore}
-      />
-    </ScrollView>
-  );
-}
-
-function FeatureLine({ text }: { text: string }) {
-  const theme = useTheme();
-  return (
-    <View style={styles.featureLine}>
-      <CheckCircle2 color={theme.success} size={17} />
-      <Text style={[styles.featureText, { color: theme.ink }]}>{text}</Text>
-    </View>
+    <PaywallView
+      billing={billing}
+      home={home}
+      storePackages={storePackages}
+      selectedProductId={selectedProductId}
+      busy={busy}
+      storeMessage={storeMessage}
+      brandMark={<ZenLotus size={27} />}
+      purchaseButton={(
+        <PrimaryButton
+          label={busy === 'purchase' ? 'Purchasing...' : `Start my ${trialDays}-day free trial`}
+          icon={LockKeyhole}
+          disabled={busy !== null || !selectedStorePackage}
+          onPress={purchase}
+        />
+      )}
+      onSelect={setSelectedProductId}
+      onRestore={restore}
+      onDismiss={onDismiss}
+    />
   );
 }
 
@@ -4915,51 +5029,6 @@ function InsightLedger({ facts }: { facts: ChatAnswerView['facts'] }) {
         </View>
       ))}
     </View>
-  );
-}
-
-function PlanOption({
-  selected,
-  featured,
-  title,
-  detail,
-  price,
-  onPress,
-}: {
-  selected: boolean;
-  featured?: boolean;
-  title: string;
-  detail: string;
-  price: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      style={[
-        styles.planOption,
-        {
-          borderColor: selected ? theme.accent : theme.border,
-          backgroundColor: selected ? theme.accentSoft : featured ? theme.goldSoft : theme.surface,
-        },
-      ]}
-      onPress={onPress}
-      accessibilityLabel={`${title}, ${price}`}
-      accessibilityState={{ selected }}
-    >
-      <View style={styles.flexShrink}>
-        <View style={styles.planTitleRow}>
-          <Text style={[styles.rowTitle, { color: theme.ink }]}>{title}</Text>
-          {featured ? (
-            <View style={[styles.planBadge, { backgroundColor: theme.gold }]}>
-              <Text style={styles.planBadgeText}>Best value</Text>
-            </View>
-          ) : null}
-        </View>
-        <Text style={[styles.rowDetail, { color: theme.muted }]}>{detail}</Text>
-      </View>
-      <Text style={[styles.amount, { color: selected ? theme.accent : theme.ink }]}>{price}</Text>
-    </Pressable>
   );
 }
 
