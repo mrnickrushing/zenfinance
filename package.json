@@ -15,6 +15,7 @@
     "test": "DATABASE_URL=${DATABASE_URL:-postgres://dev:dev@localhost:5434/zenfinance_test} npm run test --workspaces --if-present",
     "build": "npm run build -w @zenfinance/shared && npm run build -w @zenfinance/api",
     "build:site": "npm run build -w @zenfinance/shared && npm run build:marketing -w @zenfinance/site && npm run build:admin -w @zenfinance/site",
+    "postinstall": "node scripts/patch-xcode-uuid.mjs",
     "dev:api": "npm run dev -w @zenfinance/api",
     "dev:site": "npm run dev -w @zenfinance/site",
     "db:generate": "npm run db:generate -w @zenfinance/api",
@@ -29,6 +30,7 @@
   },
   "overrides": {
     "@xmldom/xmldom": "0.9.10",
-    "tar": "7.5.20"
+    "tar": "7.5.20",
+    "uuid": "11.1.1"
   }
 }

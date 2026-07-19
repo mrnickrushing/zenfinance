@@ -9,7 +9,6 @@ import type {
   LinkedItem,
   NotificationPreferencesView,
   PrivacyDeletionEventView,
-  UserDataExportView,
   VoiceBriefView,
   VoiceBriefSegmentView,
 } from '@zenfinance/shared';
@@ -109,7 +108,11 @@ async function itemViews(db: Db, userId: number): Promise<LinkedItem[]> {
   return [...byItem.values()];
 }
 
-async function transactionViews(db: Db, userId: number): Promise<EnrichedTransactionView[]> {
+async function transactionViews(
+  db: Db,
+  userId: number,
+  page: { limit: number; offset: number },
+): Promise<EnrichedTransactionView[]> {
   const accountRows = await db
     .select({ id: accounts.id })
     .from(accounts)
@@ -142,7 +145,9 @@ async function transactionViews(db: Db, userId: number): Promise<EnrichedTransac
       and(eq(transactionEnrichments.transactionId, transactions.id), isNull(transactionEnrichments.supersededAt)),
     )
     .where(and(inArray(transactions.accountId, accountIds), isNull(transactions.removedAt), isNull(transactions.supersededAt)))
-    .orderBy(desc(transactions.postedDate), desc(transactions.id));
+    .orderBy(desc(transactions.postedDate), desc(transactions.id))
+    .limit(page.limit)
+    .offset(page.offset);
 
   return rows.map((t) => ({
     id: t.id,
@@ -374,60 +379,100 @@ async function voiceBriefViews(db: Db, userId: number): Promise<VoiceBriefView[]
   }));
 }
 
-export async function buildUserDataExport(db: Db, userId: number): Promise<UserDataExportView | null> {
+type ExportWriter = (chunk: string) => Promise<void>;
+const EXPORT_PAGE_SIZE = 250;
+
+async function writeJsonValue(write: ExportWriter, value: unknown): Promise<void> {
+  await write(JSON.stringify(value) ?? 'null');
+}
+
+async function writePagedJsonArray<T>(
+  write: ExportWriter,
+  loadPage: (limit: number, offset: number) => Promise<T[]>,
+): Promise<void> {
+  await write('[');
+  let first = true;
+  for (let offset = 0; ; offset += EXPORT_PAGE_SIZE) {
+    const rows = await loadPage(EXPORT_PAGE_SIZE, offset);
+    for (const row of rows) {
+      if (!first) await write(',');
+      await writeJsonValue(write, row);
+      first = false;
+    }
+    if (rows.length < EXPORT_PAGE_SIZE) break;
+  }
+  await write(']');
+}
+
+/**
+ * Write a complete privacy export incrementally. Large transaction and event
+ * collections are paged and serialized one row at a time so one request
+ * cannot retain every user-owned row in API memory or fan out dozens of
+ * simultaneous database queries.
+ */
+export async function streamUserDataExport(db: Db, userId: number, write: ExportWriter): Promise<boolean> {
   const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user) return null;
-  const [linkedItems, txns, goalsList, insightList, anomalyList, moneyWins, billing, prefs, household, voiceBriefsList, moneyPhysicalReports, appEventRows, billingEventRows, chatRows, correctionRows, recurringRows, referralCodeRows, referralRedemptionRows, referralCreditRows] = await Promise.all([
-    itemViews(db, userId),
-    transactionViews(db, userId),
-    goalViews(db, userId),
-    insightViews(db, userId),
-    anomalyViews(db, userId),
-    getMoneyWinsSummary(db, userId),
-    getBillingStatus(db, userId),
-    notificationPrefs(db, userId),
-    householdExport(db, userId),
-    voiceBriefViews(db, userId),
-    moneyPhysicalReportsForExport(db, userId),
-    db.select().from(appEvents).where(eq(appEvents.userId, userId)),
-    db.select().from(billingEvents).where(eq(billingEvents.userId, userId)),
-    db.select().from(chatMessages).where(eq(chatMessages.userId, userId)),
-    db.select().from(categoryCorrections).where(eq(categoryCorrections.userId, userId)),
-    db.select().from(recurringStreams).where(eq(recurringStreams.userId, userId)),
-    db.select().from(referralCodes).where(eq(referralCodes.userId, userId)),
-    db.select().from(referralRedemptions).where(or(eq(referralRedemptions.referrerUserId, userId), eq(referralRedemptions.referredUserId, userId))),
-    db.select().from(referralCredits).where(or(eq(referralCredits.recipientUserId, userId), eq(referralCredits.sourceUserId, userId))),
-  ]);
-  return {
-    generatedAt: new Date().toISOString(),
-    user: {
-      id: user.id,
-      email: user.email,
-      appleLinked: Boolean(user.appleSub),
-      createdAt: user.createdAt.toISOString(),
-    },
-    items: linkedItems,
-    transactions: txns,
-    goals: goalsList,
-    insights: insightList,
-    anomalies: anomalyList,
-    moneyWins,
-    billing,
-    notificationPreferences: prefs,
-    household,
-    voiceBriefs: voiceBriefsList,
-    moneyPhysicalReports,
-    supplementalData: {
-      appEvents: appEventRows,
-      billingEvents: billingEventRows,
-      chatMessages: chatRows,
-      categoryCorrections: correctionRows,
-      recurringStreams: recurringRows,
-      referralCodes: referralCodeRows,
-      referralRedemptions: referralRedemptionRows,
-      referralCredits: referralCreditRows,
-    },
+  if (!user) return false;
+
+  await write('{"generatedAt":');
+  await writeJsonValue(write, new Date().toISOString());
+  await write(',"user":');
+  await writeJsonValue(write, {
+    id: user.id,
+    email: user.email,
+    appleLinked: Boolean(user.appleSub),
+    createdAt: user.createdAt.toISOString(),
+  });
+
+  const writeField = async (name: string, load: () => Promise<unknown>): Promise<void> => {
+    await write(`,"${name}":`);
+    await writeJsonValue(write, await load());
   };
+  await writeField('items', () => itemViews(db, userId));
+  await write(',"transactions":');
+  await writePagedJsonArray(write, (limit, offset) => transactionViews(db, userId, { limit, offset }));
+  await writeField('goals', () => goalViews(db, userId));
+  await writeField('insights', () => insightViews(db, userId));
+  await writeField('anomalies', () => anomalyViews(db, userId));
+  await writeField('moneyWins', () => getMoneyWinsSummary(db, userId));
+  await writeField('billing', () => getBillingStatus(db, userId));
+  await writeField('notificationPreferences', () => notificationPrefs(db, userId));
+  await writeField('household', () => householdExport(db, userId));
+  await writeField('voiceBriefs', () => voiceBriefViews(db, userId));
+  await writeField('moneyPhysicalReports', () => moneyPhysicalReportsForExport(db, userId));
+
+  await write(',"supplementalData":{');
+  const writeSupplemental = async <T>(
+    name: string,
+    first: boolean,
+    loadPage: (limit: number, offset: number) => Promise<T[]>,
+  ): Promise<void> => {
+    if (!first) await write(',');
+    await write(`"${name}":`);
+    await writePagedJsonArray(write, loadPage);
+  };
+  await writeSupplemental('appEvents', true, (limit, offset) =>
+    db.select().from(appEvents).where(eq(appEvents.userId, userId)).orderBy(asc(appEvents.id)).limit(limit).offset(offset));
+  await writeSupplemental('billingEvents', false, (limit, offset) =>
+    db.select().from(billingEvents).where(eq(billingEvents.userId, userId)).orderBy(asc(billingEvents.id)).limit(limit).offset(offset));
+  await writeSupplemental('chatMessages', false, (limit, offset) =>
+    db.select().from(chatMessages).where(eq(chatMessages.userId, userId)).orderBy(asc(chatMessages.id)).limit(limit).offset(offset));
+  await writeSupplemental('categoryCorrections', false, (limit, offset) =>
+    db.select().from(categoryCorrections).where(eq(categoryCorrections.userId, userId)).orderBy(asc(categoryCorrections.id)).limit(limit).offset(offset));
+  await writeSupplemental('recurringStreams', false, (limit, offset) =>
+    db.select().from(recurringStreams).where(eq(recurringStreams.userId, userId)).orderBy(asc(recurringStreams.id)).limit(limit).offset(offset));
+  await writeSupplemental('referralCodes', false, (limit, offset) =>
+    db.select().from(referralCodes).where(eq(referralCodes.userId, userId)).orderBy(asc(referralCodes.userId)).limit(limit).offset(offset));
+  await writeSupplemental('referralRedemptions', false, (limit, offset) =>
+    db.select().from(referralRedemptions)
+      .where(or(eq(referralRedemptions.referrerUserId, userId), eq(referralRedemptions.referredUserId, userId)))
+      .orderBy(asc(referralRedemptions.id)).limit(limit).offset(offset));
+  await writeSupplemental('referralCredits', false, (limit, offset) =>
+    db.select().from(referralCredits)
+      .where(or(eq(referralCredits.recipientUserId, userId), eq(referralCredits.sourceUserId, userId)))
+      .orderBy(asc(referralCredits.id)).limit(limit).offset(offset));
+  await write('}}');
+  return true;
 }
 
 export async function deleteUserAccount(db: Db, userId: number): Promise<PrivacyDeletionEventView | null> {

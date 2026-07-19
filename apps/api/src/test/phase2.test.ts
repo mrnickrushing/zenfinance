@@ -3,6 +3,7 @@ import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
+import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { db } from '../db/client.js';
 import { accounts, featureRollups, items, transactionEnrichments, transactions, users } from '../db/schema.js';
 import { getMonthlyAiCostUsd, recordAiUsage } from '../enrichment/cost.js';
@@ -412,6 +413,95 @@ describe('recurring-stream detection', () => {
     expect(netflix).toBeTruthy();
     expect(netflix.active).toBe(true);
     expect(netflix.occurrences).toBeGreaterThanOrEqual(2);
+  });
+
+  it('repairs and consolidates OpenAI and Anthropic subscription descriptors', async () => {
+    await registerAndAuth('ai-subscriptions@example.com');
+    const userId = await userIdByEmail('ai-subscriptions@example.com');
+    const accountId = await createSavingsAccount(userId, 'ai-subscriptions');
+    const inserted = await db
+      .insert(transactions)
+      .values([
+        {
+          accountId,
+          providerTxnId: 'openai-jan',
+          amountCents: 2000,
+          postedDate: '2026-01-15',
+          name: 'OPENAI *CHATGPT SUBSCR',
+          merchantName: 'OpenAI',
+          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+          pending: false,
+        },
+        {
+          accountId,
+          providerTxnId: 'openai-feb',
+          amountCents: 2000,
+          postedDate: '2026-02-14',
+          name: 'CHATGPT PLUS',
+          merchantName: 'ChatGPT',
+          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+          pending: false,
+        },
+        {
+          accountId,
+          providerTxnId: 'anthropic-jan',
+          amountCents: 2000,
+          postedDate: '2026-01-20',
+          name: 'ANTHROPIC CLAUDE PRO',
+          merchantName: 'Anthropic',
+          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+          pending: false,
+        },
+        {
+          accountId,
+          providerTxnId: 'anthropic-feb',
+          amountCents: 2000,
+          postedDate: '2026-02-19',
+          name: 'CLAUDE.AI',
+          merchantName: 'Claude.ai',
+          providerCategory: 'GENERAL_SERVICES.OTHER_GENERAL_SERVICES',
+          pending: false,
+        },
+      ])
+      .returning({ id: transactions.id });
+
+    // Simulate history that was already enriched incorrectly before this fix.
+    await db.insert(transactionEnrichments).values(inserted.map((transaction, index) => ({
+      transactionId: transaction.id,
+      category: 'OTHER',
+      merchantClean: index < 2 ? (index === 0 ? 'OpenAI' : 'ChatGPT') : (index === 2 ? 'Anthropic' : 'Claude Ai'),
+      isRecurring: false,
+      isDiscretionary: false,
+      confidence: 0.8,
+      source: 'llm' as const,
+      model: 'test-model',
+    })));
+
+    await enrichUserTransactions(db, new MockEnrichmentProvider(), userId);
+
+    const currentEnrichments = await db
+      .select({
+        category: transactionEnrichments.category,
+        merchantClean: transactionEnrichments.merchantClean,
+        isRecurring: transactionEnrichments.isRecurring,
+      })
+      .from(transactionEnrichments)
+      .where(isNull(transactionEnrichments.supersededAt));
+    expect(currentEnrichments).toHaveLength(4);
+    expect(currentEnrichments.every((row) => row.category === 'SUBSCRIPTIONS_AND_STREAMING')).toBe(true);
+    expect(currentEnrichments.every((row) => row.isRecurring)).toBe(true);
+    expect(new Set(currentEnrichments.map((row) => row.merchantClean))).toEqual(new Set(['OpenAI', 'Anthropic']));
+
+    const audit = await auditSubscriptions(db, userId);
+    expect(audit.items).toHaveLength(2);
+    for (const merchant of ['OpenAI', 'Anthropic']) {
+      const subscription = audit.items.find((item) => item.merchantClean === merchant);
+      expect(subscription).toBeTruthy();
+      expect(subscription!.cadence).toBe('monthly');
+      expect(subscription!.occurrences).toBe(2);
+      expect(subscription!.category).toBe('SUBSCRIPTIONS_AND_STREAMING');
+      expect(subscription!.isCancelCandidate).toBe(true);
+    }
   });
 });
 

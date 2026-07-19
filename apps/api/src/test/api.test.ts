@@ -42,9 +42,30 @@ describe('GET /health', () => {
     expect(res.headers['x-powered-by']).toBeUndefined();
   });
 
-  it('prevents API responses from being cached', async () => {
-    const res = await request(app).get('/api/content/launch-stats');
-    expect(res.headers['cache-control']).toBe('no-store');
+  it('reports database and Redis connectivity readiness', async () => {
+    const res = await request(app).get('/ready');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, checks: { db: true, redis: true } });
+  });
+
+  it('caches only public launch stats while private API responses stay no-store', async () => {
+    const first = await request(app).get('/api/content/launch-stats');
+    const second = await request(app).get('/api/content/launch-stats');
+    expect(first.headers['cache-control']).toContain('public');
+    expect(second.body.generatedAt).toBe(first.body.generatedAt);
+
+    const privateResponse = await request(app).get('/api/referrals/me');
+    expect(privateResponse.headers['cache-control']).toBe('no-store');
+  });
+
+  it('rate-limits repeated public launch stats requests', async () => {
+    for (let i = 0; i < 30; i += 1) {
+      const res = await request(app).get('/api/content/launch-stats');
+      expect(res.status).toBe(200);
+    }
+    const limited = await request(app).get('/api/content/launch-stats');
+    expect(limited.status).toBe(429);
+    expect(limited.body.error.code).toBe('rate_limited');
   });
 });
 

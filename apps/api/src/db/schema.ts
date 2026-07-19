@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   bigint,
   boolean,
   customType,
@@ -75,10 +76,13 @@ export const adminRefreshTokens = pgTable(
     tokenHash: text('token_hash').notNull().unique(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    replacedById: integer('replaced_by_id'),
+    replacedById: integer('replaced_by_id').references((): AnyPgColumn => adminRefreshTokens.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('admin_refresh_family_idx').on(t.familyId)],
+  (t) => [
+    index('admin_refresh_family_idx').on(t.familyId),
+    index('admin_refresh_replaced_by_idx').on(t.replacedById),
+  ],
 );
 
 // ---------- Phase 1: users, items, accounts, transactions ----------
@@ -125,12 +129,13 @@ export const userRefreshTokens = pgTable(
     tokenHash: text('token_hash').notNull().unique(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
-    replacedById: integer('replaced_by_id'),
+    replacedById: integer('replaced_by_id').references((): AnyPgColumn => userRefreshTokens.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('user_refresh_family_idx').on(t.familyId),
     index('user_refresh_user_idx').on(t.userId),
+    index('user_refresh_replaced_by_idx').on(t.replacedById),
   ],
 );
 
