@@ -15,20 +15,22 @@ const responseSchema = z.object({
   actions: z.array(z.string().min(1).max(300)).min(1).max(6),
 });
 
+// Anthropic's structured-output JSON schema rejects numeric/string/array length
+// constraints (minimum, minLength, maxLength, minItems, maxItems) with a 400.
+// Keep the wire schema to types/required/additionalProperties only; responseSchema
+// above still enforces the real length/count limits on the parsed response below.
 const CHAT_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    answer: { type: 'string', minLength: 1, maxLength: 3000 },
+    answer: { type: 'string' },
     fact_indexes: {
       type: 'array',
-      items: { type: 'integer', minimum: 0 },
+      items: { type: 'integer' },
     },
     actions: {
       type: 'array',
-      minItems: 1,
-      maxItems: 6,
-      items: { type: 'string', minLength: 1, maxLength: 300 },
+      items: { type: 'string' },
     },
   },
   required: ['answer', 'fact_indexes', 'actions'],
