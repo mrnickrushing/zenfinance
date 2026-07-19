@@ -152,7 +152,7 @@ Read-only data access shrinks the regulatory surface — no money movement — b
 
 ## 6. Monetization & Unit Economics
 
-**Pricing:** Free tier → **$7.99/mo** or **$59.99/yr** (37% annual discount pushes the higher-retention plan), sold as App Store auto-renewing subscriptions with a 14-day free trial (intro offer). Sits deliberately under YNAB (~$15/mo) and above impulse-purchase pricing — coaching should feel premium.
+**Pricing:** Free tier → **$7.99/mo** or **$59.99/yr** (37% annual discount pushes the higher-retention plan), sold as App Store auto-renewing subscriptions with a 3-day free trial (intro offer). Sits deliberately under YNAB (~$15/mo) and above impulse-purchase pricing — coaching should feel premium.
 
 **Per-premium-user monthly cost model (at modest scale):**
 
@@ -245,7 +245,7 @@ Timeline assumes one experienced solo builder, part-to-full-time. **~16–20 wee
 - **Exit gate:** TestFlight build; 5 friendly users linked, receiving briefs, and at least 3 report acting on one. `CodeReviewAgent` + accessibility pass on all screens.
 
 ### Phase 5 — Monetization *(Week 15–16)*
-- RevenueCat entitlements (`zen_coach` premium); App Store auto-renewing subscription products (monthly + annual, 14-day intro trial)
+- RevenueCat entitlements (`zen_coach` premium); App Store auto-renewing subscription products (monthly + annual, 3-day intro trial)
 - Free-tier gating (2 accounts, 1 goal, weekly brief only), paywall screens framed around Money Wins ("the coach paid for itself")
 - RevenueCat webhooks into the API, receipt validation, billing-retry/dunning handling (`StripeBillingAgent` + `stripe-billing-reviewer` full audit — this gate is blocking)
 - Pricing experiment scaffolding (PostHog A/B on paywall framing, not price)

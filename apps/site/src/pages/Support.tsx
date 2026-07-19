@@ -21,7 +21,7 @@ const faqs = [
   },
   {
     q: 'How much does it cost?',
-    a: 'The core experience is free. ZenFinance Coach is $7.99/month or $59.99/year as an App Store subscription, with a 14-day free trial.',
+    a: 'The core experience is free. ZenFinance Coach is $7.99/month or $59.99/year as an App Store subscription, with a 3-day free trial.',
   },
 ];
 

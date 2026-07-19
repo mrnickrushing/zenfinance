@@ -218,14 +218,14 @@ export function paywallPackages(): PaywallPackageView[] {
       identifier: 'monthly',
       productId: env.REVENUECAT_MONTHLY_PRODUCT_ID,
       priceLabel: '$7.99/mo',
-      introTrialDays: 14,
+      introTrialDays: 3,
       savingsLabel: null,
     },
     {
       identifier: 'annual',
       productId: env.REVENUECAT_ANNUAL_PRODUCT_ID,
       priceLabel: '$59.99/yr',
-      introTrialDays: 14,
+      introTrialDays: 3,
       savingsLabel: 'Save 37%',
     },
   ];
