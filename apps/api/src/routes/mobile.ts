@@ -30,6 +30,7 @@ import { Router } from 'express';
 import { assertPremium, getBillingStatus } from '../billing/service.js';
 import { buildBudgetPlan } from '../budget/planner.js';
 import { generateGroundedChatAnswer } from '../chat/anthropic.js';
+import { consumeAiChatQuota } from '../chat/quota.js';
 import { assembleCoachingContext } from '../coaching/derive.js';
 import { auditSubscriptions } from '../coaching/subscriptions.js';
 import { computeGoalPacing, type Goal } from '../coaching/goals.js';
@@ -629,43 +630,46 @@ async function buildChatAnswer(userId: number, question: string): Promise<ChatAn
     (await answerGeneralQuestion(userId));
 
   let body = deterministic;
-  try {
-    const context = await assembleCoachingContext(db, userId, 'weekly_brief');
-    const contextFacts: ChatFactView[] = context.facts.map((fact) => ({
-      label: fact.label,
-      amountCents: fact.amountCents,
-      source: sourceForContextFact(fact.kind),
-    }));
-    const availableFacts = mergeChatFacts(deterministic.facts, contextFacts);
-    body = await generateGroundedChatAnswer(question, deterministic, availableFacts, {
-      weeksOfData: context.weeksOfData,
-      recentWeeklyNetCents: context.profile.recentWeeklyNetCents,
-      hasIncome: context.profile.hasIncome,
-      goals: context.goals.map((goal) => ({
-        name: goal.name,
-        pacingStatus: goal.pacingStatus,
-        remainingAmountCents: goal.remainingAmountCents,
-        weeklyTargetCents: goal.weeklyTargetCents,
-        targetDate: goal.targetDate,
-        projectedCompletionDate: goal.projectedCompletionDate,
-      })),
-      categories: context.topDiscretionaryCategories.map((category) => ({
-        label: category.label,
-        amountCents: category.amountCents,
-        deltaCents: category.deltaCents,
-      })),
-      recurringCharges: context.recurringCharges.map((charge) => ({
-        merchant: charge.merchantClean,
-        cadence: charge.cadence,
-        avgAmountCents: charge.avgAmountCents,
-      })),
-      anomalies: context.anomalies.map((anomaly) => ({
-        title: anomaly.title,
-        amountCents: anomaly.amountCents,
-      })),
-    });
-  } catch (err) {
-    console.error('[chat] Anthropic response failed; using grounded deterministic answer:', safeErrorSummary(err));
+  const withinAiQuota = await consumeAiChatQuota(userId);
+  if (withinAiQuota) {
+    try {
+      const context = await assembleCoachingContext(db, userId, 'weekly_brief');
+      const contextFacts: ChatFactView[] = context.facts.map((fact) => ({
+        label: fact.label,
+        amountCents: fact.amountCents,
+        source: sourceForContextFact(fact.kind),
+      }));
+      const availableFacts = mergeChatFacts(deterministic.facts, contextFacts);
+      body = await generateGroundedChatAnswer(question, deterministic, availableFacts, {
+        weeksOfData: context.weeksOfData,
+        recentWeeklyNetCents: context.profile.recentWeeklyNetCents,
+        hasIncome: context.profile.hasIncome,
+        goals: context.goals.map((goal) => ({
+          name: goal.name,
+          pacingStatus: goal.pacingStatus,
+          remainingAmountCents: goal.remainingAmountCents,
+          weeklyTargetCents: goal.weeklyTargetCents,
+          targetDate: goal.targetDate,
+          projectedCompletionDate: goal.projectedCompletionDate,
+        })),
+        categories: context.topDiscretionaryCategories.map((category) => ({
+          label: category.label,
+          amountCents: category.amountCents,
+          deltaCents: category.deltaCents,
+        })),
+        recurringCharges: context.recurringCharges.map((charge) => ({
+          merchant: charge.merchantClean,
+          cadence: charge.cadence,
+          avgAmountCents: charge.avgAmountCents,
+        })),
+        anomalies: context.anomalies.map((anomaly) => ({
+          title: anomaly.title,
+          amountCents: anomaly.amountCents,
+        })),
+      });
+    } catch (err) {
+      console.error('[chat] Anthropic response failed; using grounded deterministic answer:', safeErrorSummary(err));
+    }
   }
 
   const [saved] = await db

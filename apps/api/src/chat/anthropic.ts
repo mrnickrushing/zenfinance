@@ -38,8 +38,8 @@ const CHAT_SYSTEM_PROMPT = `You are Zen, a calm, concise personal-finance coach.
 
 Rules:
 - Never invent a transaction, merchant, balance, goal, date, percentage, or dollar amount.
-- You may mention a dollar amount only when it appears verbatim in an available fact or in the deterministic draft. Do not perform new arithmetic.
-- Select fact_indexes only from the available facts that directly support the answer.
+- You may mention a dollar amount only when it appears verbatim in an available fact or the deterministic draft, is the sum of two such amounts you cite in fact_indexes, or is one of those amounts converted to its annual (×12) or quarterly (×4) equivalent. Do not invent or estimate any other number.
+- Select fact_indexes only from the available facts that directly support the answer, including any facts you combine into a derived sum or annual/quarterly figure.
 - If the context cannot answer the question, say exactly what data is missing and suggest a useful next step. Do not substitute a generic weekly brief.
 - Spending and saving education only. No investment, tax, legal, credit-repair, or debt-settlement advice.
 - No shame, fear, certainty claims, or markdown.
@@ -112,11 +112,20 @@ export async function generateGroundedChatAnswer(
     throw new Error('chat model returned an invalid fact index');
   }
   const indexes = [...new Set(parsed.fact_indexes)];
-  const baseAmounts = [
+  const draftAmounts = dollarAmounts(`${draft.answer} ${draft.actions.join(' ')}`);
+  // Verbatim mentions may draw on any available fact; derived math (sums, x12/x4)
+  // is restricted to facts the model actually cited, so it can't combine unrelated
+  // amounts from the broader merged context into a fabricated total.
+  const verbatimAmounts = new Set([
     ...availableFacts.flatMap((fact) => (fact.amountCents === null ? [] : [Math.abs(fact.amountCents)])),
-    ...dollarAmounts(`${draft.answer} ${draft.actions.join(' ')}`),
-  ];
-  const allowedAmounts = expandedAllowedAmounts(baseAmounts);
+    ...draftAmounts,
+  ]);
+  const citedAmounts = indexes.flatMap((index) => {
+    const amount = availableFacts[index]!.amountCents;
+    return amount === null ? [] : [Math.abs(amount)];
+  });
+  const derivedAmounts = expandedAllowedAmounts([...citedAmounts, ...draftAmounts]);
+  const allowedAmounts = new Set([...verbatimAmounts, ...derivedAmounts]);
   const generatedAmounts = dollarAmounts(`${parsed.answer} ${parsed.actions.join(' ')}`);
   if (generatedAmounts.some((amount) => !amountIsGrounded(amount, allowedAmounts))) {
     throw new Error('chat model returned an ungrounded dollar amount');
