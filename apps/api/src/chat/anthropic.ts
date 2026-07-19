@@ -10,16 +10,16 @@ export interface GroundedChatDraft {
 }
 
 const responseSchema = z.object({
-  answer: z.string().min(1).max(2000),
+  answer: z.string().min(1).max(3000),
   fact_indexes: z.array(z.number().int().nonnegative()).max(12),
-  actions: z.array(z.string().min(1).max(300)).min(1).max(3),
+  actions: z.array(z.string().min(1).max(300)).min(1).max(6),
 });
 
 const CHAT_JSON_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    answer: { type: 'string', minLength: 1, maxLength: 2000 },
+    answer: { type: 'string', minLength: 1, maxLength: 3000 },
     fact_indexes: {
       type: 'array',
       items: { type: 'integer', minimum: 0 },
@@ -27,6 +27,7 @@ const CHAT_JSON_SCHEMA = {
     actions: {
       type: 'array',
       minItems: 1,
+      maxItems: 6,
       items: { type: 'string', minLength: 1, maxLength: 300 },
     },
   },
@@ -41,7 +42,9 @@ Rules:
 - Select fact_indexes only from the available facts that directly support the answer.
 - If the context cannot answer the question, say exactly what data is missing and suggest a useful next step. Do not substitute a generic weekly brief.
 - Spending and saving education only. No investment, tax, legal, credit-repair, or debt-settlement advice.
-- No shame, fear, certainty claims, or markdown. Keep the answer under 140 words and return 1-3 concrete actions.
+- No shame, fear, certainty claims, or markdown.
+- For a simple question, keep the answer under 140 words and return 1-3 concrete actions.
+- If the user explicitly asks for a plan, breakdown, step-by-step instructions, or multiple options, give a real answer with that structure: you may use up to 400 words and up to 6 concrete, sequential actions. Do not compress a requested plan back down to a generic summary.
 - Return JSON matching the required schema.`;
 
 function dollarAmounts(text: string): number[] {
@@ -50,6 +53,28 @@ function dollarAmounts(text: string): number[] {
       /(?:\$\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)|([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:dollars?|usd)\b)/gi,
     ),
   ].map((match) => Math.round(Number((match[1] ?? match[2])!.replace(/,/g, '')) * 100));
+}
+
+/** Expands grounded cents amounts with simple derived math (sums, monthly<->annual/quarterly) an LLM may legitimately compute. */
+function expandedAllowedAmounts(baseAmounts: number[]): Set<number> {
+  const allowed = new Set<number>(baseAmounts);
+  for (let i = 0; i < baseAmounts.length; i++) {
+    allowed.add(baseAmounts[i]! * 12);
+    allowed.add(baseAmounts[i]! * 4);
+    for (let j = i + 1; j < baseAmounts.length; j++) {
+      allowed.add(baseAmounts[i]! + baseAmounts[j]!);
+    }
+  }
+  return allowed;
+}
+
+/** Allows amounts within a $1 rounding tolerance of a grounded or derived amount. */
+function amountIsGrounded(amountCents: number, allowed: Set<number>): boolean {
+  const target = Math.abs(amountCents);
+  for (const allowedAmount of allowed) {
+    if (Math.abs(target - allowedAmount) <= 100) return true;
+  }
+  return false;
 }
 
 export async function generateGroundedChatAnswer(
@@ -87,12 +112,13 @@ export async function generateGroundedChatAnswer(
     throw new Error('chat model returned an invalid fact index');
   }
   const indexes = [...new Set(parsed.fact_indexes)];
-  const allowedAmounts = new Set([
+  const baseAmounts = [
     ...availableFacts.flatMap((fact) => (fact.amountCents === null ? [] : [Math.abs(fact.amountCents)])),
     ...dollarAmounts(`${draft.answer} ${draft.actions.join(' ')}`),
-  ]);
+  ];
+  const allowedAmounts = expandedAllowedAmounts(baseAmounts);
   const generatedAmounts = dollarAmounts(`${parsed.answer} ${parsed.actions.join(' ')}`);
-  if (generatedAmounts.some((amount) => !allowedAmounts.has(Math.abs(amount)))) {
+  if (generatedAmounts.some((amount) => !amountIsGrounded(amount, allowedAmounts))) {
     throw new Error('chat model returned an ungrounded dollar amount');
   }
 
